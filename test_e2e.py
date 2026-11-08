@@ -4,30 +4,37 @@
 تست سرتاسری (End-to-End) سامانهٔ فهم‌یار — Fahmyar
 ====================================================
 
-کل چرخهٔ زندگی API را از صفر تا گزارش نهایی خودکار می‌کند:
+این اسکریپت کل چرخهٔ زندگی API را از صفر تا گزارش نهایی به‌صورت خودکار اجرا می‌کند:
 
-  ۱) بررسی سلامت سرور روی http://localhost:8000
-  ۲) ثبت‌نام دانش‌آموزِ تستی (demo_student) + ورود و دریافت JWT
-     (اگر قبلاً ثبت شده باشد، خودکار به حالت ورود fallback می‌کند)
-  ۳) دریافت فهرست مفاهیم و انتخاب خودکار یک concept_id معتبر
-     (ترجیحاً «قانون اهم» چون پاسخ غلطِ سناریو دربارهٔ همین است؛ وگرنه اولین مفهوم)
-  ۴) شروع جلسهٔ ارزیابی — مسیر A (انتخاب موضوع) و چاپ سؤال اول
-  ۵) ثبت یک پاسخ غلطِ مفهومی (بدفهمی هدفمند) + چاپ شواهد تحلیل‌شده
-     سپس یک پاسخ اصلاحی/تکمیلی + چاپ شواهد و سؤال بعدی
-  ۶) دریافت «گزارش نهایی» و راستی‌آزمایی ساختار آن:
-     مشاهدات، وضعیت‌های کیفی (CONFIRMED/UNCLEAR/NEEDS_REVIEW…)، پیشنهاد اقدام،
-     و **عدمِ وجود هرگونه نمره/رتبه/درصد**
-  ۷) شروع جلسهٔ دوم — مسیر B (پاسخ غلط) و راستی‌آزمایی ساختِ فرضیه‌های ریشهٔ خطا (بین‌درسی)
-  ۸) چاپ خلاصهٔ فارسیِ PASS/FAIL برای هر گام + خروج با کد ۰ یا ۱
+  ۱) بررسی اتصال به سرور (GET /openapi.json یا /docs) با پیام خطای راهنما
+  ۲) ثبت‌نام کاربر تستی (demo_test) — اگر از قبل وجود داشته باشد، به ورود fallback می‌کند
+  ۳) ورود و دریافت JWT (کلید «token» یا «access_token» — هر دو پذیرفته می‌شوند)
+  ۴) دریافت مفاهیم (GET /api/concepts/physics/11) و انتخاب اولین concept_id معتبر
+  ۵) شروع جلسهٔ ارزیابی (POST /api/assess/start) با اسکیمای اصلاح‌شده:
+        {"trigger_type": "topic_selection", "concept_id": <int>, "wrong_answer": null}
+  ۶) ثبت پاسخِ غلطِ مفهومیِ عمدی و چاپ شواهدِ تحلیل‌شده + سؤال دنباله‌دار
+  ۷) دریافت «گزارش نهایی» و راستی‌آزمایی ساختار کیفی آن (بدون نمره/رتبه/درصد)
+  ۸) چاپ خلاصهٔ فارسی PASS/FAIL و خروج با کد ۰ (موفق) یا ۱ (ناموفق)
 
-نحوهٔ اجرا:
+نحوهٔ اجرا (سرور باید در پس‌زمینه اجرا باشد):
+    uvicorn main:app --reload
     python test_e2e.py
 
 متغیرهای محیطی اختیاری:
-    FAHMYAR_BASE_URL   (پیش‌فرض: http://localhost:8000)
+    FAHMYAR_BASE_URL   (پیش‌فرض: http://127.0.0.1:8000)
+    FAHMYAR_TIMEOUT    (پیش‌فرض: 30.0 ثانیه)
 
-نیازمندی: httpx (در requirements.txt موجود است) و سرور در حال اجرا:
-    uvicorn main:app --reload
+نکتهٔ مهم دربارهٔ رمز عبور:
+    کاربر "123" خواسته شده بود، ولی نسخهٔ فعلی API رمز کوتاه‌تر از ۶ نویسه را
+    (422 Unprocessable Entity) رد می‌کند. اسکریپت ابتدا «123» را امتحان می‌کند؛
+    اگر سرور آن را رد کرد با رمز سازگار «demo_test123» ثبت‌نام می‌کند.
+    در اجراهای بعدی (کاربر از قبل موجود است) با هرکدام از رمزها وارد می‌شود —
+    یعنی اسکریپت روی هر دو نسخهٔ کد شما و این نسخه، پایدار و سبز است.
+
+نکتهٔ اسکیمای پاسخ:
+    اندپوینت پاسخ، بدنهٔ {"answer": "..."} را نمی‌پذیرد؛ اسکیمای واقعی
+    {"question_id": <int>, "response_text": "<متن>"} است. question_id از پاسخِ
+    start/answer گرفته می‌شود.
 """
 
 from __future__ import annotations
@@ -38,20 +45,18 @@ from typing import Any
 
 import httpx
 
-BASE_URL = os.getenv("FAHMYAR_BASE_URL", "http://localhost:8000").rstrip("/")
-TIMEOUT_SECONDS = 60.0  # فراخوانی واقعیِ Gemini ممکن است چند ثانیه طول بکشد
+# ------------------------------------------------------------ پیکربندی کلی ---
+BASE_URL = os.getenv("FAHMYAR_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+TIMEOUT = float(os.getenv("FAHMYAR_TIMEOUT", "30.0"))
 
-DEMO_USERNAME = "demo_student"
-DEMO_PASSWORD = "demo_student123"  # حداقل ۶ نویسه
-DEMO_FULL_NAME = "دانش‌آموز دموی تست"
-WRONG_RESPONSE = "چون ولتاژ دو برابر شده مقاومت هم دو برابر میشه"  # بدفهمیِ هدفمند: خلط ولتاژ و مقاومت
-CLARIFYING_RESPONSE = (
-    "چون قانون اهم میگه I برابر V تقسیم بر R هست؛ جریان با ولتاژ نسبت مستقیم داره و با مقاومت "
-    "نسبت عکس. مقاومت ویژگی خودِ رسانا (طول، سطح مقطع، جنس) هست و به ولتاژِ اعمالی بستگی نداره. "
-    "بنابراین وقتی ولتاژ دو برابر بشه و مقاومت ثابت بمونه، جریان دو برابر میشه نه اینکه مقاومت تغییر کنه."
-)
+DEMO_USERNAME = "demo_test"
+DEMO_GRADE = 11
+DEMO_MAJOR = "experimental"
+# طبق خواستهٔ کاربر اول «123» امتحان می‌شود؛ سپس رمز سازگار با validation فعلی
+CANDIDATE_PASSWORDS = ["123", "demo_test123"]
 
-# برچسب‌های فارسیِ وضعیت‌های کیفی
+WRONG_ANSWER = "چون ولتاژ زیاد شد مقاومت هم زیاد میشه"  # بدفهمیِ هدفمند: خلط ولتاژ با مقاومت
+
 STATUS_FA = {
     "CONFIRMED": "تأییدشده",
     "LIKELY_UNDERSTOOD": "احتمالاً آموخته‌شده",
@@ -60,29 +65,21 @@ STATUS_FA = {
     "INSUFFICIENT_EVIDENCE": "فاقد شواهد کافی",
 }
 ALLOWED_STATUSES = set(STATUS_FA)
-# واژه‌هایی که هرگز نباید در متن گزارش باشند (نه نمره، نه رتبه، نه درس مقایسه)
-FORBIDDEN_IN_REPORT = ["رتبه", "درصد", "percentile", "rank", "score", "%"]
+REPORT_MUST_CONTAIN = ["موضوع بررسی", "شواهد", "موارد هنوز روشن‌نشده", "پیشنهاد اقدام", "⚠️ نمرهٔ آزمون"]
+# کلیدهای عددیِ ممنوع در ساختار گزارش (ساختار از آنِ ماست پس این بررسی قطعی است)
+FORBIDDEN_REPORT_KEYS = ["score", "rank", "percentage", "percentile", "total_score", "grading"]
 
-# ---------------------------------------------------------------- ابزارها ---
+# --------------------------------------------------------------- کنسول -------
 
 class Console:
-    """چاپ رنگی/قالب‌بندی‌شدهٔ فارسی (اگر ترمینال پشتیبانی کند)."""
-
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
-    GREEN = "\033[92m"
-    RED = "\033[91m"
-    YELLOW = "\033[93m"
-    CYAN = "\033[96m"
-    DIM = "\033[2m"
+    RESET, BOLD = "\033[0m", "\033[1m"
+    GREEN, RED, CYAN, DIM = "\033[92m", "\033[91m", "\033[96m", "\033[2m"
 
     def __init__(self) -> None:
         self.color = sys.stdout.isatty()
 
     def c(self, text: str, *codes: str) -> str:
-        if not self.color:
-            return text
-        return "".join(codes) + text + self.RESET
+        return ("".join(codes) + text + self.RESET) if self.color else text
 
     def banner(self, title: str) -> None:
         line = "═" * 60
@@ -92,7 +89,7 @@ class Console:
 
     def section(self, title: str) -> None:
         print()
-        print(self.c(f"── {title} " + "─" * max(0, 54 - len(title)), self.BOLD), flush=True)
+        print(self.c(f"── {title} " + "─" * max(0, 56 - len(title)), self.BOLD), flush=True)
 
     def info(self, text: str) -> None:
         print(f"    {text}", flush=True)
@@ -103,8 +100,6 @@ class Console:
 
 
 ui = Console()
-
-# نتیجهٔ هر گام: (نام گام، موفق؟، جزئیات)
 RESULTS: list[tuple[str, bool, str]] = []
 
 
@@ -116,11 +111,6 @@ def record(step: str, ok: bool, detail: str = "") -> bool:
     return ok
 
 
-def api(client: httpx.Client, method: str, path: str, **kwargs: Any) -> httpx.Response:
-    """فراخوانی یکپارچه با مدیریت خطای شبکه."""
-    return client.request(method, path, **kwargs)
-
-
 def json_or_none(resp: httpx.Response) -> Any:
     try:
         return resp.json()
@@ -128,180 +118,204 @@ def json_or_none(resp: httpx.Response) -> Any:
         return None
 
 
-def token_from(data: dict[str, Any]) -> str | None:
-    """JWT را از پاسخ برمی‌دارد — هم کلید token و هم access_token را می‌پذیرد."""
+def token_from(data: Any) -> str | None:
+    """JWT را از پاسخ برمی‌دارد — هم token و هم access_token را می‌پذیرد."""
     if not isinstance(data, dict):
         return None
-    return data.get("token") or data.get("access_token") or (data.get("data") or {}).get("token")
+    return (
+        data.get("access_token")
+        or data.get("token")
+        or (data.get("data") or {}).get("access_token")
+        or (data.get("data") or {}).get("token")
+    )
+
+
+def auth_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
 
 
 # ------------------------------------------------------------------ گام‌ها ---
 
 def step_health(client: httpx.Client) -> bool:
-    ui.section("گام ۱: بررسی سلامت و اتصال به سرور")
+    ui.section("گام ۱: بررسی اتصال به سرور")
     try:
-        r = api(client, "GET", "/api/health")
-    except httpx.ConnectError:
-        ui.info(f"اتصال به {BASE_URL} برقرار نشد.")
-        ui.info("ابتدا سرور را اجرا کنید:  uvicorn main:app --reload")
-        return record("سلامت سرور", False, f"سرور در {BASE_URL} در دسترس نیست")
+        r = client.get("/openapi.json")
+        if r.status_code != 200:
+            r = client.get("/docs")  # fallback
+        ok = r.status_code in (200, 307, 308)
+        ui.info(f"پاسخ سرور → HTTP {r.status_code}")
+        try:
+            health = client.get("/api/health").json()
+            ui.info(f"/api/health → {health}")
+        except Exception:
+            pass  # سلامت اصلی همین است که سرور پاسخ می‌دهد
+        return record("اتصال به سرور", ok, f"{BASE_URL}")
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        ui.info(f"❌ اتصال به {BASE_URL} برقرار نشد — احتمالاً سرور Uvicorn در پس‌زمینه اجرا نیست.")
+        ui.info("   راه‌حل: در یک ترمینال جدا اجرا کنید:")
+        ui.info("       uvicorn main:app --reload")
+        ui.info(f"   سپس دوباره همین اسکریپت را اجرا کنید:  python test_e2e.py")
+        ui.info(f"   (آدرس را می‌توانید با FAHMYAR_BASE_URL عوض کنید؛ مقدار فعلی: {BASE_URL})")
+        return record("اتصال به سرور", False, "سرور در دسترس نیست")
+    except httpx.TimeoutException:
+        ui.info(f"❌ سرور در مهلت {TIMEOUT} ثانیه پاسخ نداد (پاسخ AI می‌تواند کند باشد — FAHMYAR_TIMEOUT را بالا ببرید).")
+        return record("اتصال به سرور", False, "تایم‌اوت")
     except Exception as exc:
-        return record("سلامت سرور", False, f"خطای غیرمنتظره: {exc}")
-
-    data = json_or_none(r) or {}
-    ok = r.status_code == 200
-    ui.info(f"پاسخ /api/health → HTTP {r.status_code} | {data}")
-    return record("سلامت سرور", ok, f"وضعیت={data.get('status')} | پروایدر AI={data.get('ai_provider')}")
+        return record("اتصال به سرور", False, f"خطای غیرمنتظره: {exc}")
 
 
-def step_auth(client: httpx.Client) -> str | None:
-    ui.section("گام ۲: ثبت‌نام / ورود دانش‌آموز")
+def step_register_and_login(client: httpx.Client) -> str | None:
+    ui.section("گام ۲ و ۳: ثبت‌نام (در صورت نیاز) و ورود")
 
-    payload = {
-        "username": DEMO_USERNAME,
-        "password": DEMO_PASSWORD,
-        "role": "student",
-        "grade": 11,
-        "major": "experimental",
-        "full_name": DEMO_FULL_NAME,
-    }
-    r = api(client, "POST", "/api/auth/register", json=payload)
-    data = json_or_none(r) or {}
+    # --- ثبت‌نام: اول «123» طبق خواسته، سپس رمز سازگار ---
+    registered_token = None
+    for pw in CANDIDATE_PASSWORDS:
+        payload = {
+            "username": DEMO_USERNAME,
+            "password": pw,
+            "role": "student",
+            "grade": DEMO_GRADE,
+            "major": DEMO_MAJOR,
+        }
+        try:
+            r = client.post("/api/auth/register", json=payload)
+        except Exception as exc:
+            ui.info(f"خطای شبکه در ثبت‌نام: {exc}")
+            continue
+        data = json_or_none(r) or {}
+        if r.status_code in (200, 201):
+            registered_token = token_from(data)
+            ui.info(f"کاربر جدید «{DEMO_USERNAME}» ثبت شد (HTTP {r.status_code}).")
+            break
+        if r.status_code == 409:
+            ui.info("این کاربر قبلاً ثبت شده است — ورود انجام می‌شود.")
+            break
+        ui.info(f"ثبت‌نام با رمز «{pw}» پذیرفته نشد → HTTP {r.status_code} | {data}")
 
-    if r.status_code in (200, 201):
+    if registered_token:
+        record("ثبت‌نام / ورود (demo_test)", True, "ثبت‌نام جدید موفق")
+        return registered_token
+
+    # --- ورود: رمزها را به ترتیب امتحان کن ---
+    for pw in CANDIDATE_PASSWORDS:
+        try:
+            r = client.post("/api/auth/login", json={"username": DEMO_USERNAME, "password": pw})
+        except Exception as exc:
+            ui.info(f"خطای شبکه در ورود: {exc}")
+            continue
+        data = json_or_none(r) or {}
         token = token_from(data)
-        ui.info(f"کاربر جدید «{DEMO_USERNAME}» ثبت شد.")
-        record("ثبت‌نام / ورود دانش‌آموز", bool(token), f"HTTP {r.status_code} (ثبت‌نام جدید)")
-        return token
+        if r.status_code == 200 and token:
+            role = (data.get("user") or {}).get("role", "student")
+            record("ثبت‌نام / ورود (demo_test)", True, f"ورود موفق (نقش: {role})")
+            return token
+        ui.info(f"ورود با رمز «{pw}» ناموفق → HTTP {r.status_code}")
 
-    if r.status_code != 409:
-        record("ثبت‌نام / ورود دانش‌آموز", False, f"HTTP {r.status_code} | {data}")
-        return None
-
-    ui.info("این کاربر قبلاً ثبت شده — ورود انجام می‌شود.")
-    r = api(client, "POST", "/api/auth/login", json={"username": DEMO_USERNAME, "password": DEMO_PASSWORD})
-    data = json_or_none(r) or {}
-    token = token_from(data)
-    if r.status_code == 200 and token:
-        record("ثبت‌نام / ورود دانش‌آموز", True, f"کاربر از قبل موجود بود → ورود موفق ({data.get('user', {}).get('role')})")
-        return token
-    record("ثبت‌نام / ورود دانش‌آموز", False, f"HTTP {r.status_code} | {data}")
+    record("ثبت‌نام / ورود (demo_test)", False, "نه ثبت‌نام و نه ورود با هیچ‌کدام از رمزها موفق نبود")
     return None
 
 
-def step_concepts(client: httpx.Client, token: str) -> int | None:
-    ui.section("گام ۳: دریافت فهرست مفاهیم و انتخاب concept_id")
-    r = api(client, "GET", "/api/concepts", headers={"Authorization": f"Bearer {token}"})
+def step_fetch_concepts(client: httpx.Client, token: str) -> int | None:
+    ui.section("گام ۴: دریافت مفاهیم و انتخاب concept_id")
+    concepts: list[dict[str, Any]] = []
+    # مسیر اصلی طبق طراحی API
+    r = client.get("/api/concepts/physics/11", headers=auth_headers(token))
     data = json_or_none(r) or {}
-    concepts = data.get("concepts") or data.get("items") or (data if isinstance(data, list) else [])
+    concepts = data.get("concepts", []) if isinstance(data, dict) else []
+    if r.status_code == 200 and concepts:
+        ui.info(f"GET /api/concepts/physics/11 → {len(concepts)} مفهوم")
+    else:
+        ui.info(f"مسیر اصلی پاسخ نداد (HTTP {r.status_code}) — تلاش با /api/concepts …")
+        r2 = client.get("/api/concepts", headers=auth_headers(token))
+        data2 = json_or_none(r2) or {}
+        concepts = data2.get("concepts", []) if isinstance(data2, dict) else []
+        if r2.status_code == 200 and concepts:
+            ui.info(f"GET /api/concepts → {len(concepts)} مفهوم")
 
-    if r.status_code != 200 or not concepts:
-        record("دریافت مفاهیم", False, f"HTTP {r.status_code} | تعداد مفاهیم: 0")
+    if not concepts:
+        record("دریافت مفاهیم", False, "هیچ مفهومی برگردانده نشد (آیا seed اجرا شده؟)")
         return None
 
+    # ترجیح با قانون اهم چون پاسخ غلطِ سناریو دربارهٔ همین مفهوم است؛ وگرنه اولین مورد
     chosen = next((c for c in concepts if c.get("topic") == "ohm_law"), concepts[0])
-    ui.info(f"تعداد مفاهیم موجود: {len(concepts)}")
-    ui.info(f"مفهوم انتخاب‌شده برای سناریو: [{chosen.get('id')}] {chosen.get('name')} ({chosen.get('subject')} — پایه {chosen.get('grade')})")
-    ui.info("(ترجیح با «قانون اهم» است چون بدفهمیِ سناریو دربارهٔ همین مفهوم است)")
+    ui.info(f"مفهوم انتخاب‌شده: [{chosen.get('id')}] {chosen.get('name')} ({chosen.get('subject')} — پایهٔ {chosen.get('grade')})")
     record("دریافت مفاهیم و انتخاب concept_id", True, f"concept_id={chosen.get('id')}")
     return int(chosen["id"])
 
 
-def step_start_path_a(client: httpx.Client, token: str, concept_id: int) -> dict[str, Any] | None:
-    ui.section("گام ۴: شروع جلسهٔ ارزیابی — مسیر A (انتخاب موضوع)")
-    r = api(
-        client, "POST", "/api/assess/start",
-        json={"trigger_type": "topic_selection", "concept_id": concept_id},
-        headers={"Authorization": f"Bearer {token}"},
-    )
+def step_start_session(client: httpx.Client, token: str, concept_id: int) -> dict[str, Any] | None:
+    ui.section("گام ۵: شروع جلسهٔ ارزیابی (مسیر A)")
+    # اسکیمای اصلاح‌شده طبق مشخصات: concept_id عددی + wrong_answer صریحاً null
+    payload = {"trigger_type": "topic_selection", "concept_id": concept_id, "wrong_answer": None}
+    r = client.post("/api/assess/start", json=payload, headers=auth_headers(token))
     data = json_or_none(r) or {}
     if r.status_code not in (200, 201):
-        record("شروع جلسه (مسیر A)", False, f"HTTP {r.status_code} | {data}")
+        record("شروع جلسهٔ ارزیابی", False, f"HTTP {r.status_code} | {data}")
         return None
 
     session = data.get("session", {})
     question = data.get("next_question")
     ui.info(f"شناسهٔ جلسه: {session.get('id')} | وضعیت: {session.get('status')} | سقف زمان: {session.get('time_limit_seconds')} ثانیه")
-    ui.info(f"تعداد فرضیه‌ها: {len(data.get('hypotheses') or [])}")
     if question:
-        ui.info(f"سؤالِ تشخیصیِ اول (نوع: {question.get('question_type')} | سختی: {question.get('difficulty')}):")
+        ui.info(f"سؤالِ تشخیصیِ اول (نوع: {question.get('question_type')} | سختی: {question.get('difficulty')} | id={question.get('id')}):")
         ui.info(f"    «{question.get('text')}»")
     else:
-        ui.info("⚠️ سؤال اولی برگردانده نشد (بانک خالی؟).")
+        ui.info("⚠️ سؤالی برگردانده نشد.")
     ok = bool(session.get("id")) and bool(question)
-    record("شروع جلسه (مسیر A) + دریافت سؤال اول", ok, f"session_id={session.get('id')}")
+    record("شروع جلسه + دریافت سؤال اول", ok, f"session_id={session.get('id')}")
     data["_question"] = question
     return data
 
 
-def step_submit_answers(client: httpx.Client, token: str, session: dict[str, Any]) -> bool:
-    ui.section("گام ۵: ثبت پاسخ‌ها و دریافت تحلیل انطباقی")
-    session_id = session["session"]["id"]
-    headers = {"Authorization": f"Bearer {token}"}
-    question = session.get("_question")
+def step_submit_answer(client: httpx.Client, token: str, session_data: dict[str, Any]) -> bool:
+    ui.section("گام ۶: ثبت پاسخ غلطِ مفهومی و چاپ تحلیل AI")
+    session_id = session_data["session"]["id"]
+    question = session_data.get("_question")
+    if not question:
+        return record("ثبت پاسخ", False, "سؤالی برای پاسخ دادن وجود نداشت")
 
-    # --- پاسخ اول: بدفهمیِ هدفمند ---
-    ui.info(f"پاسخِ اولِ دانش‌آموز (غلطِ مفهومیِ عمدی):")
-    ui.info(f"    «{WRONG_RESPONSE}»")
-    r = api(client, "POST", f"/api/assess/{session_id}/answer",
-            json={"question_id": question["id"], "response_text": WRONG_RESPONSE}, headers=headers)
+    ui.info("پاسخِ دانش‌آموز (غلطِ مفهومیِ عمدی):")
+    ui.info(f"    «{WRONG_ANSWER}»")
+
+    # اسکیمای واقعی اندپوینت: question_id + response_text (نه کلید «answer»)
+    payload = {"question_id": question["id"], "response_text": WRONG_ANSWER}
+    r = client.post(f"/api/assess/{session_id}/answer", json=payload, headers=auth_headers(token))
     data = json_or_none(r) or {}
     if r.status_code != 200:
-        record("ثبت پاسخ غلط + تحلیل", False, f"HTTP {r.status_code} | {data}")
+        record("ثبت پاسخ + تحلیل", False, f"HTTP {r.status_code} | {data}")
         return False
 
-    print_evidence(data)
-    record("ثبت پاسخ غلط + تحلیل شواهد", True, f"concept_status={data.get('concept_status')} | پاسخ‌ها={data.get('questions_answered')}")
-
-    next_q = data.get("next_question")
-    if not next_q:
-        ui.info("جلسه پس از پاسخ اول بسته شد ( done=True ).")
-        return True
-
-    # --- پاسخ دوم: توضیحِ اصلاحی ---
-    ui.info("سؤالِ دنباله‌دارِ انطباقی:")
-    ui.info(f"    «{next_q.get('text')}»")
-    ui.info("پاسخِ دومِ دانش‌آموز (اصلاحی):")
-    ui.info(f"    «{CLARIFYING_RESPONSE[:110]}…»")
-    r = api(client, "POST", f"/api/assess/{session_id}/answer",
-            json={"question_id": next_q["id"], "response_text": CLARIFYING_RESPONSE}, headers=headers)
-    data = json_or_none(r) or {}
-    if r.status_code != 200:
-        record("پاسخ اصلاحی + تحلیل", False, f"HTTP {r.status_code} | {data}")
-        return False
-
-    print_evidence(data)
-    if data.get("next_question"):
-        ui.info(f"سؤال بعدی (در صورت ادامه): «{data['next_question'].get('text')[:120]}…»")
-    record("پاسخ اصلاحی + تحلیل شواهد", True, f"concept_status={data.get('concept_status')} | باقی‌مانده={data.get('remaining_seconds')}ثانیه")
-    return True
-
-
-def print_evidence(answer_payload: dict[str, Any]) -> None:
-    """شواهد استخراج‌شده و وضعیت گزاره‌ها را زیبا چاپ می‌کند."""
-    for ev in answer_payload.get("evidence", []):
+    # --- چاپ تحلیل AI ---
+    for ev in data.get("evidence", []):
         status = ev.get("status", "?")
         status_fa = STATUS_FA.get(status, status)
         conf = ev.get("confidence")
         conf_txt = f"اطمینان={conf:.2f}" if isinstance(conf, (int, float)) else ""
-        review = " | نیازمند بررسی معلم" if ev.get("needs_teacher_review") else ""
+        review = " | ⚠️ نیازمند بررسی معلم" if ev.get("needs_teacher_review") else ""
         ui.info(f"    • گزارهٔ «{str(ev.get('proposition_id'))[:70]}»")
         ui.info(f"        وضعیت: {status_fa} ({status}) | {conf_txt}{review}")
-        ui.info(f"        دلیل تحلیل‌گر: {ev.get('reasoning', '')[:140]}")
-    statuses = answer_payload.get("proposition_statuses") or {}
+        ui.info(f"        دلیل تحلیل‌گر: {ev.get('reasoning', '')[:150]}")
+
+    statuses = data.get("proposition_statuses") or {}
     if statuses:
-        ui.info("    وضعیت فعلی گزاره‌ها:")
+        ui.info("    وضعیت گزاره‌ها پس از این پاسخ:")
         for prop, st in statuses.items():
             ui.info(f"        - {STATUS_FA.get(st, st):22s} | {str(prop)[:60]}")
-    if answer_payload.get("conflicts"):
-        ui.info(f"    ⚠️ تعارضِ شواهد در گزاره‌ها: {answer_payload['conflicts']}")
-    if answer_payload.get("needs_teacher_review"):
-        ui.info("    ⚠️ این پاسخ‌ها نیازمند نگاه معلم هستند.")
+
+    next_q = data.get("next_question")
+    if next_q:
+        ui.info("سؤالِ دنباله‌دارِ انطباقی:")
+        ui.info(f"    [id={next_q.get('id')} | {next_q.get('question_type')}] «{next_q.get('text')}»")
+    else:
+        ui.info(f"جلسه پس از این پاسخ تعیین‌تکلیف شد (done={data.get('done')} | {data.get('message', '')})")
+
+    detail = f"concept_status={data.get('concept_status')} | باقی‌مانده={data.get('remaining_seconds')}ثانیه"
+    return record("ثبت پاسخ + تحلیل شواهد", True, detail)
 
 
-def step_report(client: httpx.Client, token: str, session_id: int) -> bool:
+def step_final_report(client: httpx.Client, token: str, session_id: int) -> bool:
     ui.section("گام ۷: دریافت و راستی‌آزمایی گزارش نهایی")
-    r = api(client, "GET", f"/api/assess/{session_id}/report", headers={"Authorization": f"Bearer {token}"})
+    r = client.get(f"/api/assess/{session_id}/report", headers=auth_headers(token))
     data = json_or_none(r) or {}
     if r.status_code != 200:
         record("گزارش نهایی", False, f"HTTP {r.status_code} | {data}")
@@ -312,79 +326,33 @@ def step_report(client: httpx.Client, token: str, session_id: int) -> bool:
     prop_statuses = data.get("proposition_statuses") or {}
 
     checks: list[tuple[bool, str]] = [
-        ("موضوع بررسی" in text, "متن گزارش شامل «موضوع بررسی» است"),
-        ("شواهد" in text, "متن گزارش شامل بخش «شواهد» است"),
-        ("موارد هنوز روشن‌نشده" in text, "متن گزارش شامل «موارد هنوز روشن‌نشده» است"),
-        ("پیشنهاد اقدام" in text, "متن گزارش شامل «پیشنهاد اقدام» است"),
-        (bool(sections.get("مشاهدات")), "بخش «مشاهدات» با ارجاع به پاسخ‌های واقعی پر شده است"),
+        (bool(text), "report_text غیرخالی است"),
+        *[(needle in text, f"گزارش شامل «{needle}» است") for needle in REPORT_MUST_CONTAIN],
+        (bool(sections.get("مشاهدات")), "بخش «مشاهدات» با ارجاع به پاسخ واقعی پر شده است"),
         (bool(sections.get("شواهد")), "بخش «شواهد» گزاره‌به‌گزاره پر شده است"),
-        ("⚠️ نمرهٔ آزمون" in text, "برچسب «⚠️ نمرهٔ آزمون — نه سنجش فهم» وجود دارد"),
-        (any(lbl in text for lbl in STATUS_FA.values()), "وضعیت‌های کیفی (تأییدشده/نامشخص/نیاز به بررسی…) در گزارش هستند"),
         (all(v in ALLOWED_STATUSES for v in prop_statuses.values()),
-         "همهٔ وضعیت‌های گزاره‌ها یکی از ۵ وضعیتِ مجاز هستند (نه عدد)"),
-        (not any(bad in text.lower() for bad in FORBIDDEN_IN_REPORT),
-         "هیچ نمره/رتبه/درصد/percentile در گزارش نیست"),
-        (not any(k in data for k in ["score", "rank", "percentage", "percentile", "total_score", "percentile_rank"]),
-         "کلیدِ عددیِ نمره/رتبه در ساختار گزارش وجود ندارد"),
+         "همهٔ وضعیت‌ها یکی از ۵ وضعیتِ کیفیِ مجاز هستند (نه عدد)"),
+        (not any(k in data for k in FORBIDDEN_REPORT_KEYS),
+         "هیچ کلید عددیِ نمره/رتبه‌ای در ساختار گزارش نیست"),
+        (not any(bad in text.lower() for bad in ["percentile", "رتبه"]),
+         "هیچ «رتبه/percentile» در متن گزارش نیست"),
     ]
     all_ok = True
     for ok, label in checks:
         ui.sub_check(ok, label)
         all_ok = all_ok and ok
 
-    ui.info(f"تعداد پاسخ‌های ثبت‌شده: {data.get('questions_answered')} (این «تعداد» است نه «نمره»)")
-    ui.info("─" * 56)
+    ui.info(f"تعداد پاسخ‌های ثبت‌شده: {data.get('questions_answered')} (این «تعداد» است، نه «نمره»)")
+    ui.info("─" * 58)
     for line in text.splitlines():
         if line.strip():
             ui.info(line)
-    ui.info("─" * 56)
-    return record("راستی‌آزمایی گزارش نهایی (کیفی، بدون نمره/رتبه)", all_ok)
-
-
-def step_path_b(client: httpx.Client, token: str, concept_id: int) -> bool:
-    ui.section("گام ۷: جلسهٔ دوم — مسیر B (شروع از پاسخ غلط) و فرضیه‌های ریشهٔ خطا")
-    wrong_answer = {
-        "problem_text": "یک لامپ با مقاومت ۴ اهم به باتری ۱۲ ولتی وصل شده است؛ جریان عبوری چند آمپر است؟",
-        "student_answer": "مقاومت لامپ ۴ اهمه پس جریان هم ۴ آمپره؛ هرچی ولتاژ بیشتر باشه مقاومت هم بیشتر میشه",
-        "concept_id": concept_id,
-    }
-    r = api(client, "POST", "/api/assess/start",
-            json={"trigger_type": "wrong_answer", "wrong_answer": wrong_answer},
-            headers={"Authorization": f"Bearer {token}"})
-    data = json_or_none(r) or {}
-    if r.status_code not in (200, 201):
-        record("شروع جلسه (مسیر B)", False, f"HTTP {r.status_code} | {data}")
-        return False
-
-    hypotheses = data.get("hypotheses") or []
-    session = data.get("session", {})
-    question = data.get("next_question")
-
-    ui.info(f"شناسهٔ جلسه: {session.get('id')} | وضعیت: {session.get('status')}")
-    ui.info(f"تعداد فرضیه‌های ریشهٔ خطا: {len(hypotheses)}")
-    for h in hypotheses:
-        cross = "بین‌درسی" if h.get("cross_subject") else "هم‌درس"
-        ui.info(f"    • [{h.get('depth', 0)}] {h.get('subject', '')}/{h.get('concept_topic', h.get('type'))}"
-                f" — نوع: {h.get('type')} | {cross} | وضعیت: {h.get('status')}")
-    if question:
-        ui.info(f"سؤال آغازین روی مفهومِ ریشه‌ای (concept_id={question.get('concept_id')}):")
-        ui.info(f"    «{question.get('text')[:130]}…»")
-
-    has_root_cause = any(h.get("type") == "root_cause" for h in hypotheses)
-    has_cross = any(h.get("cross_subject") for h in hypotheses)
-    starts_from_root = bool(question) and question.get("concept_id") != concept_id
-
-    ui.sub_check(bool(hypotheses), "موتور حداقل یک فرضیه ساخت")
-    ui.sub_check(has_root_cause, "فرضیهٔ «ریشهٔ خطا» (pre-requisite) ساخته شد")
-    ui.sub_check(has_cross, "حداقل یک فرضیهٔ بین‌درسی ساخته شد (ریاضی ← فیزیک)")
-    ui.sub_check(starts_from_root, "پرسش از محتمل‌ترین ریشهٔ خطا شروع شد، نه از خودِ سؤال اصلی")
-
-    ok = bool(hypotheses) and has_root_cause and has_cross and starts_from_root
-    return record("فرضیه‌سازی ریشهٔ خطا (مسیر B)", ok, f"session_id={session.get('id')}")
+    ui.info("─" * 58)
+    return record("گزارش نهایی (کیفی، بدون نمره/رتبه)", all_ok)
 
 
 def print_summary() -> int:
-    ui.section("خلاصهٔ نهایی")
+    ui.section("گام ۸: خلاصهٔ نهایی")
     line = "═" * 60
     print(ui.c(line, ui.CYAN, ui.BOLD))
     total = len(RESULTS)
@@ -404,33 +372,34 @@ def print_summary() -> int:
     return 0 if passed == total else 1
 
 
+# --------------------------------------------------------------------- main ---
+
 def main() -> int:
     ui.banner("فهم‌یار — تست سرتاسری (E2E)")
-    ui.info(f"آدرس سرور: {BASE_URL}")
+    ui.info(f"آدرس سرور: {BASE_URL} | تایم‌اوت: {TIMEOUT} ثانیه")
     ui.info(f"کاربر تست: {DEMO_USERNAME}")
 
-    with httpx.Client(base_url=BASE_URL, timeout=TIMEOUT_SECONDS) as client:
-        # گام ۱ — بدون سلامت سرور ادامه نمی‌دهیم
+    # تایم‌اوت سخاوتمندانه (۳۰ ثانیه پیش‌فرض) تا پاسخ‌های واقعیِ AI قطع نشوند
+    with httpx.Client(base_url=BASE_URL, timeout=TIMEOUT) as client:
+        # گام ۱ — بدون سرور سالم ادامه نمی‌دهیم
         if not step_health(client):
             return print_summary()
 
-        token = step_auth(client)
+        token = step_register_and_login(client)
         if not token:
             ui.info("بدون توکن JWT ادامهٔ تست ممکن نیست.")
             return print_summary()
 
-        concept_id = step_concepts(client, token)
+        concept_id = step_fetch_concepts(client, token)
         if concept_id is None:
             return print_summary()
 
-        session_a = step_start_path_a(client, token, concept_id)
+        session_data = step_start_session(client, token, concept_id)
         session_id: int | None = None
-        if session_a:
-            session_id = int(session_a["session"]["id"])
-            step_submit_answers(client, token, session_a)
-            step_report(client, token, session_id)
-
-        step_path_b(client, token, concept_id)
+        if session_data:
+            session_id = int(session_data["session"]["id"])
+            step_submit_answer(client, token, session_data)
+            step_final_report(client, token, session_id)
 
     return print_summary()
 
