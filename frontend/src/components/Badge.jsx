@@ -16,7 +16,7 @@ const STATUS = {
     dot: 'bg-amber-400',
   },
   NEEDS_REVIEW: {
-    label: 'بدفهمی شناسایی‌شده',
+    label: '⚠️ بدفهمی شناسایی‌شده',
     cls: 'bg-orange-50 text-orange-800 ring-1 ring-orange-200',
     dot: 'bg-orange-400',
   },

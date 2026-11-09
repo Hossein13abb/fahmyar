@@ -226,7 +226,7 @@ export default function AssessmentRoom() {
                   <li key={i} className="rounded-2xl border border-teal-100/70 bg-white/80 p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge status={ev.status} />
-                      {ev.needs_teacher_review && <Badge status="PENDING_REVIEW" />}
+                      {ev.needs_teacher_review && ev.status !== 'NEEDS_REVIEW' && <Badge status="PENDING_REVIEW" />}
                     </div>
                     <p className="mt-1.5 text-[12px] leading-6 text-slate-600">{ev.reasoning}</p>
                   </li>

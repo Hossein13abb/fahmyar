@@ -98,6 +98,20 @@ _PROMPT = """شما «متخصص تشخیص آموزشیِ سخت‌گیرِ ف�
 _extract_json = extract_json_object
 
 
+_MISCONCEPTION_MARKERS = (
+    "به اشتباه تصور",
+    "به اشتباه می‌پندارند",
+    "بدفهمی",
+    "تصور اشتباه",
+    "مفهوم اشتباه",
+    "اشتباه می‌کنند که",
+)
+
+
+def _has_misconception_marker(text: str) -> bool:
+    return any(marker in text for marker in _MISCONCEPTION_MARKERS)
+
+
 _HEDGE_WORDS = ("به نظر می‌رسد", "شاید", "ممکن است", "به‌نوعی", "تا حدی")
 
 
@@ -133,8 +147,13 @@ def _normalize_record(item: dict[str, Any], fallback_prop: str, qualitative_feed
         status = EvidenceStatus.UNCLEAR.value
         needs_review = True
     else:
-        # قاطعیت: بدفهمیِ مفهومی با شواهد ردکنندهٔ قوی → NEEDS_REVIEW قطعی (بدون پرچم بررسی معلم)
-        if etype == "strong_contradicting" and error_type == "conceptual":
+        # قاطعیت: هرجا مدل «متن بدفهمی» تولید کرده → status حتماً NEEDS_REVIEW و نیازمند بررسی معلم=false
+        decisive = error_type == "conceptual" and (
+            etype in ("strong_contradicting", "weak_contradicting")
+            or status == EvidenceStatus.NEEDS_REVIEW.value
+            or _has_misconception_marker(reasoning + " " + feedback)
+        )
+        if decisive:
             status = EvidenceStatus.NEEDS_REVIEW.value
             needs_review = False
         else:
