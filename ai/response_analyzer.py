@@ -4,7 +4,10 @@
 نه حضور واژه‌ها. واژهٔ درست بدون دلیل ≠ شواهدِ فهمیدن.
 
 خروجی ساخت‌یافته: فهرست EvidenceRecord با status یکی از ۵ وضعیتِ کیفی.
+تحلیل‌گر «سخت‌گیر و قطعی» است: غلطِ علمیِ روشن = بدفهمیِ تأییدشده (NEEDS_REVIEW)، نه «نامشخص».
+UNCLEAR فقط و فقط برای پاسخ‌های بی‌ربط/نامفهوم یا اطمینانِ زیر آستانه است.
 اگر اطمینان تحلیل‌گر < CONFIDENCE_THRESHOLD باشد → UNCLEAR + نیازمند بررسی معلم.
+qualitative_feedback (دلیلِ دقیقِ رد/تأیید) در evidence هر رکورد ذخیره و در گزارش به معلم نمایش داده می‌شود.
 همیشه در شکستِ تحلیل، جلسه متوقف نمی‌شود؛ شواهد «نامشخص» ثبت می‌شود.
 """
 from __future__ import annotations
@@ -38,24 +41,30 @@ class EvidenceRecord:
     confidence: float
     error_type: str = "none"
     needs_teacher_review: bool = False
+    qualitative_feedback: str = ""  # دلیلِ دقیقِ رد/تأیید — همان متنی که معلم می‌خواند
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-_PROMPT = """شما تحلیل‌گر ارزیابی آموزشی «فهم‌یار» هستید. پاسخ فارسیِ دانش‌آموز را تحلیل کنید.
+_PROMPT = """شما «متخصص تشخیص آموزشیِ سخت‌گیرِ فهم‌یار» هستید. وظیفهٔ شما تشخیصِ قاطعانهٔ وضعیتِ علمیِ پاسخِ دانش‌آموز است — نه دلجویی، نه حدس‌زدن، نه قضاوتِ محتاطانه.
 
-اصل قطعی: ساختار استدلال را بسنجید (ادعا + دلیل + ارتباطِ دلیل با ادعا)، نه حضور واژه‌های کلیدی را.
+اصل قطعی: ساختار استدلال را بسنجید (ادعا + دلیل + ارتباطِ دلیل با ادعا) در برابر مبانیِ علمیِ شناخته‌شدهٔ آن مفهوم. حضور واژه‌های کلیدی هیچ ارزشی ندارد.
 
-قواعد تحلیل:
-1. پاسخِ صحیح بدون هیچ استدلالی → فقط شواهدِ ضعیف است (evidence_type=weak_confirming، confidence پایین).
-2. واژهٔ کلیدیِ درست بدون دلیل → شواهدِ فهمیدن محسوب نمی‌شود.
-3. اگر پاسخ شامل «چون/زیرا/به این دلیل…» و یک دلیلِ مرتبط باشد → شواهد قوی است.
-4. غلط‌های محاسباتی یا بی‌دقتی را از خطای مفهومی جدا کنید (error_type).
-   اگر پاسخ صرفاً یک محاسبهٔ مکانیکیِ درستِ بدون هیچ استدلال مفهومی است، evidence_type را computational_success بگذارید (نه strong_confirming).
-5. پاسخ‌های محاوره‌ای، دارای غلط املایی یا اصطلاحات انگلیسی–فارسی مخلوط را بپذیرید؛ معنی را بسنجید نه شکل را.
-6. اگر دانش‌آموز چیزی را که بلد نیست، حدس زده یا کپی کرده — آن را NEEDS_REVIEW/UNCLEAR علامت بزنید.
-7. اگر از تحلیل خود مطمئن نیستید → confidence را پایین بگذارید و needs_teacher_review=true بزنید (status=UNCLEAR).
+تعریف دقیق وضعیت‌ها (تخطی از آن‌ها ممنوع است):
+- CONFIRMED: فقط وقتی استدلالِ علمی کاملاً درست و عمیق است (ادعا + دلیلِ مرتبط و استدلالِ علّی).
+- LIKELY_UNDERSTOOD: هستهٔ مرکزی فهم درست است؛ بیان دانش‌آموز کمی ناقص است ولی جهت آن اشتباه نیست.
+- NEEDS_REVIEW (معادل «بدفهمیِ تأییدشده»): پاسخِ علمی غلط است یا استدلال با مبانی علمی تضاد دارد → با قاطعیت بدفهمی را تأیید کنید؛ دقیقاً بنویسید «دانش‌آموز به اشتباه تصور می‌کند که…» و دلیلِ علمیِ نادرستیِ آن چیست. برای این حالت: error_type=conceptual و evidence_type=strong_contradicting.
+- UNCLEAR: فقط و فقط برای پاسخ‌های بی‌ربط یا نامفهوم (مثل «نمی‌دانم»، «سلام»، حروفِ بی‌معنی، پاسخ کاملاً نامرتبط) یا وقتی واقعاً هیچ داوری ممکن نیست.
+- INSUFFICIENT_EVIDENCE: پاسخی ثبت نشده یا به هیچ‌یک از گزاره‌های فهرست ورودی اشاره نشده.
+
+قواعد رفتاری:
+1. ممنوع‌شدنِ کلمات تردید: هرگز از «به نظر می‌رسد»، «شاید»، «ممکن است»، «به‌نوعی»، «تا حدی» استفاده نکنید. تحلیل باید مستقیم باشد: «دانش‌آموز به اشتباه تصور می‌کند که …» / «این پاسخ نشان‌دهندهٔ فهمِ درستِ مفهومِ X است.»
+2. غلطِ محاسباتی یا بی‌دقتی را از خطای مفهومی جدا کنید (error_type). محاسبهٔ مکانیکیِ درست بدون هیچ استدلال مفهومی → evidence_type=computational_success (هرگز CONFIRMED نکنید).
+3. غلطِ علمیِ روشن را NEEDS_REVIEW ثبت کنید — نه UNCLEAR و نه «نیازمند بررسی» به‌معنای «نمی‌دانم»؛ و needs_teacher_review را false بگذارید (این تشخیصِ قطعی شماست).
+4. needs_teacher_review=true فقط وقتی: پاسخ بی‌ربط/نامفهوم است یا confidence شما پایین‌تر از آستانه است.
+5. پاسخ‌های محاوره‌ای، غلط املایی، یا فارسی–انگلیسیِ مخلوط را بپذیرید؛ معنی را بسنجید نه صورت را.
+6. در reasoning و qualitative_feedback: ابتدا حکمِ قطعی، سپس دلیل. اگر پاسخ غلط است: دقیقاً چه چیزی غلط است و چرا.
 
 وضعیت‌های مجاز status: CONFIRMED | LIKELY_UNDERSTOOD | UNCLEAR | NEEDS_REVIEW | INSUFFICIENT_EVIDENCE
 نوع‌های مجاز evidence_type: strong_confirming | weak_confirming | computational_success | weak_contradicting | strong_contradicting
@@ -68,13 +77,14 @@ _PROMPT = """شما تحلیل‌گر ارزیابی آموزشی «فهم‌ی�
       "proposition_id": "دقیقاً همان متن گزاره از فهرست ورودی",
       "status": "...",
       "evidence_type": "...",
-      "reasoning": "دلیل ارزیابی شما (به فارسی)",
+      "reasoning": "حکم قطعی + دلیل (به فارسی، بدون کلمات تردید)",
       "confidence": 0.0,
       "error_type": "none",
       "needs_teacher_review": false
     }}
   ],
-  "overall_reasoning": "جمع‌بندی کوتاه"
+  "qualitative_feedback": "دلیلِ دقیقِ رد یا تأیید پاسخ در ۱ تا ۳ جمله. اگر رد شد: دقیقاً بنویسید چه چیزی غلط است و چرا و کدام گزاره نقض شده — این همان متنی است که معلم می‌خواند.",
+  "overall_reasoning": "جمع‌بندی یک‌جمله‌ای"
 }}
 
 <<<QUESTION>>>{question_text}<<<END>>>
@@ -101,7 +111,18 @@ def _extract_json(text: str) -> Optional[dict[str, Any]]:
     return None
 
 
-def _normalize_record(item: dict[str, Any], fallback_prop: str) -> EvidenceRecord:
+_HEDGE_WORDS = ("به نظر می‌رسد", "شاید", "ممکن است", "به‌نوعی", "تا حدی")
+
+
+def _strip_hedges(text: str) -> str:
+    """کلمات تردید را از ابتدای تحلیل حذف می‌کند (قاطعیت اجباری)."""
+    out = text.strip()
+    for hedge in _HEDGE_WORDS:
+        out = out.replace(hedge, "").strip()
+    return out or text.strip()
+
+
+def _normalize_record(item: dict[str, Any], fallback_prop: str, qualitative_feedback: str = "") -> EvidenceRecord:
     prop = str(item.get("proposition_id") or fallback_prop).strip() or fallback_prop
     status = str(item.get("status") or "UNCLEAR").upper().strip()
     if status not in _VALID_STATUS:
@@ -117,13 +138,20 @@ def _normalize_record(item: dict[str, Any], fallback_prop: str) -> EvidenceRecor
     except (TypeError, ValueError):
         confidence = 0.0
     confidence = min(1.0, max(0.0, confidence))
-    needs_review = bool(item.get("needs_teacher_review", False))
-    reasoning = str(item.get("reasoning") or "").strip() or "بدون توضیح تحلیل‌گر"
+    reasoning = _strip_hedges(str(item.get("reasoning") or "").strip()) or "بدون توضیح تحلیل‌گر"
+    feedback = _strip_hedges(str(item.get("qualitative_feedback") or qualitative_feedback).strip())
 
-    # الزام: اطمینان پایین → نامشخص + بررسی معلم
     if confidence < settings.CONFIDENCE_THRESHOLD:
+        # الزام: اطمینان پایین → نامشخص + بررسی معلم (تنها راهِ «نمی‌دانم»)
         status = EvidenceStatus.UNCLEAR.value
         needs_review = True
+    else:
+        # قاطعیت: بدفهمیِ مفهومی با شواهد ردکنندهٔ قوی → NEEDS_REVIEW قطعی (بدون پرچم بررسی معلم)
+        if etype == "strong_contradicting" and error_type == "conceptual":
+            status = EvidenceStatus.NEEDS_REVIEW.value
+            needs_review = False
+        else:
+            needs_review = bool(item.get("needs_teacher_review", False))
 
     return EvidenceRecord(
         proposition_id=prop,
@@ -133,6 +161,7 @@ def _normalize_record(item: dict[str, Any], fallback_prop: str) -> EvidenceRecor
         confidence=confidence,
         error_type=error_type,
         needs_teacher_review=needs_review,
+        qualitative_feedback=feedback or reasoning,
     )
 
 
@@ -183,7 +212,8 @@ async def analyze_response(
         data = _extract_json(resp.text)
         if not data or not isinstance(data.get("evidence"), list) or not data["evidence"]:
             return _fallback_records(propositions, "تحلیل‌گر خروجی قابل‌استفاده نداد — نیازمند بررسی معلم است.")
-        records = [_normalize_record(item, propositions[0]) for item in data["evidence"] if isinstance(item, dict)]
+        qualitative_feedback = str(data.get("qualitative_feedback") or "").strip()
+        records = [_normalize_record(item, propositions[0], qualitative_feedback) for item in data["evidence"] if isinstance(item, dict)]
         if not records:
             return _fallback_records(propositions, "ساختار شواهد نامعتبر بود — نیازمند بررسی معلم است.")
         return records

@@ -61,7 +61,7 @@ STATUS_FA = {
     "CONFIRMED": "تأییدشده",
     "LIKELY_UNDERSTOOD": "احتمالاً آموخته‌شده",
     "UNCLEAR": "نامشخص",
-    "NEEDS_REVIEW": "نیاز به بررسی",
+    "NEEDS_REVIEW": "بدفهمی شناسایی‌شده",
     "INSUFFICIENT_EVIDENCE": "فاقد شواهد کافی",
 }
 ALLOWED_STATUSES = set(STATUS_FA)

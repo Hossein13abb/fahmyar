@@ -21,7 +21,7 @@ STATUS_FA = {
     EvidenceStatus.CONFIRMED.value: "تأییدشده",
     EvidenceStatus.LIKELY_UNDERSTOOD.value: "احتمالاً آموخته‌شده",
     EvidenceStatus.UNCLEAR.value: "نامشخص",
-    EvidenceStatus.NEEDS_REVIEW.value: "نیاز به بررسی",
+    EvidenceStatus.NEEDS_REVIEW.value: "بدفهمی شناسایی‌شده",
     EvidenceStatus.INSUFFICIENT_EVIDENCE.value: "فاقد شواهد کافی",
 }
 

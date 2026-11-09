@@ -19,7 +19,7 @@ STATUS_FA_SHORT = {
     "CONFIRMED": "تأییدشده",
     "LIKELY_UNDERSTOOD": "احتمالاً آموخته‌شده",
     "UNCLEAR": "نامشخص (نیاز به گفت‌وگو/مثال‌های بیشتر)",
-    "NEEDS_REVIEW": "نیاز به بررسی و مرور",
+    "NEEDS_REVIEW": "بدفهمی شناسایی‌شده",
     "INSUFFICIENT_EVIDENCE": "فاقد شواهد کافی",
 }
 
@@ -95,6 +95,14 @@ def build_report(db: Session, session: AssessmentSession) -> dict[str, Any]:
     needs_teacher = any(a["needs_teacher_review"] for a in agg.values())
     if needs_teacher:
         observations.append("در دست‌کم یک پاسخ، تحلیل‌گر خودکار برای قضاوت مطمئن نبود و نیازمند نگاه معلم است.")
+    # بدفهمی‌های قطعی — با همان لحن قاطعِ تحلیل‌گر در مشاهدات می‌آیند
+    for prop, a in agg.items():
+        st = _final_prop_status(a["statuses"])
+        if st == EvidenceStatus.NEEDS_REVIEW.value:
+            qfs = [e.get("qualitative_feedback") for e in (e for entry in session.evidence_log or [] for e in entry.get("evidence", []))
+                   if e.get("proposition_id") == prop and e.get("qualitative_feedback")]
+            decisive = qfs[-1] if qfs else ((a["reasonings"] or [""])[-1])
+            observations.append(f"بدفهمیِ شناسایی‌شده در گزارهٔ «{prop}»: {decisive}")
 
     # --- شواهد (گزاره به گزاره) ---
     evidence_lines: list[str] = []
@@ -113,7 +121,7 @@ def build_report(db: Session, session: AssessmentSession) -> dict[str, Any]:
     # --- موارد هنوز روشن‌نشده ---
     unclear_items = [
         prop for prop, st in per_prop_status.items()
-        if st in (EvidenceStatus.UNCLEAR.value, EvidenceStatus.INSUFFICIENT_EVIDENCE.value, EvidenceStatus.NEEDS_REVIEW.value)
+        if st in (EvidenceStatus.UNCLEAR.value, EvidenceStatus.INSUFFICIENT_EVIDENCE.value)
     ]
     unclear_lines = [
         f"«{prop}» ({STATUS_FA_SHORT[per_prop_status[prop]]})" for prop in unclear_items
@@ -133,7 +141,7 @@ def build_report(db: Session, session: AssessmentSession) -> dict[str, Any]:
     teacher_notes: list[str] = []
     for prop, st in per_prop_status.items():
         if st == EvidenceStatus.NEEDS_REVIEW.value:
-            student_actions.append(f"مرور و تمرینِ مفهومِ مرتبط با گزارهٔ «{prop}» با مثال‌های متفاوت؛ ابتدا مثال‌های ساده سپس مسئله‌های ترکیبی.")
+            student_actions.append(f"بدفهمیِ گزارهٔ «{prop}» را مستقیم هدف بگیرید: ابتدا مثال‌های نقضِ شهودی سپس مسئله‌های ترکیبی.")
         elif st == EvidenceStatus.UNCLEAR.value:
             student_actions.append(f"گفت‌وگو و توضیحِ شفاهی دربارهٔ «{prop}»؛ از دانش‌آموز بخواهید فهمیدگیِ خود را با مثالِ خودش توضیح دهد.")
         elif st == EvidenceStatus.INSUFFICIENT_EVIDENCE.value:
@@ -142,7 +150,7 @@ def build_report(db: Session, session: AssessmentSession) -> dict[str, Any]:
         student_actions.append("عملکرد شما در این مفهوم خوب است؛ برای تثبیت، یک مسئلهٔ ترکیبیِ بین‌درسی حل کنید.")
 
     if needs_teacher:
-        teacher_notes.append("پاسخ‌های علامت‌خوردهٔ «نیازمند بررسی معلم» را شخصاً مرور کنید؛ تحلیل‌گر خودکار به‌اطمینان کافی نرسید.")
+        teacher_notes.append("پاسخ‌های بی‌ربط/نامفهوم که با «نیازمند بررسی معلم» علامت خورده‌اند را شخصاً بخوانید؛ تحلیل‌گر خودکار داوری نکرده است.")
     weak_props = [p for p, s in per_prop_status.items() if s == EvidenceStatus.NEEDS_REVIEW.value]
     if weak_props:
         teacher_notes.append("در جلسهٔ بعد ابتدا پیش‌نیازهای همین گزاره‌ها (و در صورت لزوم ابزارهای ریاضی) را مرور کنید.")
