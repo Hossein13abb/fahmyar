@@ -21,6 +21,7 @@ from config import settings
 from models.concept import Concept
 from models.question import Question, QUESTION_TYPES
 from ai.model_abstraction import get_router, AIProviderError
+from ai.json_sanitize import extract_json_object
 
 
 class QuestionGenerationError(Exception):
@@ -112,24 +113,8 @@ def _build_prompt(
 اکنون فقط JSON خروجی را بده."""
 
 
-def _extract_json(text: str) -> Optional[dict[str, Any]]:
-    """اولین شیء JSON معتبر در متن را استخراج می‌کند."""
-    if not text:
-        return None
-    cleaned = text.strip()
-    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-    cleaned = re.sub(r"\s*```$", "", cleaned)
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        pass
-    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            return None
-    return None
+# استخراج مقاوم JSON — پیاده‌سازی مشترک در ai/json_sanitize.py
+_extract_json = extract_json_object
 
 
 def _validate_payload(data: dict[str, Any], target_proposition: str) -> dict[str, Any]:

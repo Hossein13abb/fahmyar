@@ -20,6 +20,7 @@ from typing import Any, Optional
 from config import settings
 from models.question import EvidenceStatus
 from ai.model_abstraction import get_router
+from ai.json_sanitize import extract_json_object
 
 _VALID_STATUS = {s.value for s in EvidenceStatus}
 _VALID_EVIDENCE_TYPES = {
@@ -93,22 +94,8 @@ _PROMPT = """شما «متخصص تشخیص آموزشیِ سخت‌گیرِ ف�
 <<<RESPONSE>>>{student_response}<<<END>>>"""
 
 
-def _extract_json(text: str) -> Optional[dict[str, Any]]:
-    if not text:
-        return None
-    cleaned = text.strip()
-    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-    cleaned = re.sub(r"\s*```$", "", cleaned)
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except json.JSONDecodeError:
-                return None
-    return None
+# استخراج مقاوم JSON — پیاده‌سازی مشترک در ai/json_sanitize.py
+_extract_json = extract_json_object
 
 
 _HEDGE_WORDS = ("به نظر می‌رسد", "شاید", "ممکن است", "به‌نوعی", "تا حدی")
@@ -165,7 +152,10 @@ def _normalize_record(item: dict[str, Any], fallback_prop: str, qualitative_feed
     )
 
 
-def _fallback_records(propositions: list[str], reason: str) -> list[EvidenceRecord]:
+def _fallback_records(propositions: list[str], reason: str, raw_excerpt: str = "") -> list[EvidenceRecord]:
+    feedback = (
+        f"⚠ خروجی مدل قابل‌پارس نبود. متن خام مدل برای بررسی معلم:\n{raw_excerpt}" if raw_excerpt else reason
+    )
     return [
         EvidenceRecord(
             proposition_id=prop,
@@ -175,6 +165,7 @@ def _fallback_records(propositions: list[str], reason: str) -> list[EvidenceReco
             confidence=0.0,
             error_type="none",
             needs_teacher_review=True,
+            qualitative_feedback=feedback,
         )
         for prop in propositions
     ]
@@ -211,11 +202,23 @@ async def analyze_response(
         resp = await router.generate(prompt, "analyze_response", temperature=0.2)
         data = _extract_json(resp.text)
         if not data or not isinstance(data.get("evidence"), list) or not data["evidence"]:
-            return _fallback_records(propositions, "تحلیل‌گر خروجی قابل‌استفاده نداد — نیازمند بررسی معلم است.")
+            raw_excerpt = (getattr(resp, "text", "") or "").strip()[:1200]
+            print(f"[Analyzer] JSON parse failed. raw_ai_output (truncated): {raw_excerpt}")
+            return _fallback_records(
+                propositions,
+                "خروجی مدل قابل‌پارس نبود؛ متن خامِ مدل برای بررسی معلم پیوست شد — نیازمند بررسی معلم است.",
+                raw_excerpt=raw_excerpt,
+            )
         qualitative_feedback = str(data.get("qualitative_feedback") or "").strip()
         records = [_normalize_record(item, propositions[0], qualitative_feedback) for item in data["evidence"] if isinstance(item, dict)]
         if not records:
-            return _fallback_records(propositions, "ساختار شواهد نامعتبر بود — نیازمند بررسی معلم است.")
+            raw_excerpt = (getattr(resp, "text", "") or "").strip()[:1200]
+            print(f"[Analyzer] Evidence structure invalid. raw_ai_output (truncated): {raw_excerpt}")
+            return _fallback_records(
+                propositions,
+                "ساختار شواهد نامعتبر بود؛ متن خامِ مدل برای بررسی معلم پیوست شد — نیازمند بررسی معلم است.",
+                raw_excerpt=raw_excerpt,
+            )
         return records
     except Exception as exc:
         # هیچ‌وقت جلسه را به‌خاطر خطای تحلیل متوقف نکن
