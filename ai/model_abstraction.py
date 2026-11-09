@@ -2,6 +2,7 @@
 
 پروایدرها:
   - GeminiFreeProvider : گوگل جمینی ۲ فلش (پلن رایگان) — نیازمند GEMINI_API_KEY
+  - OpenRouterProvider : مدل‌های OpenRouter با فراخوانی HTTP محض (requests) — نیازمند OPENROUTER_API_KEY
   - MockProvider       : بدون شبکه و کلید؛ پاسخ‌های قالب‌بندی‌شدهٔ قطعی (برای تست)
 
 ModelRouter:
@@ -113,6 +114,99 @@ class GeminiFreeProvider(AIProvider):
             token_count=token_count,
             cost_usd=0.0,  # پلن رایگان Gemini
             task_type=task_type,
+        )
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter (فراخوانی HTTP محض با requests — بدون SDK)
+# ---------------------------------------------------------------------------
+class OpenRouterProvider(AIProvider):
+    name = "openrouter"
+
+    def __init__(self, api_key: str | None = None, model_name: str | None = None) -> None:
+        # پاکسازی کلید: فاصلهٔ انتهایی/خط جدید (.strip()) علت رایج خطای 401 است
+        raw_key = api_key if api_key is not None else settings.OPENROUTER_API_KEY
+        self.api_key = (raw_key or "").strip()
+        self.model_name = (model_name or settings.OPENROUTER_MODEL).strip()
+        self.base_url = settings.OPENROUTER_BASE_URL.rstrip("/")
+        self.timeout = settings.OPENROUTER_TIMEOUT_SECONDS
+        if not self.api_key:
+            raise AIProviderError(
+                "OPENROUTER_API_KEY تنظیم نشده است. کلید را در .env قرار دهید "
+                "یا AI_PROVIDER=mock را انتخاب کنید."
+            )
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://fahmyar.ir",
+            "X-Title": "Fahmyar App",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+        }
+
+    def _post_chat_completion(self, prompt: str, temperature: float) -> dict[str, Any]:
+        import requests  # import تنبل — اگر requests نصب نباشد فقط این پروایدر می‌شکند
+
+        payload = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+        }
+        try:
+            resp = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers=self._headers(),
+                json=payload,
+                timeout=self.timeout,
+            )
+        except requests.RequestException as exc:
+            raise AIProviderError(f"خطای شبکه در اتصال به OpenRouter: {exc}") from exc
+
+        if resp.status_code == 401:
+            body_excerpt = (resp.text or "")[:300]
+            raise AIProviderError(
+                f"خطای 401 از OpenRouter — کلید API یافت نشد یا نامعتبر است "
+                f"(پس از .strip() بررسی شد). پاسخ سرور: {body_excerpt}"
+            )
+        if resp.status_code >= 400:
+            raise AIProviderError(
+                f"خطای {resp.status_code} از OpenRouter: {(resp.text or '')[:300]}"
+            )
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise AIProviderError("پاسخ غیرJSON از OpenRouter دریافت شد.") from exc
+
+    async def generate(self, prompt: str, task_type: str, temperature: float = 0.7) -> AIResponse:
+        # requests همزمانی نیست؛ در thread اجرا می‌شود تا event loop قفل نشود
+        data = await asyncio.to_thread(self._post_chat_completion, prompt, temperature)
+
+        try:
+            text = (data["choices"][0]["message"]["content"] or "").strip()
+        except (KeyError, IndexError, TypeError) as exc:
+            raise AIProviderError(f"ساختار پاسخ OpenRouter نامعتبر بود: {exc}") from exc
+        if not text:
+            raise AIProviderError("پاسخ خالی از OpenRouter.")
+
+        usage = data.get("usage") or {}
+        token_count = int(usage.get("total_tokens") or 0) or max(1, (len(prompt) + len(text)) // 4)
+        # بعضی مدل‌های رایگان هزینه را هم برمی‌گردانند؛ در غیاب، صفر در نظر می‌گیریم
+        try:
+            cost_usd = float(usage.get("cost") or 0.0)
+        except (TypeError, ValueError):
+            cost_usd = 0.0
+
+        return AIResponse(
+            text=text,
+            model_name=self.model_name,
+            token_count=token_count,
+            cost_usd=cost_usd,
+            task_type=task_type,
+            raw=data,
         )
 
 
@@ -247,6 +341,12 @@ _TASK_ROUTE = {
     "build_graph": "gemini_free",
 }
 
+_OPENROUTER_ROUTE = {
+    "generate_question": "openrouter",
+    "analyze_response": "openrouter",
+    "build_graph": "openrouter",
+}
+
 
 def _log_usage(provider: str, response: AIResponse | None, task_type: str,
                success: bool, error: str | None = None) -> None:
@@ -287,6 +387,8 @@ class ModelRouter:
     def get_provider(self, task_type: str) -> AIProvider:
         if self.provider_name == "mock":
             key = "mock"
+        elif self.provider_name == "openrouter":
+            key = _OPENROUTER_ROUTE.get(task_type, "openrouter")
         else:
             key = _TASK_ROUTE.get(task_type, "gemini_free")
         if key not in self._providers:
@@ -294,6 +396,8 @@ class ModelRouter:
                 self._providers[key] = MockProvider()
             elif key == "gemini_free":
                 self._providers[key] = GeminiFreeProvider()
+            elif key == "openrouter":
+                self._providers[key] = OpenRouterProvider()
             else:  # pragma: no cover
                 raise AIProviderError(f"پروایدر ناشناخته: {key}")
         return self._providers[key]

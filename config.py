@@ -12,12 +12,18 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 class Settings:
     # --- هوش مصنوعی ---
-    # "gemini_free" (پیش‌فرض، نیازمند GEMINI_API_KEY رایگان از ai.google.dev) یا "mock" برای تست آفلاین
+    # "gemini_free" (پیش‌فرض، نیازمند GEMINI_API_KEY رایگان از ai.google.dev)،
+    # "openrouter" (مدل‌های OpenRouter از طریق HTTP — نیازمند OPENROUTER_API_KEY) یا "mock" برای تست آفلاین
     AI_PROVIDER: str = os.getenv("AI_PROVIDER", "gemini_free")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     # محدودیت نرخ پلن رایگان Gemini (~۱۵ درخواست در دقیقه)
     GEMINI_MIN_INTERVAL_SECONDS: float = float(os.getenv("GEMINI_MIN_INTERVAL_SECONDS", "4.0"))
+    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+    OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-super-vl:free")
+    OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    # مهلت پاسخ OpenRouter (ثانیه)
+    OPENROUTER_TIMEOUT_SECONDS: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "60"))
 
     # --- پایگاه داده ---
     DATABASE_URL: str = os.getenv(
