@@ -71,7 +71,9 @@ _PROMPT = """شما «متخصص تشخیص آموزشیِ سخت‌گیرِ ف�
 نوع‌های مجاز evidence_type: strong_confirming | weak_confirming | computational_success | weak_contradicting | strong_contradicting
 نوع‌های مجاز error_type: conceptual | computational | misreading | none
 
-خروجی فقط JSON معتبر با این ساختار (بدون هیچ متن اضافه):
+فقط و فقط یک JSON معتبر برگردان. هیچ متن توضیحی قبل یا بعد از JSON (نه حتی یک کلمه) ننویس. واژهٔ «json» را به عنوان برچسب فنس (```json) یا هر شکل دیگری ننویس. پاسخت باید دقیقاً با کاراکتر «{{» شروع شود و دقیقاً با «}}» پایان یابد؛ فقط همان شیء JSON.
+
+خروجی فقط JSON معتبر با این ساختار:
 {{
   "evidence": [
     {{
@@ -87,6 +89,8 @@ _PROMPT = """شما «متخصص تشخیص آموزشیِ سخت‌گیرِ ف�
   "qualitative_feedback": "دلیلِ دقیقِ رد یا تأیید پاسخ در ۱ تا ۳ جمله. اگر رد شد: دقیقاً بنویسید چه چیزی غلط است و چرا و کدام گزاره نقض شده — این همان متنی است که معلم می‌خواند.",
   "overall_reasoning": "جمع‌بندی یک‌جمله‌ای"
 }}
+
+یادآوری نهایی: پاسخ را فقط با {{ شروع و فقط با }} تمام کن — هیچ چیز دیگری ننویس.
 
 <<<QUESTION>>>{question_text}<<<END>>>
 <<<PROPOSITIONS>>>{propositions_json}<<<END>>>
@@ -171,32 +175,56 @@ def _normalize_record(item: dict[str, Any], fallback_prop: str, qualitative_feed
     )
 
 
-_NEEDS_REVIEW_PREFIX_RE = re.compile(r"^\s*NEEDS_REVIEW\s*[:：]\s*(?P<body>.+)", re.IGNORECASE | re.DOTALL)
+_MISCONCEPTION_RAW_MARKERS = ("اشتباه", "غلط", "نادرست", "تضاد", "برعکس", "معکوس", "NEEDS_REVIEW")
+_NEGATION_SCRUB_RE = re.compile(r"(بدون|هیچ|نه|بی)\s*[‌\u200c]?\s*(اشتباه|غلط)", re.IGNORECASE)
+_FENCE_INNER_RE = re.compile(r"```(?:[a-zA-Z]*)\s*(.*?)```", re.DOTALL)
 
 
-def _records_from_raw_misconception(raw_text: str, propositions: list[str]) -> list[EvidenceRecord] | None:
-    """نجاتِ حکم بدفهمی: اگر مدل به‌جای JSON، متنِ «NEEDS_REVIEW: <تحلیل>» برگرداند.
+def _clean_raw_text(raw: str) -> str:
+    """پاک‌سازی متن خام مدل: فنس‌ها و علامت‌های ```json/بک‌تیک‌ها از ابتدا/انتها حذف می‌شوند."""
+    t = (raw or "").strip()
+    t = _FENCE_INNER_RE.sub(r"\1", t)          # بلوک ```json … ``` → محتوای داخلی
+    t = re.sub(r"^```(?:[a-zA-Z]*)\s*", "", t)  # فنس بازِ بدون‌بسته
+    t = re.sub(r"\s*```\s*$", "", t)            # فنس بستهٔ اضافه
+    t = re.sub(r"^[`\s]+|[`\s]+$", "", t)       # بک‌تیک/صحنِ ابتدا و انتها
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
 
-    در این حالت حکم مدل قطعی فرض می‌شود: status=NEEDS_REVIEW و needs_teacher_review=False
-    و qualitative_feedback برابر همان متنِ بعد از پیشوند است.
+
+def _records_from_raw_text(raw_text: str, propositions: list[str]) -> list[EvidenceRecord]:
+    """وقتی JSON پارس نمی‌شود: خودِ متن خام AI نزد معلم محفوظ است — هرگز بنر خطای ثابت نشان داده نمی‌شود.
+
+    اگر متن خام شامل نشانه‌های بدفهمی (اشتباه/غلط/نادرست/تضاد/برعکس/معکوس/NEEDS_REVIEW) بود،
+    حکم را قطعی می‌کنیم: status=NEEDS_REVIEW و needs_teacher_review=False («⚠️ بدفهمی شناسایی‌شده»).
     """
-    t = (raw_text or "").strip()
-    t = re.sub(r"^```(?:[a-zA-Z]*)\s*", "", t)   # فنس باز مثل ``` یا ```json
-    t = re.sub(r"\s*```\s*$", "", t)             # فنس بستهٔ پایانی
-    match = _NEEDS_REVIEW_PREFIX_RE.match(t.strip())
-    if not match:
-        return None
-    body = match.group("body").strip()
-    body = _strip_hedges(body) or body
+    cleaned = _clean_raw_text(raw_text)
+    scrubbed = _NEGATION_SCRUB_RE.sub("", cleaned)  # «هیچ اشتباهی نکرد» نباید بدفهمی شمرده شود
+    low = scrubbed.lower()
+    is_decisive = any(marker.lower() in low for marker in _MISCONCEPTION_RAW_MARKERS)
+    body = cleaned or (raw_text or "").strip()
+    if is_decisive:
+        return [
+            EvidenceRecord(
+                proposition_id=prop,
+                status=EvidenceStatus.NEEDS_REVIEW.value,
+                evidence_type="strong_contradicting",
+                reasoning=body,
+                confidence=0.9,  # نشانه‌های صریح بدفهمی در متن مدل
+                error_type="conceptual",
+                needs_teacher_review=False,
+                qualitative_feedback=body,
+            )
+            for prop in propositions
+        ]
     return [
         EvidenceRecord(
             proposition_id=prop,
-            status=EvidenceStatus.NEEDS_REVIEW.value,
-            evidence_type="strong_contradicting",
-            reasoning=body,
-            confidence=0.9,  # حکمِ صریح «NEEDS_REVIEW» از خودِ مدل — بالای آستانه
-            error_type="conceptual",
-            needs_teacher_review=False,
+            status=EvidenceStatus.UNCLEAR.value,
+            evidence_type="weak_confirming",
+            reasoning=body[:600],
+            confidence=0.0,
+            error_type="none",
+            needs_teacher_review=True,
             qualitative_feedback=body,
         )
         for prop in propositions
@@ -204,15 +232,16 @@ def _records_from_raw_misconception(raw_text: str, propositions: list[str]) -> l
 
 
 def _fallback_records(propositions: list[str], reason: str, raw_excerpt: str = "") -> list[EvidenceRecord]:
-    feedback = (
-        f"⚠ خروجی مدل قابل‌پارس نبود. متن خام مدل برای بررسی معلم:\n{raw_excerpt}" if raw_excerpt else reason
-    )
+    cleaned = _clean_raw_text(raw_excerpt) if raw_excerpt else ""
+    feedback = cleaned or reason                     # هرگز بنر خطای ثابت
+    body = (cleaned or reason)[:600] if cleaned else reason
+
     return [
         EvidenceRecord(
             proposition_id=prop,
             status=EvidenceStatus.UNCLEAR.value,
             evidence_type="weak_confirming",
-            reasoning=reason,
+            reasoning=body,
             confidence=0.0,
             error_type="none",
             needs_teacher_review=True,
@@ -253,42 +282,27 @@ async def analyze_response(
         resp = await router.generate(prompt, "analyze_response", temperature=0.2)
         data = _extract_json(resp.text)
         if not data or not isinstance(data.get("evidence"), list) or not data["evidence"]:
-            raw_excerpt = (getattr(resp, "text", "") or "").strip()[:1200]
-            rescued = _records_from_raw_misconception(raw_excerpt, propositions)
-            if rescued:
-                print("[Analyzer] Model returned 'NEEDS_REVIEW:' verdict instead of JSON — rescued as decisive misconception.")
-                return rescued
-            print(f"[Analyzer] JSON parse failed. raw_ai_output (truncated): {raw_excerpt}")
-            return _fallback_records(
-                propositions,
-                "خروجی مدل قابل‌پارس نبود؛ متن خامِ مدل برای بررسی معلم پیوست شد — نیازمند بررسی معلم است.",
-                raw_excerpt=raw_excerpt,
-            )
+            raw_output = (getattr(resp, "text", "") or "").strip()
+            if raw_output:
+                print("[Analyzer] JSON parse failed — using raw model output as evidence (decisive if misconception markers found).")
+                return _records_from_raw_text(raw_output[:1200], propositions)
+            print("[Analyzer] Model returned empty output.")
+            return _fallback_records(propositions, "مدل هیچ خروجی‌ای برنگرداند.")
         qualitative_feedback = str(data.get("qualitative_feedback") or "").strip()
         records = [_normalize_record(item, propositions[0], qualitative_feedback) for item in data["evidence"] if isinstance(item, dict)]
         if not records:
-            raw_excerpt = (getattr(resp, "text", "") or "").strip()[:1200]
-            rescued = _records_from_raw_misconception(raw_excerpt, propositions)
-            if rescued:
-                print("[Analyzer] Empty evidence list but 'NEEDS_REVIEW:' verdict found — rescued as decisive misconception.")
-                return rescued
-            print(f"[Analyzer] Evidence structure invalid. raw_ai_output (truncated): {raw_excerpt}")
-            return _fallback_records(
-                propositions,
-                "ساختار شواهد نامعتبر بود؛ متن خامِ مدل برای بررسی معلم پیوست شد — نیازمند بررسی معلم است.",
-                raw_excerpt=raw_excerpt,
-            )
+            raw_output = (getattr(resp, "text", "") or "").strip()
+            if raw_output:
+                print("[Analyzer] Evidence structure invalid — using raw model output as evidence.")
+                return _records_from_raw_text(raw_output[:1200], propositions)
+            print("[Analyzer] Model returned empty evidence and empty text.")
+            return _fallback_records(propositions, "خروجی مدل خالی بود.")
         return records
     except Exception as exc:
         # هیچ‌وقت جلسه را به‌خاطر خطای تحلیل متوقف نکن
-        raw_excerpt = (locals().get("resp") and getattr(locals()["resp"], "text", "") or "").strip()[:1200]
-        rescued = _records_from_raw_misconception(raw_excerpt, propositions) if raw_excerpt else None
-        if rescued:
-            print("[Analyzer] Exception path recovered a 'NEEDS_REVIEW:' verdict — rescued as decisive misconception.")
-            return rescued
+        raw_output = (locals().get("resp") and getattr(locals()["resp"], "text", "") or "").strip()
+        if raw_output:
+            print(f"[Analyzer] Exception ({exc}) — using raw model output as evidence.")
+            return _records_from_raw_text(raw_output[:1200], propositions)
         print(f"[Analyzer] analysis exception: {exc}")
-        return _fallback_records(
-            propositions,
-            f"تحلیل خودکار ناموفق بود ({exc}) — نیازمند بررسی معلم است.",
-            raw_excerpt=raw_excerpt,
-        )
+        return _fallback_records(propositions, f"تحلیل خودکار ناموفق بود ({exc}) — نیازمند بررسی معلم است.")
