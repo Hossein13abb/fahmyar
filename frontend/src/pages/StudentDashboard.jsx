@@ -29,9 +29,9 @@ const SUBJECTS = [
 const GRADES = [10, 11, 12]
 
 const HOW_STEPS = [
-  { Icon: SearchCheck, title: '۱. سؤال درست', text: 'نه حفظی، نه نمره‌ای؛ سؤال‌هایی از دلِ موقعیت واقعی.' },
-  { Icon: Waypoints, title: '۲. ردیابی فهم', text: 'با هر پاسخت، نقشهٔ فهمیدنت دقیق‌تر می‌شود — حتی اگر اشتباه کنی.' },
-  { Icon: Map, title: '۳. نقشهٔ راه', text: 'در پایان می‌دانی دقیقاً چه چیزی را تثبیت کنی و چه چیزی را دوباره ببینی.' },
+  { Icon: SearchCheck, title: '۱. دفترچهٔ ۹ سؤالی', text: 'از مفهومی تا نموداری — کل ابعاد فهم در یک آزمون.' },
+  { Icon: Waypoints, title: '۲. بدون بازخورد لحظه‌ای', text: 'حین آزمون چیزی فاش نمی‌شود؛ پاسخ‌ها جمع می‌شوند تا تحلیل یکپارچه انجام شود.' },
+  { Icon: Map, title: '۳. گزارش تشخیصی', text: 'ابعاد فهم، ریشهٔ بدفهمی‌ها و راهکارهای کیفی — بدون نمره و رتبه.' },
 ]
 
 export default function StudentDashboard() {
@@ -93,12 +93,12 @@ export default function StudentDashboard() {
     setSubmitting(true)
     setError('')
     try {
-      const { data } = await client.post('/api/assess/start', {
+      const { data } = await client.post('/api/assess/start-test', {
         trigger_type: 'topic_selection',
         concept_id: Number(conceptId),
         wrong_answer: null,
       })
-      navigate(`/assessment/${data.session.id}`, {
+      navigate(`/exam/${data.session.id}`, {
         state: { startData: data, conceptName: selectedConcept?.name },
       })
     } catch (err) {
@@ -109,22 +109,25 @@ export default function StudentDashboard() {
   }
 
   const startWrongAnswerSession = async () => {
+    if (!wrongConceptId) {
+      return setError('برای شروع آزمون جامع، مفهوم مرتبط را انتخاب کن (دفترچهٔ سؤال‌ها از همین مفهوم ساخته می‌شود).')
+    }
     if (problemText.trim().length < 10 && wrongAnswer.trim().length < 5) {
       return setError('حداقل متن صورت مسئله یا پاسخ خودت را بنویس.')
     }
     setSubmitting(true)
     setError('')
     try {
-      const { data } = await client.post('/api/assess/start', {
+      const { data } = await client.post('/api/assess/start-test', {
         trigger_type: 'wrong_answer',
-        concept_id: null,
+        concept_id: Number(wrongConceptId),
         wrong_answer: {
           problem_text: problemText.trim(),
           student_answer: wrongAnswer.trim(),
           concept_id: wrongConceptId ? Number(wrongConceptId) : null,
         },
       })
-      navigate(`/assessment/${data.session.id}`, {
+      navigate(`/exam/${data.session.id}`, {
         state: {
           startData: data,
           conceptName: allConcepts.find((c) => String(c.id) === String(wrongConceptId))?.name,
@@ -155,11 +158,11 @@ export default function StudentDashboard() {
             </p>
             <h1 className="mt-2 text-2xl font-black leading-snug sm:text-[28px]">
               سلام {user?.full_name || user?.username} 👋<br className="hidden sm:block" />
-              آماده‌ای مسیر فهمیدنت را با هم بررسی کنیم؟
+              آماده‌ای برای آزمون جامع تشخیصی؟
             </h1>
             <p className="mt-2 max-w-lg text-[13px] leading-7 text-brand-100/90">
-              اینجا قرار نیست جوابت را قضاوت کنیم. فقط با چند سؤالِ هوشمند می‌فهمیم چیزی که بلدی
-              «فرمول حفظی» است یا «فهمیدن واقعی».
+              یک دفترچهٔ ۹ سؤالی در انتظارت است — بدون نمره و بدون چت.
+              در پایان، گزارش تشخیصیِ کامل با ریشه‌یابی بدفهمی‌هایت می‌سازیم.
             </p>
           </div>
           <div className="hidden shrink-0 flex-col items-center gap-2 rounded-3xl bg-white/10 px-6 py-4 text-center ring-1 ring-white/15 backdrop-blur md:flex">
@@ -173,10 +176,10 @@ export default function StudentDashboard() {
       </section>
 
       {/* ── تب‌های مسیر شروع ── */}
-      <div className="grid gap-3 sm:grid-cols-2" role="tablist" aria-label="دو مسیر شروع فهم‌سنجی">
+      <div className="grid gap-3 sm:grid-cols-2" role="tablist" aria-label="دو مسیر شروع آزمون جامع">
         {[
-          { key: 'topic', Icon: Route, title: 'مسیر الف — بررسی یک موضوع', sub: 'یک مفهوم درسی را انتخاب کن و عمق فهمیدنت را بسنج' },
-          { key: 'wrong_answer', Icon: GitBranch, title: 'مسیر ب — شروع از پاسخ اشتباه', sub: 'جواب اشتباهت را بفرست تا ریشهٔ خطا (حتی بین‌درسی) را پیدا کنیم' },
+          { key: 'topic', Icon: Route, title: 'مسیر الف — آزمون جامع یک موضوع', sub: 'یک مفهوم درسی را انتخاب کن؛ دفترچهٔ ۹ سؤالی از همان مفهوم بساز' },
+          { key: 'wrong_answer', Icon: GitBranch, title: 'مسیر ب — شروع از پاسخ اشتباه', sub: 'جواب اشتباهت را بفرست؛ دفترچهٔ ۹ سؤالی طوری ساخته می‌شود که ریشهٔ خطا را ردیابی کند' },
         ].map(({ key, Icon, title, sub }) => (
           <button
             key={key}
@@ -270,7 +273,7 @@ export default function StudentDashboard() {
 
             <button onClick={startTopicSession} disabled={submitting || !conceptId} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-4 text-[15px] font-black text-white shadow-lift transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-60">
               {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Microscope className="h-5 w-5" />}
-              شروع فهم‌سنجی
+              شروع آزمون جامع تشخیصی
               <ArrowLeft className="h-5 w-5" />
             </button>
           </div>
@@ -286,10 +289,10 @@ export default function StudentDashboard() {
               <p className="mt-1.5 text-[11px] text-slate-500">نگران نباش — هدف از دیدن این پاسخ، پیدا کردن ریشهٔ خطاست، نه نمره‌دادن.</p>
             </div>
             <div>
-              <label className="label" htmlFor="wconcept">مفهوم مرتبط (اختیاری — اگر می‌دانی)</label>
+              <label className="label" htmlFor="wconcept">مفهوم مرتبط (الزامی — دفترچهٔ سؤالات از این مفهوم ساخته می‌شود)</label>
               <div className="relative">
                 <select id="wconcept" className="input appearance-none pl-10" value={wrongConceptId} onChange={(e) => setWrongConceptId(e.target.value)}>
-                  <option value="">خودم مطمئن نیستم — خودتان تشخیص دهید</option>
+                  <option value="">— یک مفهوم انتخاب کن —</option>
                   {allConcepts.map((c) => (
                     <option key={c.id} value={c.id}>{c.name} · {c.subject}</option>
                   ))}
@@ -299,7 +302,7 @@ export default function StudentDashboard() {
             </div>
             <button onClick={startWrongAnswerSession} disabled={submitting} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-700 py-4 text-[15px] font-black text-white shadow-lift transition hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-60">
               {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <GitBranch className="h-5 w-5" />}
-              تحلیل ریشه‌ای خطا
+              شروع آزمون جامع تشخیصی
               <ArrowLeft className="h-5 w-5" />
             </button>
           </div>

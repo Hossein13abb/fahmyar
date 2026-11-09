@@ -314,3 +314,232 @@ async def analyze_response(
             return _records_from_raw_text(raw_output[:1200], propositions)
         print(f"[Analyzer] analysis exception: {exc}")
         return _fallback_records(propositions, f"تحلیل خودکار ناموفق بود ({exc}) — نیازمند بررسی معلم است.")
+
+_EXAM_PROMPT = """شما «متخصص ارشد تشخیص آموزشیِ سخت‌گیرِ فهم‌یار» هستید. کل دفترچهٔ آزمون ({q_count} سؤال) و همهٔ پاسخ‌های دانش‌آموز را یکپارچه تحلیل کنید — نه سؤال‌به‌سؤال جدا.
+
+قواعد:
+1. فقط JSON معتبر برگردانید. هیچ متن توضیحی قبل یا بعد از JSON (حتی یک کلمه) ننویسید. پاسخ دقیقاً با «{{» شروع و با «}}» پایان یابد.
+2. الگوهای تکرارشونده بین پاسخ‌ها را بیابید: بدفهمیِ ثابت؟ خطای محاسباتیِ سیستماتیک؟ استدلال علّی ناقص؟ دانشِ حفظی بدون فهم؟
+3. برای هر سؤال دقیقاً یک آیتم در "per_question" بدهید:
+   - status: CONFIRMED | LIKELY_UNDERSTOOD | UNCLEAR | NEEDS_REVIEW | INSUFFICIENT_EVIDENCE
+     * فقط غلط علمی روشن (تضاد با مبانی) → NEEDS_REVIEW؛ دقیقاً بنویسید دانش‌آموز به اشتباه تصور می‌کند که …
+     * UNCLEAR فقط برای بی‌ربط/نامفهوم.
+   - error_type: conceptual | computational | misreading | none
+   - qualitative_feedback: ۱ تا ۳ جملهٔ مستقیم؛ چه چیزی درست/غلط است و چرا (متنِ دقیق برای معلم و دانش‌آموز).
+4. "dimension_findings": ۴ تا ۶ بُعد فهم (مثلاً «فهم مفهومی/علّی»، «کاربرد واقعی»، «خواندن نمودار و داده»، «ردیابی بدفهمی شایع»، «رویهٔ حل‌سازی»، «تعریف و مرزبندی مفهوم») با status و finding یک‌جمله‌ای.
+5. "root_cause_hypotheses": ریشه‌های احتمالی در دروس پایه/ریاضی (مثلاً «ضعف در نسبت و تناسب (ریاضی پایهٔ ۷-۹)») یا بدفهمیِ بنیادینِ مفهومی؛ به‌ترتیب احتمال.
+6. "improvement_suggestions": ۴ تا ۶ راهکار عملی و متن‌محور (بدون نمره/رتبه/درصد)؛ ابتدا مرور پیش‌نیازها، سپس تمرین هدفمند.
+7. هیچ نمره، رتبه، درصد یا مقایسه‌ای ننویسید. تحلیل کیفیِ مستقیم و قاطع.
+
+خروجی دقیقاً این ساختار:
+{{
+  "per_question": [
+    {{
+      "question_id": <شناسهٔ عددی سؤال ورودی>,
+      "status": "...",
+      "evidence_type": "strong_confirming | weak_confirming | computational_success | weak_contradicting | strong_contradicting",
+      "error_type": "conceptual | computational | misreading | none",
+      "reasoning": "حکم قطعی + دلیل (فارسی، بدون کلمات تردید)",
+      "confidence": 0.0,
+      "needs_teacher_review": false,
+      "qualitative_feedback": "دلیل دقیق رد/تأیید پاسخ — متنِ نهایی برای گزارش"
+    }}
+  ],
+  "dimension_findings": [
+    {{"dimension": "فهم مفهومی/علّی", "status": "...", "finding": "یک جمله"}}
+  ],
+  "root_cause_hypotheses": [
+    {{"area": "…", "reasoning": "چرا این ریشه محتمل است", "cross_subject": false}}
+  ],
+  "improvement_suggestions": ["راهکار ۱", "راهکار ۲"]
+}}
+
+<<<CONCEPT>>>{concept_name}<<<END>>>
+<<<PROPOSITIONS>>>{propositions_json}<<<END>>>
+<<<ANSWERS>>>
+{answers_block}
+<<<END>>>
+"""
+
+
+async def analyze_exam(concept_name: str, propositions: list[str], items: list[dict]) -> dict[str, Any]:
+    """تحلیل یکپارچهٔ کل دفترچهٔ آزمون. هرگز استثنا پرتاب نمی‌کند؛ در شکست، شواهد خام حفظ می‌شوند.
+
+    items: [{"question_id": int, "order": int, "exam_type": str, "text": str,
+              "mapped_propositions": [str], "response_text": str}]
+    """
+    propositions = list(propositions or [])
+    items = [i for i in (items or []) if isinstance(i, dict)]
+
+    answers_block = "\n\n".join(
+        f"<<<Q{idx}>>>question_id={i.get('question_id')} | type={i.get('exam_type')} | گزاره={json.dumps(i.get('mapped_propositions') or [], ensure_ascii=False)}\n"
+        f"سؤال: {str(i.get('text') or '').strip()}\n"
+        f"پاسخ دانش‌آموز: {str(i.get('response_text') or '').strip() or '(بدون پاسخ)'}"
+        for idx, i in enumerate(items, start=1)
+    )
+    prompt = _EXAM_PROMPT.format(
+        q_count=len(items),
+        concept_name=concept_name,
+        propositions_json=json.dumps(propositions, ensure_ascii=False),
+        answers_block=answers_block,
+    )
+
+    data: Optional[dict[str, Any]] = None
+    raw_text = ""
+    try:
+        router = get_router()
+        resp = await router.generate(prompt, "analyze_exam", temperature=0.2)
+        raw_text = (getattr(resp, "text", "") or "").strip()
+        data = _extract_json(raw_text)
+    except Exception as exc:
+        print(f"[ExamAnalyzer] model call failed: {exc}")
+
+    if not isinstance(data, dict):
+        # بدنه‌اش خراب است — متن خام را عیناً در هر سؤالِ بی‌جواب می‌نشانیم
+        body = _clean_raw_text(raw_text) if raw_text else "تحلیل‌گر خودکار خروجی نداد؛ جلسه برای معلم محفوظ است."
+        per_question = [
+            {
+                **_decisive_or_clear_record(
+                    {"question_id": i.get("question_id"), "reasoning": body, "confidence": 0.0,
+                     "error_type": "none", "evidence_type": "weak_confirming",
+                     "needs_teacher_review": True, "qualitative_feedback": body},
+                    str((i.get("mapped_propositions") or [f"سؤال #{i.get('question_id')}"])[0]),
+                ),
+                "question_id": i.get("question_id"),
+                "order": i.get("order"),
+                "exam_type": i.get("exam_type"),
+                "question_text": str(i.get("text") or "").strip(),
+            }
+            for i in items
+        ]
+        return {
+            "per_question": per_question,
+            "dimension_findings": [
+                {"dimension": "تحلیل یکپارچهٔ آزمون", "status": "UNCLEAR",
+                 "finding": "خروجی مدل قابل‌ساختاردهی نبود؛ متن خام مدل در تحلیل تک‌تک سؤالات پیوست است."},
+            ],
+            "root_cause_hypotheses": [],
+            "improvement_suggestions": ["معلم باید شخصاً این آزمون را بررسی کند؛ تحلیل خودکار قابل‌اتکا نبود."],
+        }
+
+    # ── نرمال‌سازی per_question ──
+    by_id = {int(i.get("question_id")): i for i in items if str(i.get("question_id", "")).isdigit()}
+    per_question = []
+    for q in (data.get("per_question") or []):
+        if not isinstance(q, dict):
+            continue
+        try:
+            qid = int(q.get("question_id"))
+        except (TypeError, ValueError):
+            continue
+        if qid not in by_id:
+            continue  # مدل شناسهٔ نامعتبر/خیالین برگردانده — رکورد را نمی‌پذیریم
+        src = by_id.get(qid) or {}
+        prop = str((src.get("mapped_propositions") or [f"سؤال #{qid}"])[0])
+        record = _decisive_or_clear_record(q, prop)
+        record["question_id"] = qid
+        record["order"] = src.get("order")
+        record["exam_type"] = src.get("exam_type")
+        record["question_text"] = str(src.get("text") or "").strip()
+        per_question.append(record)
+
+    # هر سؤال بدون رکورد → رکورد حداقلی
+    covered = {q["question_id"] for q in per_question}
+    for i in items:
+        qid = i.get("question_id")
+        if qid not in covered:
+            body = "پاسخی برای این سؤال ثبت نشد یا تحلیل‌گر آن را پوشش نداد."
+            per_question.append({
+                "proposition_id": str((i.get("mapped_propositions") or [f"سؤال #{qid}"])[0]),
+                "status": EvidenceStatus.INSUFFICIENT_EVIDENCE.value,
+                "evidence_type": "weak_confirming",
+                "reasoning": body,
+                "confidence": 0.0,
+                "error_type": "none",
+                "needs_teacher_review": True,
+                "qualitative_feedback": body,
+                "question_id": qid,
+                "order": i.get("order"),
+                "exam_type": i.get("exam_type"),
+                "question_text": str(i.get("text") or "").strip(),
+            })
+    per_question.sort(key=lambda q: (q.get("order") or 999))
+
+    # ── نرمال‌سازی ابعاد و ریشه‌ها و پیشنهادها ──
+    dimensions = []
+    for d in (data.get("dimension_findings") or []):
+        if not isinstance(d, dict):
+            continue
+        dim = str(d.get("dimension") or "").strip()
+        finding = _strip_hedges(str(d.get("finding") or "").strip())
+        if not dim or not finding:
+            continue
+        status = str(d.get("status") or "UNCLEAR").upper().strip()
+        if _has_decisive_misconception_marker(finding + " " + dim):
+            status = EvidenceStatus.NEEDS_REVIEW.value
+        elif status not in _VALID_STATUS:
+            status = EvidenceStatus.UNCLEAR.value
+        dimensions.append({"dimension": dim, "status": status, "finding": finding})
+
+    root_causes = []
+    for h in (data.get("root_cause_hypotheses") or []):
+        if not isinstance(h, dict):
+            continue
+        area = str(h.get("area") or "").strip()
+        reasoning = _strip_hedges(str(h.get("reasoning") or "").strip())
+        if not area:
+            continue
+        root_causes.append({"area": area, "reasoning": reasoning, "cross_subject": bool(h.get("cross_subject", False))})
+
+    suggestions = [
+        _strip_hedges(str(x).strip()) for x in (data.get("improvement_suggestions") or [])
+        if str(x).strip()
+    ][:6]
+    if not suggestions:
+        suggestions = ["معلم باید بر اساس این آزمون، مسیر مرور پیش‌نیازها را شخصاً تعیین کند."]
+
+    return {
+        "per_question": per_question,
+        "dimension_findings": dimensions,
+        "root_cause_hypotheses": root_causes,
+        "improvement_suggestions": suggestions,
+    }
+
+
+def _decisive_or_clear_record(item: dict[str, Any], fallback_prop: str) -> dict[str, Any]:
+    """همان قواعد نرمالایزر قاطع — خروجی دیکشنری (برای آزمون جامع)."""
+    status = str(item.get("status") or "UNCLEAR").upper().strip()
+    if status not in _VALID_STATUS:
+        status = EvidenceStatus.UNCLEAR.value
+    etype = str(item.get("evidence_type") or "weak_confirming").lower().strip()
+    if etype not in _VALID_EVIDENCE_TYPES:
+        etype = "weak_confirming"
+    error_type = str(item.get("error_type") or "none").lower().strip()
+    if error_type not in _VALID_ERROR_TYPES:
+        error_type = "none"
+    try:
+        confidence = min(1.0, max(0.0, float(item.get("confidence", 0.0) or 0.0)))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    reasoning = _strip_hedges(str(item.get("reasoning") or "").strip()) or "بدون توضیح تحلیل‌گر"
+    feedback = _strip_hedges(str(item.get("qualitative_feedback") or reasoning).strip())
+    decisive_text = _has_decisive_misconception_marker(reasoning + " " + feedback)
+    decisive_struct = error_type == "conceptual" and (
+        etype in ("strong_contradicting", "weak_contradicting") or status == EvidenceStatus.NEEDS_REVIEW.value
+    )
+    if decisive_text:
+        status, confidence, needs_review = EvidenceStatus.NEEDS_REVIEW.value, 0.95, False
+    elif decisive_struct:
+        status, confidence, needs_review = EvidenceStatus.NEEDS_REVIEW.value, max(confidence, 0.9), False
+    else:
+        needs_review = bool(item.get("needs_teacher_review", False))
+    return {
+        "proposition_id": str(item.get("proposition_id") or fallback_prop).strip() or fallback_prop,
+        "status": status,
+        "evidence_type": etype,
+        "reasoning": reasoning,
+        "confidence": confidence,
+        "error_type": error_type,
+        "needs_teacher_review": needs_review,
+        "qualitative_feedback": feedback or reasoning,
+    }

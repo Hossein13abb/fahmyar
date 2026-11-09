@@ -7,14 +7,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+import json
+from datetime import datetime
+
 from api.routes_auth import get_current_user
+from ai.question_generator import generate_test_booklet
+from ai.response_analyzer import analyze_exam
 from config import settings
 from engine.session_manager import SessionManager, SessionError, question_to_student_dict
 from graph.knowledge_graph import load_graph
 from models.concept import Concept
 from models.database import get_db
-from models.question import QUESTION_TYPES, AssessmentSession
+from models.question import QUESTION_TYPES, AssessmentSession, Question
 from models.user import User
+from reports.exam_report import build_exam_report
 from reports.report_generator import build_report
 
 router = APIRouter(prefix="/api", tags=["assessment"])
@@ -38,6 +44,21 @@ class SubmitAnswerRequest(BaseModel):
     response_text: str = Field(min_length=0, max_length=20000)
 
 
+class StartTestRequest(BaseModel):
+    concept_id: int = Field(description="شناسهٔ مفهوم آزمون")
+    trigger_type: Literal["topic_selection", "wrong_answer"] = "topic_selection"
+    wrong_answer: Optional[WrongAnswerIn] = None
+
+
+class ExamAnswerIn(BaseModel):
+    question_id: int
+    response_text: str = Field(min_length=0, max_length=20000)
+
+
+class SubmitTestRequest(BaseModel):
+    answers: list[ExamAnswerIn] = Field(min_length=1, max_length=12)
+
+
 # ---------- سریالایزرها ----------
 def _concept_dict(c: Concept, include_propositions: bool = True) -> dict[str, Any]:
     data = {
@@ -53,6 +74,35 @@ def _concept_dict(c: Concept, include_propositions: bool = True) -> dict[str, An
     if include_propositions:
         data["core_propositions"] = c.core_propositions or []
     return data
+
+
+def _question_to_exam_dict(q: Question, order: int) -> dict[str, Any]:
+    """خروجی سؤال برای دانش‌آموز در آزمون جامع — بدون rubric، همراه با SVG (اگر باشد)."""
+    return {
+        "id": q.id,
+        "order": order,
+        "concept_id": q.concept_id,
+        "text": q.text,
+        "question_type": q.question_type,
+        "difficulty": q.difficulty,
+        "cognitive_type": q.cognitive_type,
+        "diagram_svg": (q.rubric or {}).get("diagram_svg"),
+    }
+
+
+def _booklet_ids(session: AssessmentSession) -> list[int]:
+    for h in session.current_hypotheses or []:
+        if h.get("type") == "exam_booklet":
+            return [int(i) for i in (h.get("question_ids") or [])]
+    return []
+
+
+def _load_booklet(db: Session, session: AssessmentSession) -> list[Question]:
+    ids = _booklet_ids(session)
+    if not ids:
+        return []
+    rows = {q.id: q for q in db.query(Question).filter(Question.id.in_(ids)).all()}
+    return [rows[i] for i in ids if i in rows]
 
 
 def _session_dict(s: AssessmentSession, remaining: int | None = None) -> dict[str, Any]:
@@ -94,6 +144,175 @@ async def start_assessment(
     }
 
 
+@router.post("/assess/start-test", status_code=201)
+async def start_test(
+    body: StartTestRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """شروع آزمون جامع تشخیصی — دفترچهٔ ۹ سؤالی یکجا تولید می‌شود."""
+    if user.role != "student":
+        raise HTTPException(status_code=403, detail="فقط دانش‌آموزان می‌توانند آزمون جامع شروع کنند.")
+    concept = db.query(Concept).filter(Concept.id == body.concept_id).first()
+    if concept is None:
+        raise HTTPException(status_code=404, detail="مفهوم مورد نظر پیدا نشد.")
+
+    # ابتدا دفترچه تولید می‌شود؛ هنوز هیچ تراکنشِ نوشتنی روی این اتصال باز نیست،
+    # تا لاگِ فراخوانیِ AI بتواند از اتصال جداگانه خود را ثبت کند.
+    wrong = body.wrong_answer.model_dump() if body.wrong_answer else None
+    questions, model_name, cost = await generate_test_booklet(concept, wrong_answer=wrong)
+
+    session = AssessmentSession(
+        student_id=user.id,
+        trigger_type=body.trigger_type,
+        concept_id=concept.id,
+        trigger_detail=(
+            json.dumps(body.wrong_answer.model_dump(), ensure_ascii=False)
+            if body.wrong_answer
+            else concept.name
+        ),
+        status="active",
+        time_limit_seconds=settings.SESSION_TIME_LIMIT_SECONDS,
+        current_hypotheses=[],
+        evidence_log=[],
+    )
+    db.add(session)
+    db.flush()  # لازم برای session.id
+
+    for q in questions:
+        db.add(q)
+    db.flush()  # لازم برای q.id
+
+    # شناسه‌های دفترچه را در hypotheses ذخیره می‌کنیم (برای بازیابی در رفرش/ثبت)
+    session.current_hypotheses = [{"type": "exam_booklet", "question_ids": [q.id for q in questions],
+                                   "ai_model_used": model_name, "generation_cost_usd": cost}]
+    db.commit()
+    db.refresh(session)
+
+    return {
+        "session": _session_dict(session),
+        "concept_name": concept.name,
+        "questions": [_question_to_exam_dict(q, i + 1) for i, q in enumerate(questions)],
+        "message": "آزمون جامع آماده است؛ با آرامش و دلیل پاسخ دهید. هیچ بازخورد لحظه‌ای داده نمی‌شود.",
+    }
+
+
+@router.get("/assess/{session_id}/exam")
+def get_exam(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """بازیابی دفترچهٔ آزمون برای ادامه/رفرش صفحه — فقط صاحب جلسه."""
+    session = db.query(AssessmentSession).filter(AssessmentSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(status_code=404, detail="آزمون یافت نشد.")
+    if user.role == "student" and session.student_id != user.id:
+        raise HTTPException(status_code=403, detail="دسترسی به این آزمون ندارید.")
+    if session.status == "completed":
+        raise HTTPException(status_code=422, detail="این آزمون قبلاً ثبت و تحلیل شده است.")
+    questions = _load_booklet(db, session)
+    concept = db.query(Concept).filter(Concept.id == session.concept_id).first() if session.concept_id else None
+    return {
+        "session": _session_dict(session),
+        "concept_name": concept.name if concept else "آزمون جامع",
+        "questions": [_question_to_exam_dict(q, i + 1) for i, q in enumerate(questions)],
+    }
+
+
+@router.post("/assess/{session_id}/submit-test")
+async def submit_test(
+    session_id: int,
+    body: SubmitTestRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """ثبت نهاییِ آزمون جامع → تحلیل یکپارچه (Holistic) → گزارش تفصیلی."""
+    session = db.query(AssessmentSession).filter(AssessmentSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(status_code=404, detail="آزمون یافت نشد.")
+    if user.role != "student" or session.student_id != user.id:
+        raise HTTPException(status_code=403, detail="فقط صاحب آزمون می‌تواند آن را ثبت کند.")
+
+    # دوبارثبت: همان گزارش موجود را برگردان (idempotent)
+    if session.status == "completed" and session.evidence_log:
+        return build_exam_report(db, session)
+
+    questions = _load_booklet(db, session)
+    if not questions:
+        raise HTTPException(status_code=422, detail="دفترچهٔ این جلسه قابل بازیابی نیست.")
+
+    answers = {a.question_id: a.response_text.strip() for a in body.answers}
+    concept = db.query(Concept).filter(Concept.id == session.concept_id).first() if session.concept_id else None
+    items = [
+        {
+            "question_id": q.id,
+            "order": i + 1,
+            "exam_type": q.question_type,
+            "text": q.text,
+            "mapped_propositions": list(q.mapped_propositions or []),
+            "response_text": answers.get(q.id, ""),
+        }
+        for i, q in enumerate(questions)
+    ]
+    result = await analyze_exam(
+        concept.name if concept else "مفهوم",
+        list(concept.core_propositions or []) if concept else [],
+        items,
+    )
+
+    now_iso = datetime.utcnow().isoformat()
+    evidence_log = []
+    for record in result["per_question"]:
+        qid = record["question_id"]
+        entry = {
+            "question_id": qid,
+            "order": record.get("order"),
+            "exam_type": record.get("exam_type"),
+            "question_text": record.get("question_text"),
+            "response": answers.get(qid, ""),
+            "answered_at": now_iso,
+            "evidence": [{k: v for k, v in record.items()
+                          if k not in ("order", "exam_type", "question_text")}],
+        }
+        evidence_log.append(entry)
+
+    meta = {
+        "type": "exam_meta",
+        "question_ids": [q.id for q in questions],
+        "dimensions": result["dimension_findings"],
+        "suggestions": result["improvement_suggestions"],
+    }
+    root_causes = [
+        {"type": "root_cause", "concept_name": rc["area"], "status": "likely_root_cause",
+         "reasoning": rc["reasoning"], "cross_subject": rc["cross_subject"]}
+        for rc in result["root_cause_hypotheses"]
+    ]
+    session.evidence_log = evidence_log
+    session.current_hypotheses = [meta] + root_causes
+    session.status = "completed"
+    db.commit()
+    db.refresh(session)
+    return build_exam_report(db, session)
+
+
+@router.get("/assess/{session_id}/exam-report")
+def get_exam_report(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """گزارش تفصیلی آزمون جامع — مالک جلسه یا معلم/مدیر."""
+    session = db.query(AssessmentSession).filter(AssessmentSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(status_code=404, detail="آزمون یافت نشد.")
+    if user.role == "student" and session.student_id != user.id:
+        raise HTTPException(status_code=403, detail="دسترسی به این گزارش ندارید.")
+    if session.status != "completed":
+        raise HTTPException(status_code=422, detail="این آزمون هنوز ثبت نهایی نشده است.")
+    return build_exam_report(db, session)
+
+
 @router.post("/assess/{session_id}/answer")
 async def submit_answer(
     session_id: int,
@@ -110,6 +329,13 @@ async def submit_answer(
     return result
 
 
+def _is_exam_session(session: AssessmentSession) -> bool:
+    for h in session.current_hypotheses or []:
+        if h.get("type") in ("exam_booklet", "exam_meta"):
+            return True
+    return any(entry.get("exam_type") for entry in (session.evidence_log or []))
+
+
 @router.get("/assess/{session_id}/report")
 def get_report(
     session_id: int,
@@ -121,6 +347,8 @@ def get_report(
         session = manager.get_session(session_id, user)
     except SessionError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    if _is_exam_session(session):
+        return build_exam_report(db, session)
     return build_report(db, session)
 
 

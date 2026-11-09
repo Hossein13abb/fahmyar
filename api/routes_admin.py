@@ -89,6 +89,15 @@ def student_report_detail(
     )
     if session is None:
         raise HTTPException(status_code=404, detail="جلسه یافت نشد.")
+    exam_session = any(h.get("type") in ("exam_booklet", "exam_meta") for h in (session.current_hypotheses or [])) or any(
+        entry.get("exam_type") for entry in (session.evidence_log or []))
+    if exam_session:
+        from reports.exam_report import build_exam_report
+
+        report = build_exam_report(db, session)
+        report["evidence_log"] = session.evidence_log or []
+        report["hypotheses"] = session.current_hypotheses or []
+        return report
     report = build_report(db, session)
     report["evidence_log"] = session.evidence_log or []
     report["hypotheses"] = session.current_hypotheses or []

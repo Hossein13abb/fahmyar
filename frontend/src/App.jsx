@@ -3,7 +3,7 @@ import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import Login from './pages/Login'
 import StudentDashboard from './pages/StudentDashboard'
-import AssessmentRoom from './pages/AssessmentRoom'
+import ExamRoom from './pages/ExamRoom'
 import ReportView from './pages/ReportView'
 import TeacherDashboard from './pages/TeacherDashboard'
 import LoadingSpinner from './components/LoadingSpinner'
@@ -38,7 +38,7 @@ export default function App() {
 
           <Route element={<RequireAuth roles={['student']} />}>
             <Route path="/dashboard" element={<StudentDashboard />} />
-            <Route path="/assessment/:sessionId" element={<AssessmentRoom />} />
+            <Route path="/exam/:sessionId" element={<ExamRoom />} />
             <Route path="/report/:sessionId" element={<ReportView mode="student" />} />
           </Route>
 

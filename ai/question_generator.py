@@ -117,6 +117,166 @@ def _build_prompt(
 _extract_json = extract_json_object
 
 
+
+_BOOKLET_PROMPT = """شما «متخصص طراحی آزمون تشخیصی» فهم‌یار هستید. برای مفهوم «{concept}» ({subject} — پایهٔ {grade}) یک دفترچهٔ آزمون تشخیصی ۹ سؤالی بسازید.
+
+هدف: سنجش «فهمیدن» — نه حفظ کردن. هر ۹ سؤال باید دقیقاً این ابعاد را پوشش دهند (به همین ترتیب):
+1. مفهومی/استدلالی — بدون عدد: باید بگوید «چرا» و علت را توضیح دهد.
+2. سناریوی دنیای واقعی/کاربردی — یک گارگاه/کارگاه/زندگی واقعی.
+3. نموداری/شکلی — شما باید برای این سؤال یک SVG سادهٔ درون‌خطی (inline, بدون ارجاع خارجی، پس‌زمینهٔ سفید، viewBox مناسب) در فیلد "diagram_svg" تولید کنید؛ مثلاً نمودار خطی، ستونی یا مدار ساده.
+4. تلهٔ بدفهمی شایع (Misconception Trap) — دقیقاً «{misconception}» را به چالش بکشد؛ صورت سؤال باید طوری باشد که دانش‌آموز وسوسه شود همان اشتباه را تکرار کند.
+5. محاسباتی/رویه‌ای — با دادهٔ عددی ساده؛ فقط ریاضیِ پایهٔ اصلی.
+6. حفظی/تعریفی — تعریف دقیق و مرزبندی مفهوم.
+7. مفهومی سطح‌بالا — «اگر X دو برابر شود چه می‌شود و چرا؟».
+8. سناریوی واقعی بین‌درسی — پیوند با دروس ریاضی/شیمی.
+9. نموداری/شکلی — این سؤال هم باید "diagram_svg" داشته باشد (نمودار متفاوت از سؤال ۳).
+
+قواعد قطعی:
+- فقط JSON معتبر برگردانید — هیچ متن توضیحی قبل یا بعد از JSON (حتی یک کلمه) ننویسید. پاسختان باید دقیقاً با «{{» شروع شود و با «}}» پایان یابد.
+- همهٔ متن‌ها فارسی و روان باشند.
+- exam_type یکی از این‌هاست: conceptual | real_world | diagram | misconception_trap | computational | definitional
+- شماره order از ۱ تا ۹.
+- فیلد rubric جدا ندهید؛ برای هر سؤال mapped_propositions را پر کنید.
+
+خروجی دقیقاً این ساختار:
+{{
+  "questions": [
+    {{
+      "order": 1,
+      "exam_type": "conceptual",
+      "text": "...",
+      "difficulty": "easy | medium | hard",
+      "cognitive_type": "recall | conceptual | computational | combined",
+      "mapped_propositions": ["دقیقاً یکی از گزاره‌های فهرست ورودی"],
+      "diagram_svg": "<svg ...>...</svg>  (فقط برای سؤال‌های ۳ و ۹، بقیه null)",
+      "misconception_targeted": "فقط برای misconception_trap، وگرنه null"
+    }}
+  ]
+}}
+
+<<<CONCEPT>>>{concept}<<<END>>>
+<<<PROPOSITION>>>{proposition}<<<END>>>
+<<<MISCONCEPTION>>>{misconception}<<<END>>>
+<<<PROPOSITIONS>>>{propositions_json}<<<END>>>
+<<<WRONG_ANSWER>>>{wrong_answer}<<<END>>>
+"""
+
+
+def _booklet_items_to_questions(concept, items, model_name: str, cost: float) -> list["Question"]:
+    """اعتبارسنجی و ساخت اشیای Question دفترچه."""
+    propositions = list(concept.core_propositions or [])
+    misconceptions = list(concept.common_misconceptions or [])
+    fallback_prop = propositions[0] if propositions else "گزارهٔ هدف"
+    questions = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        text = str(raw.get("text") or "").strip()
+        if len(text) < 15:
+            continue  # سؤال بی‌معنی را دور بریز
+        exam_type = str(raw.get("exam_type") or "conceptual").strip().lower()
+        if exam_type not in {"conceptual", "real_world", "diagram", "misconception_trap", "computational", "definitional"}:
+            exam_type = "conceptual"
+        difficulty = str(raw.get("difficulty") or "medium").strip().lower()
+        if difficulty not in {"easy", "medium", "hard"}:
+            difficulty = "medium"
+        cognitive = str(raw.get("cognitive_type") or "conceptual").strip().lower()
+        mapped = [p for p in (raw.get("mapped_propositions") or []) if isinstance(p, str) and p.strip()]
+        if not mapped:
+            mapped = [fallback_prop]
+        diagram = raw.get("diagram_svg")
+        diagram_svg = diagram.strip() if isinstance(diagram, str) and "<svg" in diagram else None
+        mis_trap = raw.get("misconception_targeted")
+        mapped_mis = [mis_trap.strip()] if isinstance(mis_trap, str) and mis_trap.strip() else (
+            [misconceptions[0]] if exam_type == "misconception_trap" and misconceptions else [])
+        questions.append(Question(
+            concept_id=concept.id,
+            text=text,
+            question_type=exam_type,
+            difficulty=difficulty,
+            cognitive_type=cognitive if cognitive in {"recall", "conceptual", "computational", "combined"} else "conceptual",
+            rubric={
+                "exam_type": exam_type,
+                "diagram_svg": diagram_svg,
+                "required_data": [],
+                "correct_reasoning": f"دانش‌آموز باید با تکیه بر گزارهٔ «{mapped[0]}» استدلال علّی کند.",
+                "misconception_indicators": {m: "نشانهٔ بدفهمی هدف" for m in mapped_mis},
+            },
+            mapped_propositions=mapped,
+            mapped_misconceptions=mapped_mis,
+            source="ai_generated",
+            approval_status="pending",
+            ai_model_used=model_name,
+            generation_cost_usd=cost,
+        ))
+    return questions
+
+
+async def generate_test_booklet(concept, wrong_answer: dict | None = None) -> tuple[list["Question"], str, float]:
+    """دفترچهٔ آزمون تشخیصی ۹ سؤالی برای مفهوم می‌سازد (هرگز دفترچهٔ ناقص را رد نمی‌کند؛ حداقل ۸ سؤال لازم است).
+
+    خروجی: (فهرست Questionهای ذخیره‌نشده, model_name, cost_usd)
+    در شکستِ کاملِ مدل، یک دفترچهٔ اضطراریِ حداقلی از الگوهای قطعی ساخته می‌شود تا دانش‌آموز همیشه آزمونی داشته باشد.
+    """
+    propositions = list(concept.core_propositions or [])
+    misconceptions = list(concept.common_misconceptions or [])
+    wrong_text = ""
+    if wrong_answer:
+        wrong_text = f"مسئله: {wrong_answer.get('problem_text', '')} | پاسخ غلط دانش‌آموز: {wrong_answer.get('student_answer', '')}"
+    prompt = _BOOKLET_PROMPT.format(
+        concept=concept.name,
+        subject=concept.subject,
+        grade=concept.grade,
+        proposition=propositions[0] if propositions else "گزارهٔ هدف",
+        misconception=misconceptions[0] if misconceptions else "بدفهمی رایج مفهوم",
+        propositions_json=json.dumps(propositions, ensure_ascii=False),
+        wrong_answer=wrong_text or "—",
+    )
+
+    router = get_router()
+    data = None
+    model_name, cost = "", 0.0
+    try:
+        resp = await router.generate(prompt, "generate_test_booklet", temperature=0.7)
+        model_name, cost = resp.model_name, resp.cost_usd
+        data = extract_json_object(resp.text)
+    except Exception as exc:
+        print(f"[Booklet] model call failed: {exc}")
+
+    items = (data or {}).get("questions") if isinstance(data, dict) else None
+    questions = _booklet_items_to_questions(concept, items or [], model_name, cost) if items else []
+
+    if len(questions) < 8:
+        # دفترچهٔ اضطراریِ حداقلی — شش پوششِ اساسی به‌ترتیب
+        print(f"[Booklet] only {len(questions)} valid questions from model; topping up with deterministic template bank.")
+        fallback_prop = (propositions[0] if propositions else "گزارهٔ هدف")
+        fallback_mis = (misconceptions[0] if misconceptions else "بدفهمی رایج مفهوم")
+        template = [
+            ("conceptual", f"«{concept.name}» را با کلمات خودتان توضیح دهید؛ چرا رخ می‌دهد و علت و معلول آن چیست؟", "medium", "conceptual"),
+            ("real_world", f"یک سناریوی واقعی (کارگاه/خانه/بازار) بسازید که در آن «{concept.name}» نقش دارد و توضیح دهید چه می‌گذرد و چرا.", "medium", "conceptual"),
+            ("misconception_trap", f"«{fallback_mis}» — آیا این استدلال درست است؟ با دلیل علمی رد یا تأیید کنید.", "hard", "conceptual"),
+            ("computational", "با داده‌های فرضیِ ساده، مقدار خواسته‌شده را محاسبه کنید و مراحل را بنویسید.", "easy", "computational"),
+            ("definitional", f"تعریف دقیق «{concept.name}» را بنویسید و آن را از مفاهیم نزدیک جدا کنید.", "easy", "recall"),
+            ("conceptual", f"اگر یک کمیتِ کلیدیِ «{concept.name}» دو برابر شود چه می‌شود و چرا؟", "medium", "conceptual"),
+            ("real_world", "مثالی از زندگی روزمره بیاورید که در آن این مفهوم به کار می‌رود و علت کارکردش را توضیح دهید.", "hard", "combined"),
+            ("diagram", "اگر کمیت مستقل دو برابر شود، روند تغییرات کمیت وابسته را توصیف کنید و شکل ذهنی خود را رسم/شرح دهید.", "hard", "conceptual"),
+            ("definitional", f"سه تفاوت اصلی «{concept.name}» با نزدیک‌ترین مفهومِ هم‌خانواده را فهرست کنید.", "medium", "recall"),
+        ]
+        have = len(questions)
+        for i, (et, text, diff, cog) in enumerate(template):
+            if have >= 9:
+                break
+            questions.append(Question(
+                concept_id=concept.id, text=text, question_type=et, difficulty=diff, cognitive_type=cog,
+                rubric={"exam_type": et, "diagram_svg": None, "correct_reasoning": f"با تکیه بر «{fallback_prop}»",
+                        "misconception_indicators": {fallback_mis: "نشانهٔ بدفهمی هدف"} if et == "misconception_trap" else {}},
+                mapped_propositions=[fallback_prop], mapped_misconceptions=[fallback_mis] if et == "misconception_trap" else [],
+                source="ai_generated", approval_status="pending", ai_model_used=model_name or "template-fallback",
+                generation_cost_usd=0.0,
+            ))
+            have += 1
+    return questions[:10], model_name or "mixed", cost
+
 def _validate_payload(data: dict[str, Any], target_proposition: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise QuestionGenerationError("خروجی مدل دیکشنری نیست")

@@ -394,6 +394,10 @@ class MockProvider(AIProvider):
         # شبیه‌سازی تأخیر واقعی شبکه نیست؛ تست‌ها سریع می‌مانند
         if task_type == "generate_question":
             text = self._mock_question(prompt)
+        elif task_type == "generate_test_booklet":
+            text = self._mock_test_booklet(prompt)
+        elif task_type == "analyze_exam":
+            text = self._mock_exam_analysis(prompt)
         elif task_type == "analyze_response":
             text = self._mock_analysis(prompt)
         elif task_type == "build_graph":
@@ -415,7 +419,127 @@ class MockProvider(AIProvider):
         )
 
     # --- قالب‌های قطعی ---
-    def _mock_question(self, prompt: str) -> str:
+    def _mock_test_booklet(self, prompt: str) -> str:
+        proposition = _extract_marker(prompt, "PROPOSITION") or "گزارهٔ هدفِ نمونه"
+        misconception = _extract_marker(prompt, "MISCONCEPTION") or "بدفهمیِ رایجِ نمونه"
+        concept = _extract_marker(prompt, "CONCEPT") or "مفهوم نمونه"
+        svg1 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" role="img">'
+                '<rect x="10" y="120" width="40" height="30" fill="#0f766e"/>'
+                '<rect x="80" y="80" width="40" height="70" fill="#115e59"/>'
+                '<rect x="150" y="40" width="40" height="110" fill="#134e4a"/>'
+                '<line x1="5" y1="150" x2="310" y2="150" stroke="#334155"/>'
+                '<text x="200" y="30" font-size="14" fill="#0f172a">V∝I</text></svg>')
+        svg2 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" role="img">'
+                '<circle cx="60" cy="60" r="16" fill="none" stroke="#0f766e" stroke-width="3"/>'
+                '<line x1="76" y1="60" x2="140" y2="60" stroke="#334155" stroke-width="3"/>'
+                '<rect x="140" y="45" width="60" height="30" fill="none" stroke="#b45309" stroke-width="3"/>'
+                '<line x1="200" y1="60" x2="280" y2="60" stroke="#334155" stroke-width="3"/>'
+                '<text x="150" y="35" font-size="12" fill="#0f172a">R</text></svg>')
+        qs = [
+            ("conceptual", f"«{concept}» را با کلمات خودتان توضیح دهید؛ چرا این پدیده رخ می‌دهد و چه رابطه‌ای بین علت و معلول وجود دارد؟", "medium"),
+            ("real_world", f"یک گارگاه واقعی را در نظر بگیرید که در آن مسئله‌ای دربارهٔ «{concept}» پیش آمده است. چه اتفاقی می‌افتد و علت علمی آن چیست؟", "medium"),
+            ("diagram", f"به نمودار داده‌شده نگاه کنید. با توجه به محورها، روند تغییرات کدام گزاره را تأیید می‌کند؟ استدلال خود را بنویسید.", "medium"),
+            ("misconception_trap", f"«{misconception}» — دوستتان چنین استدلالی کرده است. آیا درست است؟ با دلیل علمی بررسی کنید.", "hard"),
+            ("computational", f"با داده‌های فرضی (V=۱۲ ولت، R=۴ اهم)، کمیت خواسته‌شده را محاسبه کنید و هر مرحله را بنویسید.", "easy"),
+            ("definitional", f"تعریف دقیق «{concept}» را بنویسید و بگویید چه چیزی آن را از مفاهیم مشابه متمایز می‌کند.", "easy"),
+            ("conceptual", f"اگر یکی از کمیت‌های «{concept}» دو برابر شود، چه اتفاقی می‌افتد و چرا؟", "medium"),
+            ("real_world", "یک مثال از زندگی روزمره بیاورید که در آن این قانون/مفهوم نقش دارد و توضیح دهید چگونه عمل می‌کند.", "hard"),
+            ("diagram", "با توجه به مدار/نمودار روبه‌رو، اگر مقدار R دو برابر شود چه اتفاقی برای جریان می‌افتد؟ استدلال خود را بنویسید.", "hard"),
+        ]
+        items = []
+        for i, (exam_type, text, diff) in enumerate(qs, start=1):
+            diagram = svg1 if i == 3 else (svg2 if i == 9 else None)
+            items.append({
+                "order": i,
+                "exam_type": exam_type,
+                "text": text,
+                "difficulty": diff,
+                "cognitive_type": "conceptual" if exam_type in ("conceptual", "real_world", "diagram") else ("computational" if exam_type == "computational" else "recall"),
+                "mapped_propositions": [proposition],
+                "diagram_svg": diagram,
+                "misconception_targeted": misconception if exam_type == "misconception_trap" else None,
+            })
+        return json.dumps({"questions": items}, ensure_ascii=False)
+
+    def _mock_exam_analysis(self, prompt: str) -> str:
+        answers_raw = _extract_marker(prompt, "ANSWERS") or ""
+        propositions_raw = _extract_marker(prompt, "PROPOSITIONS") or "[]"
+        try:
+            propositions = json.loads(propositions_raw)
+        except json.JSONDecodeError:
+            propositions = ["گزارهٔ هدف"]
+        sections = re.split(r"<<<Q(\d+)>>>", answers_raw)
+        per_question = []
+        pairs = list(zip(sections[1::2], sections[2::2])) if len(sections) >= 3 else []
+        for order_str, body in pairs:
+            m_qid = re.search(r"question_id=(\d+)", body)
+            try:
+                qid = int(m_qid.group(1)) if m_qid else int(order_str)
+            except ValueError:
+                qid = int(order_str)
+            text = body.strip()
+            low = text.lower()
+            has_reasoning = any(m in text for m in _REASONING_MARKERS)
+            uncertain = any(m in text for m in _UNCERTAINTY_MARKERS)
+            words = len(text.split())
+            mis_marker = any(w in text for w in ("اشتباه", "غلط", "نادرست", "تضاد", "برعکس", "معکوس", "NEEDS_REVIEW"))
+            if uncertain or words < 4:
+                status, etype, conf = "UNCLEAR", "weak_confirming", 0.25
+                reasoning = "پاسخ بسیار کوتاه یا همراه با عدم اطمینان است — نمی‌توان داوری کرد."
+            elif mis_marker:
+                status, etype, conf = "NEEDS_REVIEW", "strong_contradicting", 0.9
+                reasoning = "دانش‌آموز به اشتباه تصور می‌کند که رابطهٔ فاصله/کمیت خطی و مستقیم است؛ مبانی علمی خلاف آن را نشان می‌دهند."
+            elif has_reasoning and words >= 25:
+                status, etype, conf = "CONFIRMED", "strong_confirming", 0.8
+                reasoning = "استدلال علمی کامل و علّی است."
+            elif has_reasoning:
+                status, etype, conf = "LIKELY_UNDERSTOOD", "strong_confirming", 0.7
+                reasoning = "هستهٔ فهم درست است اما بیان کامل نیست."
+            elif words >= 12:
+                status, etype, conf = "UNCLEAR", "weak_confirming", 0.45
+                reasoning = "پاسخ بدون استدلال صریح داده شده — واژهٔ کلیدی بدون دلیل، شواهد نیست."
+            else:
+                status, etype, conf = "UNCLEAR", "weak_confirming", 0.3
+                reasoning = "پاسخ کوتاه و بدون استدلال صریح است."
+            per_question.append({
+                "question_id": int(qid),
+                "status": status,
+                "evidence_type": etype,
+                "error_type": "conceptual" if status == "NEEDS_REVIEW" else "none",
+                "reasoning": reasoning,
+                "confidence": conf,
+                "needs_teacher_review": status == "UNCLEAR",
+                "qualitative_feedback": reasoning,
+            })
+        wrong = sum(1 for q in per_question if q["status"] == "NEEDS_REVIEW")
+        dimensions = [
+            {"dimension": "فهم مفهومی/علّی", "status": per_question[0]["status"] if per_question else "UNCLEAR",
+             "finding": "بر اساس پاسخ‌های تشریحیِ بخش مفهومی"},
+            {"dimension": "کاربرد در دنیای واقعی", "status": per_question[1]["status"] if len(per_question) > 1 else "UNCLEAR",
+             "finding": "بر اساس سناریوهای گارگاهی/واقعی"},
+            {"dimension": "خواندن نمودار و داده", "status": per_question[2]["status"] if len(per_question) > 2 else "UNCLEAR",
+             "finding": "بر اساس سؤالات نموداری"},
+            {"dimension": "ردیابی بدفهمی‌های رایج", "status": per_question[3]["status"] if len(per_question) > 3 else "UNCLEAR",
+             "finding": "بر اساس تلهٔ بدفهمی"},
+            {"dimension": "رویهٔ حل‌سازی", "status": per_question[4]["status"] if len(per_question) > 4 else "UNCLEAR",
+             "finding": "بر اساس سؤال محاسباتی"},
+        ]
+        root_causes = [
+            {"area": "نسبت و تناسب (ریاضی پایهٔ ۷ تا ۹)",
+             "reasoning": "الگوی خطا در سؤالات نسبت‌سنجی تکرار می‌شود؛ پیش‌نیاز ریاضی مرور شود.",
+             "cross_subject": True},
+        ] if wrong else []
+        suggestions = [
+            "ابتدا پیش‌نیازهای ریاضیِ نسبت و توان را مرور کنید (۱۵ دقیقه تمرین هدفمند).",
+            "برای هر گزارهٔ «بدفهمی شناسایی‌شده» یک مثالِ نقضِ شهودی طراحی کنید و خودتان برای یک دوست توضیح دهید.",
+            "یک نمونهٔ واقعی از زندگی روزمره بسازید که در آن قانون/مفهوم کار می‌کند و علت را بلند بلند توضیح دهید.",
+        ]
+        return json.dumps(
+            {"per_question": per_question, "dimension_findings": dimensions,
+             "root_cause_hypotheses": root_causes, "improvement_suggestions": suggestions},
+            ensure_ascii=False,
+        )
+
         proposition = _extract_marker(prompt, "PROPOSITION") or "گزارهٔ هدفِ نمونه"
         misconception = _extract_marker(prompt, "MISCONCEPTION") or ""
         concept = _extract_marker(prompt, "CONCEPT") or "مفهوم نمونه"
@@ -499,13 +623,17 @@ class MockProvider(AIProvider):
 # ---------------------------------------------------------------------------
 _TASK_ROUTE = {
     "generate_question": "gemini_free",
+    "generate_test_booklet": "gemini_free",
     "analyze_response": "gemini_free",
+    "analyze_exam": "gemini_free",
     "build_graph": "gemini_free",
 }
 
 _OPENROUTER_ROUTE = {
     "generate_question": "openrouter",
+    "generate_test_booklet": "openrouter",
     "analyze_response": "openrouter",
+    "analyze_exam": "openrouter",
     "build_graph": "openrouter",
 }
 

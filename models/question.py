@@ -33,6 +33,13 @@ QUESTION_TYPES = {
     "categorize",
     "error_identify",
     "novel_application",
+    # انواع سؤال‌های دفترچهٔ آزمون جامع تشخیصی (۱۰ سؤالی)
+    "conceptual",
+    "real_world",
+    "diagram",
+    "misconception_trap",
+    "computational",
+    "definitional",
 }
 
 
