@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Vazirmatn', Tahoma, ui-sans-serif, system-ui, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(126, 212, 181, 0.28), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(237, 218, 185, 0.35), transparent 55%),
+    #f7faf8;
+  color: #1d473b;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* اسکرول‌بار نرم و آرام */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #b0e6cf;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #7ed4b5;
+}
+
+/* فوکوسِ قابل‌مشاهده ولی ملایم */
+:focus-visible {
+  outline: 2px solid #238569;
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+/* ورودی‌های متنی */
+.input {
+  @apply w-full rounded-2xl border border-brand-100 bg-white/80 px-4 py-3 text-[15px] leading-7 text-brand-900 placeholder-slate-400 shadow-sm transition focus:border-brand-300 focus:bg-white focus:ring-0;
+}
+
+.label {
+  @apply mb-1.5 block text-[13px] font-bold text-brand-800;
+}
+
+.card {
+  @apply rounded-3xl border border-brand-100/70 bg-white/85 shadow-card backdrop-blur;
+}
+
+.chip {
+  @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold;
+}
+
+/* چاپ گزارش: فقط گزارش */
+@media print {
+  body {
+    background: #ffffff !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+    break-inside: avoid;
+  }
+  main {
+    padding: 0 !important;
+  }
+}
