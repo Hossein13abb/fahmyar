@@ -102,18 +102,24 @@ _PROMPT = """شما «متخصص تشخیص آموزشیِ سخت‌گیرِ ف�
 _extract_json = extract_json_object
 
 
+_NEGATION_SCRUB_RE = re.compile(r"(بدون|هیچ|نه|بی)\s*[‌\u200c]?\s*(اشتباه|غلط|تضاد|نادرست|برعکس|معکوس|دست‌رفته)", re.IGNORECASE)
+
 _MISCONCEPTION_MARKERS = (
-    "به اشتباه تصور",
-    "به اشتباه می‌پندارند",
+    "به اشتباه",
     "بدفهمی",
-    "تصور اشتباه",
-    "مفهوم اشتباه",
-    "اشتباه می‌کنند که",
+    "تضاد",
+    "برعکس",
+    "نادرست",
+    "دست‌رفته",
+    "معکوس",
+    "NEEDS_REVIEW",
 )
 
 
-def _has_misconception_marker(text: str) -> bool:
-    return any(marker in text for marker in _MISCONCEPTION_MARKERS)
+def _has_decisive_misconception_marker(text: str) -> bool:
+    scrubbed = _NEGATION_SCRUB_RE.sub("", text or "")  # «هیچ تضادی/اشتباهی …» بدفهمی نیست
+    low = scrubbed.lower()
+    return any(marker.lower() in low for marker in _MISCONCEPTION_MARKERS)
 
 
 _HEDGE_WORDS = ("به نظر می‌رسد", "شاید", "ممکن است", "به‌نوعی", "تا حدی")
@@ -146,22 +152,25 @@ def _normalize_record(item: dict[str, Any], fallback_prop: str, qualitative_feed
     reasoning = _strip_hedges(str(item.get("reasoning") or "").strip()) or "بدون توضیح تحلیل‌گر"
     feedback = _strip_hedges(str(item.get("qualitative_feedback") or qualitative_feedback).strip())
 
-    if confidence < settings.CONFIDENCE_THRESHOLD:
-        # الزام: اطمینان پایین → نامشخص + بررسی معلم (تنها راهِ «نمی‌دانم»)
-        status = EvidenceStatus.UNCLEAR.value
-        needs_review = True
+    # نشانگرهای قطعیِ بدفهمی در خودِ متن تحلیل — بدون هیچ شرط دیگری، حکم قطعی است
+    decisive_text = _has_decisive_misconception_marker(reasoning + " " + feedback)
+    decisive_struct = error_type == "conceptual" and (
+        etype in ("strong_contradicting", "weak_contradicting")
+        or status == EvidenceStatus.NEEDS_REVIEW.value
+    )
+    if decisive_text:
+        # قانون سخت‌گیرانهٔ جدید: نشانهٔ بدفهمی در متن → NEEDS_REVIEW قطعی با confidence=0.95
+        status = EvidenceStatus.NEEDS_REVIEW.value
+        needs_review = False
+        confidence = 0.95
+    elif decisive_struct:
+        # بدفهمیِ مفهومیِ ساختاری (contradicting + conceptual) → قطعی
+        status = EvidenceStatus.NEEDS_REVIEW.value
+        needs_review = False
+        confidence = max(confidence, 0.9)
     else:
-        # قاطعیت: هرجا مدل «متن بدفهمی» تولید کرده → status حتماً NEEDS_REVIEW و نیازمند بررسی معلم=false
-        decisive = error_type == "conceptual" and (
-            etype in ("strong_contradicting", "weak_contradicting")
-            or status == EvidenceStatus.NEEDS_REVIEW.value
-            or _has_misconception_marker(reasoning + " " + feedback)
-        )
-        if decisive:
-            status = EvidenceStatus.NEEDS_REVIEW.value
-            needs_review = False
-        else:
-            needs_review = bool(item.get("needs_teacher_review", False))
+        # تضعیف اطمینان دیگر داوری را زیر سؤال نمی‌برد؛ همان status مدل حفظ می‌شود
+        needs_review = bool(item.get("needs_teacher_review", False))
 
     return EvidenceRecord(
         proposition_id=prop,
@@ -176,7 +185,6 @@ def _normalize_record(item: dict[str, Any], fallback_prop: str, qualitative_feed
 
 
 _MISCONCEPTION_RAW_MARKERS = ("اشتباه", "غلط", "نادرست", "تضاد", "برعکس", "معکوس", "NEEDS_REVIEW")
-_NEGATION_SCRUB_RE = re.compile(r"(بدون|هیچ|نه|بی)\s*[‌\u200c]?\s*(اشتباه|غلط)", re.IGNORECASE)
 _FENCE_INNER_RE = re.compile(r"```(?:[a-zA-Z]*)\s*(.*?)```", re.DOTALL)
 
 

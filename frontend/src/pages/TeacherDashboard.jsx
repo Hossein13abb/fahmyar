@@ -10,7 +10,6 @@ import {
   ChevronDown,
   FileText,
   CalendarDays,
-  AlertTriangle,
   ThumbsUp,
   ThumbsDown,
   Inbox,
@@ -211,11 +210,6 @@ export default function TeacherDashboard() {
                   <div className="min-w-0">
                     <p className="flex items-center gap-2 text-[13px] font-black text-brand-950">
                       {s.concept_name ?? 'مفهوم نامشخص'}
-                      {s.needs_teacher_review && (
-                        <span title="نیازمند بررسی معلم" className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-800">
-                          <AlertTriangle className="h-3 w-3" /> بررسی معلم
-                        </span>
-                      )}
                     </p>
                     <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                       <span className="chip bg-indigo-50 text-indigo-800 ring-1 ring-indigo-100">{TRIGGER_LABEL[s.trigger_type] ?? s.trigger_type}</span>

@@ -113,7 +113,6 @@ export default function ReportView({ mode = 'student' }) {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Badge status={report.status} />
             <span className="chip bg-slate-100 text-slate-600 ring-1 ring-slate-200">{report.questions_answered ?? 0} پاسخ ثبت شد</span>
-            {report.needs_teacher_review && <Badge status="PENDING_REVIEW" />}
           </div>
         </div>
         <div className="no-print flex shrink-0 flex-col gap-2">

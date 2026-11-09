@@ -25,12 +25,6 @@ const STATUS = {
     cls: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
     dot: 'bg-slate-400',
   },
-  // برچسب‌های کمکی
-  PENDING_REVIEW: {
-    label: 'نیازمند بررسی معلم',
-    cls: 'bg-amber-100 text-amber-900 ring-1 ring-amber-300',
-    dot: 'bg-amber-500',
-  },
   active: {
     label: 'در حال انجام',
     cls: 'bg-teal-50 text-teal-800 ring-1 ring-teal-200',
