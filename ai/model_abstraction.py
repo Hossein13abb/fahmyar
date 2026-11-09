@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -29,7 +30,15 @@ class BudgetExceededError(Exception):
 
 
 class AIProviderError(Exception):
-    """خطای پروایدر مدل."""
+    """خطای پروایدر مدل.
+
+    retryable=True یعنی «با مدل دیگری شاید حل شود» (۴۰۴/۴۰۰/۴۰۲/محدودیت نرخ/۵xx/مشکل شبکه).
+    retryable=False یعنی اشکال ساختاری است (مثلاً ۴۰۱ کلید نامعتبر) و تعویض مدل فایده‌ای ندارد.
+    """
+
+    def __init__(self, message: str, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 @dataclass
@@ -118,8 +127,58 @@ class GeminiFreeProvider(AIProvider):
 
 
 # ---------------------------------------------------------------------------
-# OpenRouter (فراخوانی HTTP محض با requests — بدون SDK)
+# OpenRouter — کشف پویای مدل‌های رایگان (کش ۱۵ دقیقه‌ای) + اولویت‌بندی + فال‌بک خودکار
 # ---------------------------------------------------------------------------
+
+# گروه‌های اولویت — گروه‌های قبلی اولویت بیشتری دارند؛ داخل هر گروه به ترتیب
+_PREFERENCE_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("llama-3.3-70b", "llama-3.1-70b"),
+    ("qwen-2.5-72b", "qwen-2.5-32b"),
+    ("gemini-2.0", "gemini-1.5"),
+    ("mistral", "qwen", "phi"),
+)
+
+# کش لیست مدل‌های رایگان — مشترک بین همهٔ نمونه‌ها
+_FREE_MODELS_TTL_SECONDS = 15 * 60
+_free_models_cache: dict[str, Any] = {"ts": 0.0, "models": []}
+_free_models_lock = threading.Lock()
+
+MAX_FALLBACK_ATTEMPTS = 8
+
+
+def _preference_rank(model_id: str) -> int:
+    low = model_id.lower()
+    for rank, group in enumerate(_PREFERENCE_GROUPS):
+        if any(pattern in low for pattern in group):
+            return rank
+    return len(_PREFERENCE_GROUPS)
+
+
+def rank_free_models(model_ids: list[str]) -> list[str]:
+    """مرتب‌سازی پایدارِ مدل‌های رایگان بر اساس اولویت (گروه، سپس نام)."""
+    return sorted(dict.fromkeys(model_ids), key=lambda m: (_preference_rank(m), m))
+
+
+def _is_free_model(entry: dict[str, Any]) -> bool:
+    """آیا مدل رایگان است؟ :free در انتهای شناسه یا قیمت صفر prompt و completion."""
+    model_id = (entry.get("id") or "").strip().lower()
+    if not model_id:
+        return False
+    if model_id.endswith(":free"):
+        return True
+    pricing = entry.get("pricing") or {}
+
+    def _zero(value: Any) -> bool:
+        if value is None:
+            return False
+        try:
+            return float(str(value).strip()) == 0.0
+        except (TypeError, ValueError):
+            return str(value).strip() == "0"
+
+    return _zero(pricing.get("prompt")) and _zero(pricing.get("completion"))
+
+
 class OpenRouterProvider(AIProvider):
     name = "openrouter"
 
@@ -127,7 +186,7 @@ class OpenRouterProvider(AIProvider):
         # پاکسازی کلید: فاصلهٔ انتهایی/خط جدید (.strip()) علت رایج خطای 401 است
         raw_key = api_key if api_key is not None else settings.OPENROUTER_API_KEY
         self.api_key = (raw_key or "").strip()
-        self.model_name = (model_name or settings.OPENROUTER_MODEL).strip()
+        self.model_name = (model_name if model_name is not None else settings.OPENROUTER_MODEL).strip() or "auto"
         self.base_url = settings.OPENROUTER_BASE_URL.rstrip("/")
         self.timeout = settings.OPENROUTER_TIMEOUT_SECONDS
         if not self.api_key:
@@ -136,6 +195,9 @@ class OpenRouterProvider(AIProvider):
                 "یا AI_PROVIDER=mock را انتخاب کنید."
             )
 
+    # ------------------------------------------------------------------
+    # هدرهای سفارشی — روی همهٔ درخواست‌ها (کش، فهرست مدل‌ها، فال‌بک) اعمال می‌شود
+    # ------------------------------------------------------------------
     def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.api_key}",
@@ -148,11 +210,61 @@ class OpenRouterProvider(AIProvider):
             ),
         }
 
-    def _post_chat_completion(self, prompt: str, temperature: float) -> dict[str, Any]:
-        import requests  # import تنبل — اگر requests نصب نباشد فقط این پروایدر می‌شکند
+    # ------------------------------------------------------------------
+    # کشف مدل‌های رایگان فعال — کش ۱۵ دقیقه‌ای
+    # ------------------------------------------------------------------
+    def fetch_active_free_models(self, force_refresh: bool = False) -> list[str]:
+        """فهرست مدل‌های رایگان فعال OpenRouter را برمی‌گرداند (مرتب‌شده بر اساس اولویت).
+
+        نتیجه ۱۵ دقیقه کش می‌شود؛ force_refresh=True یعنی دریافت تازه (پس از شکست مدل).
+        """
+        now = time.monotonic()
+        with _free_models_lock:
+            cached = _free_models_cache["models"]
+            age = now - _free_models_cache["ts"]
+            if not force_refresh and cached and age < _FREE_MODELS_TTL_SECONDS:
+                return list(cached)
+
+        import requests
+
+        try:
+            resp = requests.get(f"{self.base_url}/models", headers=self._headers(), timeout=30)
+        except requests.RequestException as exc:
+            with _free_models_lock:
+                if _free_models_cache["models"]:
+                    print(f"[OpenRouter] دریافت فهرست مدل‌ها ناموفق بود ({exc})؛ از کش (حتی قدیمی) استفاده شد.")
+                    return list(_free_models_cache["models"])
+            raise AIProviderError(f"خطای شبکه در دریافت فهرست مدل‌های OpenRouter: {exc}", retryable=True) from exc
+
+        if resp.status_code >= 400:
+            with _free_models_lock:
+                if _free_models_cache["models"]:
+                    print(f"[OpenRouter] HTTP {resp.status_code} از /models؛ از کش استفاده شد.")
+                    return list(_free_models_cache["models"])
+            raise AIProviderError(
+                f"دریافت فهرست مدل‌ها از OpenRouter ناموفق بود (HTTP {resp.status_code}): {(resp.text or '')[:200]}",
+                retryable=False,
+            )
+
+        try:
+            entries = resp.json().get("data", [])
+        except ValueError as exc:
+            raise AIProviderError("پاسخ غیرJSON از /models دریافت شد.", retryable=True) from exc
+
+        free_ids = [e["id"].strip() for e in entries if isinstance(e, dict) and _is_free_model(e)]
+        ranked = rank_free_models(free_ids)
+        with _free_models_lock:
+            _free_models_cache.update(ts=time.monotonic(), models=ranked)
+        return list(ranked)
+
+    # ------------------------------------------------------------------
+    # فراخوانی chat/completions
+    # ------------------------------------------------------------------
+    def _post_chat_completion(self, prompt: str, temperature: float, model: str) -> dict[str, Any]:
+        import requests
 
         payload = {
-            "model": self.model_name,
+            "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
         }
@@ -164,37 +276,36 @@ class OpenRouterProvider(AIProvider):
                 timeout=self.timeout,
             )
         except requests.RequestException as exc:
-            raise AIProviderError(f"خطای شبکه در اتصال به OpenRouter: {exc}") from exc
+            raise AIProviderError(f"خطای شبکه در اتصال به OpenRouter (مدل {model}): {exc}", retryable=True) from exc
 
         if resp.status_code == 401:
-            body_excerpt = (resp.text or "")[:300]
             raise AIProviderError(
-                f"خطای 401 از OpenRouter — کلید API یافت نشد یا نامعتبر است "
-                f"(پس از .strip() بررسی شد). پاسخ سرور: {body_excerpt}"
+                f"خطای 401 از OpenRouter — کلید API یافت نشد یا نامعتبر است (پس از .strip() بررسی شد). "
+                f"پاسخ سرور: {(resp.text or '')[:300]}",
+                retryable=False,  # تعویض مدل ۴۰۱ را حل نمی‌کند
             )
         if resp.status_code >= 400:
+            # 400/402/403/404/408/409/429/5xx — یعنی مدل ناموجود/پولی/محدود یا خطای سرور: فال‌بک منطقی است
             raise AIProviderError(
-                f"خطای {resp.status_code} از OpenRouter: {(resp.text or '')[:300]}"
+                f"خطای {resp.status_code} از OpenRouter (مدل {model}): {(resp.text or '')[:300]}",
+                retryable=True,
             )
         try:
             return resp.json()
         except ValueError as exc:
-            raise AIProviderError("پاسخ غیرJSON از OpenRouter دریافت شد.") from exc
+            raise AIProviderError(f"پاسخ غیرJSON از OpenRouter (مدل {model}).", retryable=True) from exc
 
-    async def generate(self, prompt: str, task_type: str, temperature: float = 0.7) -> AIResponse:
-        # requests همزمانی نیست؛ در thread اجرا می‌شود تا event loop قفل نشود
-        data = await asyncio.to_thread(self._post_chat_completion, prompt, temperature)
-
+    def _attempt(self, model: str, prompt: str, task_type: str, temperature: float) -> AIResponse:
+        data = self._post_chat_completion(prompt, temperature, model)
         try:
             text = (data["choices"][0]["message"]["content"] or "").strip()
         except (KeyError, IndexError, TypeError) as exc:
-            raise AIProviderError(f"ساختار پاسخ OpenRouter نامعتبر بود: {exc}") from exc
+            raise AIProviderError(f"ساختار پاسخ OpenRouter نامعتبر بود (مدل {model}): {exc}", retryable=True) from exc
         if not text:
-            raise AIProviderError("پاسخ خالی از OpenRouter.")
+            raise AIProviderError(f"پاسخ خالی از OpenRouter (مدل {model}).", retryable=True)
 
         usage = data.get("usage") or {}
         token_count = int(usage.get("total_tokens") or 0) or max(1, (len(prompt) + len(text)) // 4)
-        # بعضی مدل‌های رایگان هزینه را هم برمی‌گردانند؛ در غیاب، صفر در نظر می‌گیریم
         try:
             cost_usd = float(usage.get("cost") or 0.0)
         except (TypeError, ValueError):
@@ -202,11 +313,62 @@ class OpenRouterProvider(AIProvider):
 
         return AIResponse(
             text=text,
-            model_name=self.model_name,
+            model_name=model,
             token_count=token_count,
             cost_usd=cost_usd,
             task_type=task_type,
             raw=data,
+        )
+
+    # ------------------------------------------------------------------
+    # تولید با فال‌بک خودکار بین مدل‌های رایگان فعال
+    # ------------------------------------------------------------------
+    async def generate(self, prompt: str, task_type: str, temperature: float = 0.7) -> AIResponse:
+        # requests همزمان است؛ در thread اجرا می‌شود تا event loop قفل نشود
+        return await asyncio.to_thread(self._generate_with_fallback, prompt, task_type, temperature)
+
+    def _initial_candidates(self) -> list[str]:
+        if self.model_name.lower() == "auto":
+            return self.fetch_active_free_models()
+        return [self.model_name]
+
+    def _generate_with_fallback(self, prompt: str, task_type: str, temperature: float) -> AIResponse:
+        attempted: set[str] = set()
+        last_error: str | None = None
+        current: str | None = None
+
+        initial = self._initial_candidates()
+        if not initial:
+            raise AIProviderError("هیچ مدل رایگان فعالی در OpenRouter یافت نشد.", retryable=False)
+        queue = list(initial)
+
+        for _ in range(MAX_FALLBACK_ATTEMPTS):
+            current = queue.pop(0) if queue else None
+            if current is None:
+                # صف تمام شد — با رفرش اجباری فهرست، مدل‌های نزده را پیدا کن
+                free = self.fetch_active_free_models(force_refresh=True)
+                current = next((m for m in free if m not in attempted), None)
+            if current is None:
+                break
+            attempted.add(current)
+            try:
+                return self._attempt(current, prompt, task_type, temperature)
+            except AIProviderError as exc:
+                last_error = str(exc)
+                if not exc.retryable:
+                    raise  # ۴۰۱ و اشکال‌های ساختاری — تعویض مدل بی‌فایده است
+                # رفرش اجباری فهرست پس از شکست (یعنی مدل پولی/حذف‌شده شده)
+                free = self.fetch_active_free_models(force_refresh=True)
+                # ادغام: مدل‌های تازه‌کشف‌شده اولویت دارند؛ سپس بقیهٔ صف؛ بدون تکرار
+                merged = [m for m in free if m not in attempted] + [m for m in queue if m not in attempted]
+                queue = list(dict.fromkeys(merged))
+                upcoming = queue[0] if queue else None
+                print(f"[OpenRouter Dynamic Fallback] Switched from {current} to {upcoming}")
+
+        raise AIProviderError(
+            f"همهٔ تلاش‌ها برای فراخوانی OpenRouter شکست خورد ({len(attempted)} مدل امتحان شد). "
+            f"آخرین خطا: {last_error}",
+            retryable=True,
         )
 
 
