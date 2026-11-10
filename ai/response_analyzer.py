@@ -21,6 +21,14 @@ from config import settings
 from models.question import EvidenceStatus
 from ai.model_abstraction import get_router
 from ai.json_sanitize import extract_json_object
+from reports.fa_map import (
+    normalize_dimension,
+    normalize_exam_type,
+    fa_text,
+    dimension_fallback,
+    feedback_fallback,
+    suggestion_fallback,
+)
 
 _VALID_STATUS = {s.value for s in EvidenceStatus}
 _VALID_EVIDENCE_TYPES = {
@@ -325,11 +333,19 @@ _EXAM_PROMPT = """شما «متخصص ارشد تشخیص آموزشیِ سخت�
      * فقط غلط علمی روشن (تضاد با مبانی) → NEEDS_REVIEW؛ دقیقاً بنویسید دانش‌آموز به اشتباه تصور می‌کند که …
      * UNCLEAR فقط برای بی‌ربط/نامفهوم.
    - error_type: conceptual | computational | misreading | none
-   - qualitative_feedback: ۱ تا ۳ جملهٔ مستقیم؛ چه چیزی درست/غلط است و چرا (متنِ دقیق برای معلم و دانش‌آموز).
-4. "dimension_findings": ۴ تا ۶ بُعد فهم (مثلاً «فهم مفهومی/علّی»، «کاربرد واقعی»، «خواندن نمودار و داده»، «ردیابی بدفهمی شایع»، «رویهٔ حل‌سازی»، «تعریف و مرزبندی مفهوم») با status و finding یک‌جمله‌ای.
-5. "root_cause_hypotheses": ریشه‌های احتمالی در دروس پایه/ریاضی (مثلاً «ضعف در نسبت و تناسب (ریاضی پایهٔ ۷-۹)») یا بدفهمیِ بنیادینِ مفهومی؛ به‌ترتیب احتمال.
-6. "improvement_suggestions": ۴ تا ۶ راهکار عملی و متن‌محور (بدون نمره/رتبه/درصد)؛ ابتدا مرور پیش‌نیازها، سپس تمرین هدفمند.
-7. هیچ نمره، رتبه، درصد یا مقایسه‌ای ننویسید. تحلیل کیفیِ مستقیم و قاطع.
+   - qualitative_feedback: ۱ تا ۳ جملهٔ مستقیم به فارسی؛ چه چیزی درست/غلط است و چرا (متنِ دقیق برای معلم و دانش‌آموز). هرگز انگلیسی ننویسید.
+4. تمام عناوین، توضیحات، استدلال‌ها، بازخوردها، ریشه‌ها و پیشنهادها باید ۱۰۰٪ به زبان فارسی روان و اصیلِ آموزشی نگاشته شوند. تحت هیچ شرایطی از کلمات، عناوین یا جملات انگلیسی در خروجی JSON استفاده نکن؛ حتی در نام ابعاد. فرمول‌ها و نمادهای علمی کوتاه (مانند I = V/R) استثنا هستند.
+5. "dimension_findings": دقیقاً ۶ بُعد زیر را با همین نام‌های فارسی و به همین ترتیب برگردان:
+   - «درک مفهومی و علّی»
+   - «کاربرد در دنیای واقعی»
+   - «مهارت‌های کمی و محاسباتی»
+   - «بازنمایی نموداری و تصویری»
+   - «مواجهه با تله‌ها و بدفهمی‌ها»
+   - «شفافیت بیان و خودپایشی»
+   هر کدام با status و finding یک‌جمله‌ایِ فارسی.
+6. "root_cause_hypotheses": ریشه‌های احتمالی در دروس پایه/ریاضی (مثلاً «ضعف در نسبت و تناسب (ریاضی پایهٔ ۷-۹)») یا بدفهمیِ بنیادینِ مفهومی؛ به‌ترتیب احتمال؛ area و reasoning حتماً فارسی باشند.
+7. "improvement_suggestions": ۴ تا ۶ راهکار عملی و متن‌محور به فارسی (بدون نمره/رتبه/درصد)؛ ابتدا مرور پیش‌نیازها، سپس تمرین هدفمند.
+8. هیچ نمره، رتبه، درصد یا مقایسه‌ای ننویسید. تحلیل کیفیِ مستقیم و قاطع. خروجی اگر حتی یک عنوان/جملهٔ انگلیسی داشته باشد نامعتبر است.
 
 خروجی دقیقاً این ساختار:
 {{
@@ -346,7 +362,12 @@ _EXAM_PROMPT = """شما «متخصص ارشد تشخیص آموزشیِ سخت�
     }}
   ],
   "dimension_findings": [
-    {{"dimension": "فهم مفهومی/علّی", "status": "...", "finding": "یک جمله"}}
+    {{"dimension": "درک مفهومی و علّی", "status": "...", "finding": "یک جملهٔ فارسی"}},
+    {{"dimension": "کاربرد در دنیای واقعی", "status": "...", "finding": "یک جملهٔ فارسی"}},
+    {{"dimension": "مهارت‌های کمی و محاسباتی", "status": "...", "finding": "یک جملهٔ فارسی"}},
+    {{"dimension": "بازنمایی نموداری و تصویری", "status": "...", "finding": "یک جملهٔ فارسی"}},
+    {{"dimension": "مواجهه با تله‌ها و بدفهمی‌ها", "status": "...", "finding": "یک جملهٔ فارسی"}},
+    {{"dimension": "شفافیت بیان و خودپایشی", "status": "...", "finding": "یک جملهٔ فارسی"}}
   ],
   "root_cause_hypotheses": [
     {{"area": "…", "reasoning": "چرا این ریشه محتمل است", "cross_subject": false}}
@@ -467,32 +488,40 @@ async def analyze_exam(concept_name: str, propositions: list[str], items: list[d
 
     # ── نرمال‌سازی ابعاد و ریشه‌ها و پیشنهادها ──
     dimensions = []
+    seen_dims = set()
     for d in (data.get("dimension_findings") or []):
         if not isinstance(d, dict):
             continue
-        dim = str(d.get("dimension") or "").strip()
-        finding = _strip_hedges(str(d.get("finding") or "").strip())
-        if not dim or not finding:
-            continue
+        dim = normalize_dimension(d.get("dimension"))
+        raw_finding = _strip_hedges(str(d.get("finding") or "").strip())
         status = str(d.get("status") or "UNCLEAR").upper().strip()
-        if _has_decisive_misconception_marker(finding + " " + dim):
+        if _has_decisive_misconception_marker(raw_finding + " " + dim):
             status = EvidenceStatus.NEEDS_REVIEW.value
         elif status not in _VALID_STATUS:
             status = EvidenceStatus.UNCLEAR.value
+        finding = fa_text(raw_finding, dimension_fallback(status))
+        if not finding:
+            finding = dimension_fallback(status)
+        key = dim.strip()
+        if key in seen_dims:
+            continue
+        seen_dims.add(key)
         dimensions.append({"dimension": dim, "status": status, "finding": finding})
 
     root_causes = []
     for h in (data.get("root_cause_hypotheses") or []):
         if not isinstance(h, dict):
             continue
-        area = str(h.get("area") or "").strip()
+        area = fa_text(h.get("area"), "پیش‌نیازها و مفاهیم پایه")
         reasoning = _strip_hedges(str(h.get("reasoning") or "").strip())
+        reasoning = fa_text(reasoning, "الگوی خطا نشان می‌دهد این پیش‌نیاز نیاز به مرور مستقیم دارد.")
         if not area:
             continue
         root_causes.append({"area": area, "reasoning": reasoning, "cross_subject": bool(h.get("cross_subject", False))})
 
     suggestions = [
-        _strip_hedges(str(x).strip()) for x in (data.get("improvement_suggestions") or [])
+        fa_text(_strip_hedges(str(x).strip()), suggestion_fallback())
+        for x in (data.get("improvement_suggestions") or [])
         if str(x).strip()
     ][:6]
     if not suggestions:
@@ -533,6 +562,8 @@ def _decisive_or_clear_record(item: dict[str, Any], fallback_prop: str) -> dict[
         status, confidence, needs_review = EvidenceStatus.NEEDS_REVIEW.value, max(confidence, 0.9), False
     else:
         needs_review = bool(item.get("needs_teacher_review", False))
+    reasoning = fa_text(reasoning, feedback_fallback(status))
+    feedback = fa_text(feedback or reasoning, feedback_fallback(status))
     return {
         "proposition_id": str(item.get("proposition_id") or fallback_prop).strip() or fallback_prop,
         "status": status,

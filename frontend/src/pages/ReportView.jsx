@@ -51,6 +51,144 @@ const EXAM_TYPE_TITLES = {
   misconception_trap: 'تلهٔ بدفهمی',
   computational: 'محاسباتی/رویه‌ای',
   definitional: 'حفظی/تعریفی',
+  novel_application: 'کاربرد نو',
+  phenomenon_explain: 'تبیین پدیده',
+  compare_explanations: 'مقایسهٔ تبیین‌ها',
+  predict: 'پیش‌بینی',
+  categorize: 'دسته‌بندی',
+  error_identify: 'شناسایی خطا',
+  // اگر بک‌اند عنوانِ فارسیِ آماده بدهد، همان نمایش داده می‌شود
+  'مفهومی/استدلالی': 'مفهومی/استدلالی',
+  'کاربرد واقعی': 'کاربرد واقعی',
+  'نموداری/شکلی': 'نموداری/شکلی',
+  'تلهٔ بدفهمی': 'تلهٔ بدفهمی',
+  'محاسباتی/رویه‌ای': 'محاسباتی/رویه‌ای',
+  'حفظی/تعریفی': 'حفظی/تعریفی',
+}
+
+// ── نگاشت دفاعی عناوین/متون انگلیسیِ احتمالی به فارسی (UI هرگز انگلیسی نشان نمی‌دهد) ──
+const DIMENSION_FA = {
+  'Conceptual/Causal Understanding': 'درک مفهومی و علّی',
+  'Conceptual-Causal Understanding': 'درک مفهومی و علّی',
+  'Conceptual Causal Understanding': 'درک مفهومی و علّی',
+  'Conceptual Understanding': 'درک مفهومی و علّی',
+  'Causal Understanding': 'درک مفهومی و علّی',
+  'فهم مفهومی/علّی': 'درک مفهومی و علّی',
+  'فهم مفهومی و علّی': 'درک مفهومی و علّی',
+  'درک مفهومی/علّی': 'درک مفهومی و علّی',
+  'Real-World Application': 'کاربرد در دنیای واقعی',
+  'Real World Application': 'کاربرد در دنیای واقعی',
+  'Real-world application': 'کاربرد در دنیای واقعی',
+  'Application in the Real World': 'کاربرد در دنیای واقعی',
+  'Practical Application': 'کاربرد در دنیای واقعی',
+  'کاربرد واقعی': 'کاربرد در دنیای واقعی',
+  'کاربرد عملی': 'کاربرد در دنیای واقعی',
+  'Quantitative and Computational Skills': 'مهارت‌های کمی و محاسباتی',
+  'Quantitative/Computational Skills': 'مهارت‌های کمی و محاسباتی',
+  'Quantitative Skills': 'مهارت‌های کمی و محاسباتی',
+  'Computational Skills': 'مهارت‌های کمی و محاسباتی',
+  'Computational Procedure': 'مهارت‌های کمی و محاسباتی',
+  'Numerical Computation': 'مهارت‌های کمی و محاسباتی',
+  'رویهٔ حل‌سازی': 'مهارت‌های کمی و محاسباتی',
+  'مهارت محاسباتی': 'مهارت‌های کمی و محاسباتی',
+  'Diagram/Visual Representation': 'بازنمایی نموداری و تصویری',
+  'Visual Representation': 'بازنمایی نموداری و تصویری',
+  'Diagrammatic Representation': 'بازنمایی نموداری و تصویری',
+  'Graph Reading': 'بازنمایی نموداری و تصویری',
+  'Chart Reading': 'بازنمایی نموداری و تصویری',
+  'Diagram Interpretation': 'بازنمایی نموداری و تصویری',
+  'خواندن نمودار و داده': 'بازنمایی نموداری و تصویری',
+  'نموداری': 'بازنمایی نموداری و تصویری',
+  'Misconception Trap': 'مواجهه با تله‌ها و بدفهمی‌ها',
+  'Misconception Traps': 'مواجهه با تله‌ها و بدفهمی‌ها',
+  'Common Misconceptions': 'مواجهه با تله‌ها و بدفهمی‌ها',
+  'Misconceptions': 'مواجهه با تله‌ها و بدفهمی‌ها',
+  'Identifying Misconceptions': 'مواجهه با تله‌ها و بدفهمی‌ها',
+  'ردیابی بدفهمی شایع': 'مواجهه با تله‌ها و بدفهمی‌ها',
+  'ردیابی بدفهمی‌های رایج': 'مواجهه با تله‌ها و بدفهمی‌ها',
+  'تلهٔ بدفهمی': 'مواجهه با تله‌ها و بدفهمی‌ها',
+  'تله‌های بدفهمی': 'مواجهه با تله‌ها و بدفهمی‌ها',
+  'Clarity of Explanation': 'شفافیت بیان و خودپایشی',
+  'Clarity and Self-monitoring': 'شفافیت بیان و خودپایشی',
+  'Clarity and Self-Monitoring': 'شفافیت بیان و خودپایشی',
+  'Self-monitoring': 'شفافیت بیان و خودپایشی',
+  'Self Monitoring': 'شفافیت بیان و خودپایشی',
+  'Metacognitive Clarity': 'شفافیت بیان و خودپایشی',
+  'Expression Clarity': 'شفافیت بیان و خودپایشی',
+  'شفافیت بیان': 'شفافیت بیان و خودپایشی',
+  'خودپایشی': 'شفافیت بیان و خودپایشی',
+}
+
+const _faDire = /[؀-ۿﭐ-﷿ﹰ-﻿]/g
+const _enWord = /[A-Za-z]{4,}/g
+
+const faKey = (text) => String(text ?? '').trim().toLowerCase().replace(/[‌\s\-_/|:،؛٬–—]/g, '')
+
+const faAliasLookup = (text) => {
+  const raw = String(text ?? '').trim()
+  if (!raw) return null
+  if (DIMENSION_FA[raw]) return DIMENSION_FA[raw]
+  const key = faKey(raw)
+  const entries = Object.entries(DIMENSION_FA).sort((a, b) => faKey(b[0]).length - faKey(a[0]).length)
+  for (const [alias, target] of entries) {
+    if (faKey(alias) === key) return target
+  }
+  for (const [alias, target] of entries) {
+    const a = faKey(alias)
+    if (a.length >= 6 && key.includes(a)) return target
+  }
+  return null
+}
+
+const latinHeavy = (text) => {
+  const s = String(text ?? '')
+  const fa = (s.match(_faDire) || []).length
+  const en = (s.match(_enWord) || []).join('').length
+  return en >= 8 && en > fa
+}
+
+const validBadgeStatus = (status) =>
+  ['CONFIRMED', 'LIKELY_UNDERSTOOD', 'UNCLEAR', 'NEEDS_REVIEW', 'INSUFFICIENT_EVIDENCE', 'completed', 'active', 'paused'].includes(status)
+    ? status
+    : 'UNCLEAR'
+
+const faDimension = (name) => {
+  const hit = faAliasLookup(name)
+  if (hit) return hit
+  const s = String(name ?? '').trim()
+  return latinHeavy(s) ? 'بُعد فهم' : (s || 'بُعد فهم')
+}
+
+const dimensionFallback = (status) => {
+  const st = String(status ?? '').toUpperCase()
+  if (st === 'NEEDS_REVIEW') return 'در این بُعد نشانه‌های بدفهمی دیده شد؛ معلم باید با نمونه‌نقض، استدلال دانش‌آموز را بازسازی کند.'
+  if (st === 'CONFIRMED') return 'این بُعد در پاسخ‌ها با استدلال روشن ثبت شده است.'
+  if (st === 'LIKELY_UNDERSTOOD') return 'هستهٔ این بُعد به نظر می‌رسد درست باشد، اما بیان باید کامل‌تر شود.'
+  if (st === 'INSUFFICIENT_EVIDENCE') return 'در این بُعد پاسخ کافی برای داوری ثبت نشده است.'
+  return 'در این بُعد پاسخ روشن و قاطع نیست؛ معلم باید با پرسش راهنما ادامه را بررسی کند.'
+}
+
+const feedbackFallback = (status) => {
+  const st = String(status ?? '').toUpperCase()
+  if (st === 'NEEDS_REVIEW') return 'در این پاسخ تناقض علمی روشن دیده می‌شود؛ دانش‌آموز باید همان استدلال را با نمونه‌نقض بازسازی کند.'
+  if (st === 'CONFIRMED') return 'این پاسخ با مبانی علمی سازگار است و استدلال علّی روشن دارد.'
+  if (st === 'LIKELY_UNDERSTOOD') return 'هستهٔ پاسخ درست است، اما دلیل و مرزبندی آن باید کامل‌تر بیان شود.'
+  if (st === 'INSUFFICIENT_EVIDENCE') return 'برای این پاسخ شواهد کافی ثبت نشده است.'
+  return 'این پاسخ دلیل روشن و قابل اتکا ندارد؛ معلم باید با پرسش راهنما فهم دانش‌آموز را روشن کند.'
+}
+
+const faText = (text, fallbackFa) => {
+  const s = String(text ?? '').trim()
+  if (!s) return fallbackFa
+  return latinHeavy(s) ? fallbackFa : s
+}
+
+const faSuggestion = (text) =>
+  faText(text, 'پیش‌نیازها را مرور کنید و برای هر بدفهمیِ شناسایی‌شده یک مثال نقض ساده طراحی و بلند بلند توضیح دهید.')
+
+const faExamType = (t) => {
+  const raw = String(t ?? '').trim()
+  return EXAM_TYPE_TITLES[raw] || (latinHeavy(raw) ? 'تحلیلی' : raw || '—')
 }
 
 function ExamReport({ report, mode }) {
@@ -109,10 +247,10 @@ function ExamReport({ report, mode }) {
         <div className="grid gap-2 md:grid-cols-2">
           {dimensions.map((d, i) => (
             <div key={i} className="flex items-start gap-3 rounded-2xl border border-teal-100 bg-white/80 p-4">
-              <Badge status={d.status} className="mt-0.5 shrink-0" />
+              <Badge status={validBadgeStatus(d.status)} className="mt-0.5 shrink-0" />
               <div className="min-w-0">
-                <p className="text-[13px] font-black text-brand-950">{d.dimension}</p>
-                <p className="mt-1 text-[12px] leading-6 text-slate-600">{d.finding}</p>
+                <p className="text-[13px] font-black text-brand-950">{faDimension(d.dimension)}</p>
+                <p className="mt-1 text-[12px] leading-6 text-slate-600">{faText(d.finding, dimensionFallback(d.status))}</p>
               </div>
             </div>
           ))}
@@ -127,9 +265,9 @@ function ExamReport({ report, mode }) {
             <article key={i} className="overflow-hidden rounded-2xl border border-brand-100/70 bg-white/80">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-50 bg-brand-50/40 px-4 py-2.5">
                 <p className="text-[12px] font-black text-brand-800">
-                  سؤال {q.order ?? i + 1} <span className="font-medium text-slate-400">· {EXAM_TYPE_TITLES[q.exam_type] ?? q.exam_type ?? '—'}</span>
+                  سؤال {q.order ?? i + 1} <span className="font-medium text-slate-400">· {faExamType(q.exam_type)}</span>
                 </p>
-                <Badge status={q.status} />
+                <Badge status={validBadgeStatus(q.status)} />
               </div>
               <div className="px-4 py-3">
                 {q.question_text && (
@@ -144,7 +282,7 @@ function ExamReport({ report, mode }) {
                   </details>
                 )}
                 <p className="mt-2 border-r-2 border-brand-200 pr-3 text-[13px] leading-8 text-brand-950">
-                  {q.qualitative_feedback}
+                  {faText(q.qualitative_feedback, feedbackFallback(q.status))}
                 </p>
               </div>
             </article>
@@ -164,12 +302,12 @@ function ExamReport({ report, mode }) {
             {rootCauses.map((rc, i) => (
               <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 p-4">
                 <p className="flex flex-wrap items-center gap-2 text-[13px] font-black text-amber-950">
-                  <span className="font-black text-amber-500">{i + 1}.</span> {rc.area}
+                  <span className="font-black text-amber-500">{i + 1}.</span> {faText(rc.area, 'پیش‌نیازها و مفاهیم پایه')}
                   {rc.cross_subject && (
                     <span className="chip bg-amber-100 text-amber-800 ring-1 ring-amber-200">بین‌درسی</span>
                   )}
                 </p>
-                {rc.reasoning && <p className="mt-1.5 pr-6 text-[12px] leading-7 text-amber-900/90">{rc.reasoning}</p>}
+                {rc.reasoning && <p className="mt-1.5 pr-6 text-[12px] leading-7 text-amber-900/90">{faText(rc.reasoning, 'این پیش‌نیاز نیاز به مرور مستقیم دارد.')}</p>}
               </li>
             ))}
           </ol>
@@ -182,7 +320,7 @@ function ExamReport({ report, mode }) {
           {suggestions.map((sug, i) => (
             <li key={i} className="flex items-start gap-2.5 rounded-2xl border border-brand-50 bg-brand-50/40 px-4 py-3 text-[13px] leading-7 text-brand-950">
               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-700 text-[11px] font-black text-white">{i + 1}</span>
-              {sug}
+              {faSuggestion(sug)}
             </li>
           ))}
         </ol>
@@ -204,11 +342,11 @@ function ExamReport({ report, mode }) {
           <div className="max-h-96 space-y-2 overflow-auto">
             {report.evidence_log.map((entry, i) => (
               <div key={i} className="rounded-xl border border-slate-100 bg-white p-3 text-[11px] leading-6 text-slate-600">
-                <p className="font-black text-slate-500">سؤال {entry.order ?? i + 1} ({EXAM_TYPE_TITLES[entry.exam_type] ?? entry.exam_type ?? '—'}) — #{entry.question_id}</p>
+                <p className="font-black text-slate-500">سؤال {entry.order ?? i + 1} ({faExamType(entry.exam_type)}) — #{entry.question_id}</p>
                 <p className="mt-0.5 line-clamp-2">{entry.response}</p>
                 <div className="mt-1 flex flex-wrap gap-1">
                   {(entry.evidence ?? []).map((ev, j) => (
-                    <Badge key={j} status={ev.status} />
+                    <Badge key={j} status={validBadgeStatus(ev.status)} />
                   ))}
                 </div>
               </div>
@@ -427,7 +565,7 @@ export default function ReportView({ mode = 'student' }) {
                       <p className="mt-0.5 line-clamp-2">{entry.response}</p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {(entry.evidence ?? []).map((ev, j) => (
-                          <Badge key={j} status={ev.status} />
+                          <Badge key={j} status={validBadgeStatus(ev.status)} />
                         ))}
                       </div>
                     </div>

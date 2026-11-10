@@ -512,17 +512,22 @@ class MockProvider(AIProvider):
                 "qualitative_feedback": reasoning,
             })
         wrong = sum(1 for q in per_question if q["status"] == "NEEDS_REVIEW")
+        def _first_status(i: int) -> str:
+            return per_question[i]["status"] if len(per_question) > i else "UNCLEAR"
+
         dimensions = [
-            {"dimension": "فهم مفهومی/علّی", "status": per_question[0]["status"] if per_question else "UNCLEAR",
-             "finding": "بر اساس پاسخ‌های تشریحیِ بخش مفهومی"},
-            {"dimension": "کاربرد در دنیای واقعی", "status": per_question[1]["status"] if len(per_question) > 1 else "UNCLEAR",
-             "finding": "بر اساس سناریوهای گارگاهی/واقعی"},
-            {"dimension": "خواندن نمودار و داده", "status": per_question[2]["status"] if len(per_question) > 2 else "UNCLEAR",
-             "finding": "بر اساس سؤالات نموداری"},
-            {"dimension": "ردیابی بدفهمی‌های رایج", "status": per_question[3]["status"] if len(per_question) > 3 else "UNCLEAR",
-             "finding": "بر اساس تلهٔ بدفهمی"},
-            {"dimension": "رویهٔ حل‌سازی", "status": per_question[4]["status"] if len(per_question) > 4 else "UNCLEAR",
-             "finding": "بر اساس سؤال محاسباتی"},
+            {"dimension": "درک مفهومی و علّی", "status": _first_status(0),
+             "finding": "بر اساس پاسخ‌های تشریحیِ بخش مفهومی نوشته شد."},
+            {"dimension": "کاربرد در دنیای واقعی", "status": _first_status(1),
+             "finding": "بر اساس سناریوهای کارگاهی و زندگی واقعی نوشته شد."},
+            {"dimension": "مهارت‌های کمی و محاسباتی", "status": _first_status(4),
+             "finding": "بر اساس سؤال محاسباتی و گام‌های حل نوشته شد."},
+            {"dimension": "بازنمایی نموداری و تصویری", "status": _first_status(2),
+             "finding": "بر اساس سؤال نموداری و خواندن محورها نوشته شد."},
+            {"dimension": "مواجهه با تله‌ها و بدفهمی‌ها", "status": _first_status(3),
+             "finding": "بر اساس تلهٔ بدفهمی شایع نوشته شد."},
+            {"dimension": "شفافیت بیان و خودپایشی", "status": _first_status(5),
+             "finding": "بر اساس شفافیت تعریف و بیان دانش‌آموز نوشته شد."},
         ]
         root_causes = [
             {"area": "نسبت و تناسب (ریاضی پایهٔ ۷ تا ۹)",

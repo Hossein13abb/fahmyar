@@ -15,6 +15,14 @@ from sqlalchemy.orm import Session
 
 from models.concept import Concept
 from models.question import AssessmentSession, EvidenceStatus, STATUS_FA
+from reports.fa_map import (
+    normalize_dimension,
+    normalize_exam_type,
+    fa_text,
+    dimension_fallback,
+    feedback_fallback,
+    suggestion_fallback,
+)
 
 _TYPE_ORDER = {"conceptual": 1, "real_world": 2, "diagram": 3, "misconception_trap": 4, "computational": 5, "definitional": 6}
 
@@ -29,14 +37,18 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
         per_question.append({
             "question_id": entry.get("question_id"),
             "order": entry.get("order"),
-            "exam_type": entry.get("exam_type") or record.get("exam_type"),
+            "exam_type": normalize_exam_type(entry.get("exam_type") or record.get("exam_type")),
+            "exam_type_raw": entry.get("exam_type") or record.get("exam_type"),
             "question_text": entry.get("question_text") or record.get("question_text") or "",
             "status": record.get("status", EvidenceStatus.UNCLEAR.value),
             "evidence_type": record.get("evidence_type"),
             "error_type": record.get("error_type", "none"),
             "response": entry.get("response", ""),
-            "reasoning": record.get("reasoning", ""),
-            "qualitative_feedback": record.get("qualitative_feedback") or record.get("reasoning") or "",
+            "reasoning": fa_text(record.get("reasoning", ""), feedback_fallback(record.get("status", ""))),
+            "qualitative_feedback": fa_text(
+                record.get("qualitative_feedback") or record.get("reasoning") or "",
+                feedback_fallback(record.get("status", "")),
+            ),
             "confidence": record.get("confidence", 0.0),
             "needs_teacher_review": bool(record.get("needs_teacher_review", False)),
         })
@@ -59,6 +71,25 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
                        "finding": "تحلیل ابعادی انجام نشد؛ معلم باید شخصاً بررسی کند."}]
     if not suggestions:
         suggestions = ["معلم باید بر اساس پاسخ‌ها مسیر مرور را شخصاً تعیین کند."]
+
+    norm_dimensions = []
+    for d in dimensions:
+        if not isinstance(d, dict):
+            continue
+        st = str(d.get("status") or EvidenceStatus.UNCLEAR.value).upper()
+        norm_dimensions.append({
+            "dimension": normalize_dimension(d.get("dimension")),
+            "status": st if st in STATUS_FA else EvidenceStatus.UNCLEAR.value,
+            "finding": fa_text(d.get("finding"), dimension_fallback(st)),
+        })
+    dimensions = norm_dimensions
+    root_causes = [
+        {"area": fa_text(r.get("area"), "پیش‌نیازها و مفاهیم پایه"),
+         "reasoning": fa_text(r.get("reasoning"), "این پیش‌نیاز نیاز به مرور مستقیم دارد."),
+         "cross_subject": bool(r.get("cross_subject", False))}
+        for r in root_causes
+    ]
+    suggestions = [fa_text(x, suggestion_fallback()) for x in suggestions]
 
     dimension_lines = [
         f"«{d['dimension']}» — {STATUS_FA.get(d['status'], d['status'])}: {d['finding']}" for d in dimensions
