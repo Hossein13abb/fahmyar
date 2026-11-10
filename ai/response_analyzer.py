@@ -39,7 +39,7 @@ _VALID_EVIDENCE_TYPES = {
     "weak_contradicting",
     "strong_contradicting",
 }
-_VALID_ERROR_TYPES = {"conceptual", "computational", "misreading", "none"}
+_VALID_ERROR_TYPES = {"conceptual", "computational", "misreading", "none", "lack_of_knowledge"}
 
 
 @dataclass
@@ -129,6 +129,50 @@ def _has_decisive_misconception_marker(text: str) -> bool:
     scrubbed = _NEGATION_SCRUB_RE.sub("", text or "")  # «هیچ تضادی/اشتباهی …» بدفهمی نیست
     low = scrubbed.lower()
     return any(marker.lower() in low for marker in _MISCONCEPTION_MARKERS)
+
+
+# ── اعلام صریحِ «نمی‌دانم» = ذهنِ خالی از این مفهوم، نه «شواهد ناکافی» ──
+_LACK_OF_KNOWLEDGE_MARKERS = (
+    "نمی‌دانم", "نمیدانم", "نمیدونم", "نمی دونم",
+    "بلد نیستم", "بلد نیستم‌", "بلد نمی‌باشم", "بلد نیسم", "بلد نیستم ها",
+    "اطلاعی ندارم", "اطلاع ندارم", "هیچ اطلاعی ندارم", "هیچ اطلاعاتی ندارم",
+    "یادم نیست", "یادم نمیاد", "یادم نمی‌آید", "یادم نمییاد", "یادم نمیاد هیچ",
+    "نخوندم", "نخواندم", "نخونده بودم", "یاد نگرفته‌ام", "یاد نگرفتم",
+    "آموزش ندیدم", "آموخته نشده", "آموخته نشده بود",
+    "فراموش کردم", "فراموشم شده", "فراموشم",
+    "نمی‌فهمم", "نمیفهمم", "نمی فهمم چیزی",
+    "تسلط ندارم", "هیچی نمی‌دانم", "هیچ نمی‌دانم", "چیزی بلد نیستم",
+)
+_LACK_OF_KNOWLEDGE_FEEDBACK = (
+    "دانش‌آموز اعلام کرده که این مفهوم را درک نکرده یا آموزش ندیده است "
+    "و نیازمند یادگیری از صفر می‌باشد."
+)
+
+
+def _compact(text: Any) -> str:
+    """فاصله‌ها و نیم‌فاصله‌ها را حذف می‌کند تا «نمی دانم» و «نمی‌دانم» یکی شمرده شوند."""
+    return re.sub(r"[\s\u200c\u200d]+", "", str(text or ""))
+
+
+def _lacks_knowledge(text: str) -> bool:
+    """آیا پاسخِ خودِ دانش‌آموز صریحاً اعلام عدمِ دانش است؟"""
+    t = _compact(text)
+    if not t:
+        return False
+    return any(_compact(m) in t for m in _LACK_OF_KNOWLEDGE_MARKERS)
+
+
+def _apply_lack_of_knowledge(record: dict[str, Any], response_text: str) -> dict[str, Any]:
+    """پاسخ «نمی‌دانم» ⇒ ذهن خالی از این مفهوم ⇒ NEEDS_REVIEW قطعی (هرگز INSUFFICIENT_EVIDENCE/UNCLEAR نه)."""
+    if not _lacks_knowledge(response_text):
+        return record
+    record["status"] = EvidenceStatus.NEEDS_REVIEW.value
+    record["error_type"] = "lack_of_knowledge"
+    record["needs_teacher_review"] = False       # وضعیت روشن است؛ تصمیم با معلم و داوری انسانی است اما شواهد کافی و قاطع داریم
+    record["qualitative_feedback"] = _LACK_OF_KNOWLEDGE_FEEDBACK
+    record["reasoning"] = _LACK_OF_KNOWLEDGE_FEEDBACK
+    record["confidence"] = max(float(record.get("confidence") or 0.0), 0.9)
+    return record
 
 
 _HEDGE_WORDS = ("به نظر می‌رسد", "شاید", "ممکن است", "به‌نوعی", "تا حدی")
@@ -425,18 +469,21 @@ async def analyze_exam(concept_name: str, propositions: list[str], items: list[d
         # بدنه‌اش خراب است — متن خام را عیناً در هر سؤالِ بی‌جواب می‌نشانیم
         body = _clean_raw_text(raw_text) if raw_text else "تحلیل‌گر خودکار خروجی نداد؛ جلسه برای معلم محفوظ است."
         per_question = [
-            {
-                **_decisive_or_clear_record(
-                    {"question_id": i.get("question_id"), "reasoning": body, "confidence": 0.0,
-                     "error_type": "none", "evidence_type": "weak_confirming",
-                     "needs_teacher_review": True, "qualitative_feedback": body},
-                    str((i.get("mapped_propositions") or [f"سؤال #{i.get('question_id')}"])[0]),
-                ),
-                "question_id": i.get("question_id"),
-                "order": i.get("order"),
-                "exam_type": i.get("exam_type"),
-                "question_text": str(i.get("text") or "").strip(),
-            }
+            _apply_lack_of_knowledge(
+                {
+                    **_decisive_or_clear_record(
+                        {"question_id": i.get("question_id"), "reasoning": body, "confidence": 0.0,
+                         "error_type": "none", "evidence_type": "weak_confirming",
+                         "needs_teacher_review": True, "qualitative_feedback": body},
+                        str((i.get("mapped_propositions") or [f"سؤال #{i.get('question_id')}"])[0]),
+                    ),
+                    "question_id": i.get("question_id"),
+                    "order": i.get("order"),
+                    "exam_type": i.get("exam_type"),
+                    "question_text": str(i.get("text") or "").strip(),
+                },
+                str(i.get("response_text") or ""),
+            )
             for i in items
         ]
         return {
@@ -464,6 +511,7 @@ async def analyze_exam(concept_name: str, propositions: list[str], items: list[d
         src = by_id.get(qid) or {}
         prop = str((src.get("mapped_propositions") or [f"سؤال #{qid}"])[0])
         record = _decisive_or_clear_record(q, prop)
+        _apply_lack_of_knowledge(record, str(src.get("response_text") or ""))
         record["question_id"] = qid
         record["order"] = src.get("order")
         record["exam_type"] = src.get("exam_type")
@@ -476,7 +524,7 @@ async def analyze_exam(concept_name: str, propositions: list[str], items: list[d
         qid = i.get("question_id")
         if qid not in covered:
             body = "پاسخی برای این سؤال ثبت نشد یا تحلیل‌گر آن را پوشش نداد."
-            per_question.append({
+            per_question.append(_apply_lack_of_knowledge({
                 "proposition_id": str((i.get("mapped_propositions") or [f"سؤال #{qid}"])[0]),
                 "status": EvidenceStatus.INSUFFICIENT_EVIDENCE.value,
                 "evidence_type": "weak_confirming",
@@ -489,7 +537,7 @@ async def analyze_exam(concept_name: str, propositions: list[str], items: list[d
                 "order": i.get("order"),
                 "exam_type": i.get("exam_type"),
                 "question_text": str(i.get("text") or "").strip(),
-            })
+            }, str(i.get("response_text") or "")))
     per_question.sort(key=lambda q: (q.get("order") or 999))
 
     # ── نرمال‌سازی ابعاد و ریشه‌ها و پیشنهادها ──

@@ -16,9 +16,10 @@ const STATUS = {
     dot: 'bg-amber-400',
   },
   NEEDS_REVIEW: {
-    label: '⚠️ بدفهمی شناسایی‌شده',
-    cls: 'bg-orange-50 text-orange-800 ring-1 ring-orange-200',
-    dot: 'bg-orange-400',
+    // هم بدفهمی روشن است و هم عدمِ دانش (ذهنِ خالی) — هر دو یک معنا دارند: نیاز به آموزشِ ریشه‌ای
+    label: '⚠️ عدم درک / نیازمند آموزش',
+    cls: 'bg-orange-100 text-orange-900 ring-1 ring-orange-300',
+    dot: 'bg-orange-500',
   },
   INSUFFICIENT_EVIDENCE: {
     label: '⚪ پاسخ داده نشده / شواهد ناکافی',
