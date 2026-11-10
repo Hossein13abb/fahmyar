@@ -118,6 +118,17 @@ _extract_json = extract_json_object
 
 
 
+def _stringify_item(item) -> str:
+    """گزاره/بدفهمی ممکن است متن ساده یا دیکشنریِ غنی باشد — همیشه رشتهٔ خوانا برمی‌گرداند."""
+    if isinstance(item, dict):
+        for key in ("misconception", "text", "label", "proposition", "root_cause", "description"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return json.dumps(item, ensure_ascii=False)
+    return str(item or "").strip()
+
+
 _BOOKLET_PROMPT = """شما «متخصص طراحی آزمون تشخیصی» فهم‌یار هستید. برای مفهوم «{concept}» ({subject} — پایهٔ {grade}) یک دفترچهٔ آزمون تشخیصی ۹ سؤالی بسازید.
 
 هدف: سنجش «فهمیدن» — نه حفظ کردن. هر ۹ سؤال باید دقیقاً این ابعاد را پوشش دهند (به همین ترتیب):
@@ -164,8 +175,10 @@ _BOOKLET_PROMPT = """شما «متخصص طراحی آزمون تشخیصی» ف
 
 def _booklet_items_to_questions(concept, items, model_name: str, cost: float) -> list["Question"]:
     """اعتبارسنجی و ساخت اشیای Question دفترچه."""
-    propositions = list(concept.core_propositions or [])
-    misconceptions = list(concept.common_misconceptions or [])
+    propositions = [_stringify_item(p) for p in (concept.core_propositions or [])]
+    propositions = [p for p in propositions if p]
+    misconceptions = [_stringify_item(m) for m in (concept.common_misconceptions or [])]
+    misconceptions = [m for m in misconceptions if m]
     fallback_prop = propositions[0] if propositions else "گزارهٔ هدف"
     questions = []
     for raw in items:
@@ -218,8 +231,10 @@ async def generate_test_booklet(concept, wrong_answer: dict | None = None) -> tu
     خروجی: (فهرست Questionهای ذخیره‌نشده, model_name, cost_usd)
     در شکستِ کاملِ مدل، یک دفترچهٔ اضطراریِ حداقلی از الگوهای قطعی ساخته می‌شود تا دانش‌آموز همیشه آزمونی داشته باشد.
     """
-    propositions = list(concept.core_propositions or [])
-    misconceptions = list(concept.common_misconceptions or [])
+    propositions = [_stringify_item(p) for p in (concept.core_propositions or [])]
+    propositions = [p for p in propositions if p]
+    misconceptions = [_stringify_item(m) for m in (concept.common_misconceptions or [])]
+    misconceptions = [m for m in misconceptions if m]
     wrong_text = ""
     if wrong_answer:
         wrong_text = f"مسئله: {wrong_answer.get('problem_text', '')} | پاسخ غلط دانش‌آموز: {wrong_answer.get('student_answer', '')}"

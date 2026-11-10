@@ -83,6 +83,7 @@ def _question_to_exam_dict(q: Question, order: int) -> dict[str, Any]:
         "order": order,
         "concept_id": q.concept_id,
         "text": q.text,
+        "type": q.question_type,
         "question_type": q.question_type,
         "difficulty": q.difficulty,
         "cognitive_type": q.cognitive_type,
@@ -121,7 +122,42 @@ def _session_dict(s: AssessmentSession, remaining: int | None = None) -> dict[st
     return data
 
 
+def _exam_payload(db: Session, session: AssessmentSession, questions: list[Question]) -> dict[str, Any]:
+    concept = db.query(Concept).filter(Concept.id == session.concept_id).first() if session.concept_id else None
+    return {
+        "session": _session_dict(session),
+        "session_id": session.id,
+        "concept_name": concept.name if concept else "آزمون جامع",
+        "questions": [_question_to_exam_dict(q, i + 1) for i, q in enumerate(questions)],
+    }
+
+
+def _load_exam_session(db: Session, session_id: int, user: User) -> tuple[AssessmentSession, list[Question]]:
+    session = db.query(AssessmentSession).filter(AssessmentSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(status_code=404, detail="آزمون یافت نشد.")
+    if user.role == "student" and session.student_id != user.id:
+        raise HTTPException(status_code=403, detail="دسترسی به این آزمون ندارید.")
+    if session.status == "completed":
+        raise HTTPException(status_code=422, detail="این آزمون قبلاً ثبت و تحلیل شده است.")
+    questions = _load_booklet(db, session)
+    if not questions:
+        raise HTTPException(status_code=422, detail="دفترچهٔ آزمون جامع برای این جلسه پیدا نشد.")
+    return session, questions
+
+
 # ---------- اندپوینت‌ها ----------
+@router.get("/assess/session/{session_id}")
+def get_assessment_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """اطلاعات جلسهٔ آزمون جامع + آرایهٔ کامل سؤالات (برای ExamRoom)."""
+    session, questions = _load_exam_session(db, session_id, user)
+    return _exam_payload(db, session, questions)
+
+
 @router.post("/assess/start", status_code=201)
 async def start_assessment(
     body: StartSessionRequest,
@@ -246,20 +282,8 @@ def get_exam(
     user: User = Depends(get_current_user),
 ):
     """بازیابی دفترچهٔ آزمون برای ادامه/رفرش صفحه — فقط صاحب جلسه."""
-    session = db.query(AssessmentSession).filter(AssessmentSession.id == session_id).first()
-    if session is None:
-        raise HTTPException(status_code=404, detail="آزمون یافت نشد.")
-    if user.role == "student" and session.student_id != user.id:
-        raise HTTPException(status_code=403, detail="دسترسی به این آزمون ندارید.")
-    if session.status == "completed":
-        raise HTTPException(status_code=422, detail="این آزمون قبلاً ثبت و تحلیل شده است.")
-    questions = _load_booklet(db, session)
-    concept = db.query(Concept).filter(Concept.id == session.concept_id).first() if session.concept_id else None
-    return {
-        "session": _session_dict(session),
-        "concept_name": concept.name if concept else "آزمون جامع",
-        "questions": [_question_to_exam_dict(q, i + 1) for i, q in enumerate(questions)],
-    }
+    session, questions = _load_exam_session(db, session_id, user)
+    return _exam_payload(db, session, questions)
 
 
 @router.post("/assess/{session_id}/submit-test")

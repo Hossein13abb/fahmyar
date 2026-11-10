@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   Loader2,
   AlertTriangle,
@@ -8,6 +8,8 @@ import {
   ClipboardCheck,
   Home,
   ListChecks,
+  RefreshCw,
+  FileText,
 } from 'lucide-react'
 import client, { friendlyError } from '../api/client'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -22,14 +24,10 @@ const sanitizeSvg = (raw) =>
 
 export default function ExamRoom() {
   const { sessionId } = useParams()
-  const location = useLocation()
   const navigate = useNavigate()
 
-  const startData = location.state?.startData ?? null
-  const conceptName = location.state?.conceptName ?? null
-
-  const [questions, setQuestions] = useState(() => startData?.questions ?? null)
-  const [concept, setConcept] = useState(conceptName ?? startData?.concept_name ?? 'آزمون جامع تشخیصی')
+  const [questions, setQuestions] = useState(null)
+  const [concept, setConcept] = useState('آزمون جامع تشخیصی')
   const [answers, setAnswers] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(answersKey(sessionId)) || '{}')
@@ -38,39 +36,46 @@ export default function ExamRoom() {
     }
   })
   const [index, setIndex] = useState(0)
-  const [loading, setLoading] = useState(!questions)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [errorStatus, setErrorStatus] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const textareaRef = useRef(null)
 
-  // رفرش صفحه → دفترچه از سرور واکشی می‌شود
-  useEffect(() => {
-    if (questions) return
-    let alive = true
-    client
-      .get(`/api/assess/${sessionId}/exam`)
-      .then(({ data }) => {
-        if (!alive) return
-        setQuestions(data.questions ?? [])
-        setConcept(data.concept_name ?? 'آزمون جامع تشخیصی')
-        setError('')
-      })
-      .catch((err) => {
-        if (!alive) return
-        const msg = friendlyError(err)
-        if (String(err?.response?.status) === '422') {
-          navigate(`/report/${sessionId}`, { replace: true })
-          return
-        }
-        setError(msg)
-      })
-      .finally(() => alive && setLoading(false))
-    return () => {
-      alive = false
+  const fetchExam = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    setErrorStatus(null)
+    try {
+      const { data } = await client.get(`/api/assess/session/${sessionId}`)
+      const list = Array.isArray(data?.questions) ? data.questions : []
+      if (list.length === 0) {
+        setQuestions([])
+        setError('هیچ سؤالی برای این جلسه یافت نشد. لطفاً دوباره تلاش کنید یا با معلم هماهنگ شوید.')
+        return
+      }
+      setQuestions(list)
+      setConcept(data?.concept_name ?? 'آزمون جامع تشخیصی')
+      setIndex((current) => Math.min(Math.max(0, current), list.length - 1))
+    } catch (err) {
+      setQuestions([])
+      setError(friendlyError(err) || 'دریافت اطلاعات آزمون با خطا مواجه شد.')
+      setErrorStatus(err?.response?.status ?? null)
+    } finally {
+      setLoading(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
+
+  // در بدو ورود، اطلاعات جلسه و سوالات از بک‌اند دریافت می‌شود
+  useEffect(() => {
+    fetchExam()
+  }, [fetchExam])
+
+  // اگر آرایهٔ سوالات تغییر کند، گام فعلی خارج از بازه نشود
+  useEffect(() => {
+    if (questions && index > questions.length - 1) setIndex(0)
+  }, [questions, index])
 
   const setAnswer = (qid, value) => {
     setAnswers((prev) => {
@@ -85,18 +90,18 @@ export default function ExamRoom() {
   }
 
   const total = questions?.length ?? 0
-  const current = questions?.[index] ?? null
+  const current = total > 0 ? questions[index] : null
   const currentAnswer = current ? answers[current.id] ?? '' : ''
   const answeredCount = useMemo(
     () => (questions ?? []).filter((q) => String(answers[q.id] ?? '').trim().length > 0).length,
     [questions, answers],
   )
   const unanswered = total - answeredCount
-  const isLast = index === total - 1
+  const isLast = total > 0 && index === total - 1
 
   useEffect(() => {
     textareaRef.current?.focus({ preventScroll: true })
-  }, [index])
+  }, [index, current?.id])
 
   const submitTest = async () => {
     setConfirming(false)
@@ -116,20 +121,41 @@ export default function ExamRoom() {
     }
   }
 
-  if (loading) return <LoadingSpinner label="در حال آماده‌سازی دفترچهٔ آزمون…" className="min-h-[22rem]" />
+  if (loading) {
+    return <LoadingSpinner label="در حال آماده‌سازی دفترچهٔ آزمون…" className="min-h-[22rem]" />
+  }
 
-  // خطای بارگذاری (دفترچه ناموجود/ثبت‌شده/ناآشنا)
-  if (error && !questions) {
+  if (error || !current) {
+    const completed = errorStatus === 422
     return (
       <div className="card mx-auto max-w-lg p-8 text-center">
         <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
-        <p className="mt-2 font-bold leading-7 text-amber-900">{error}</p>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-brand-200 px-5 py-2.5 font-bold text-brand-800 hover:bg-brand-50"
-        >
-          <Home className="h-4 w-4" /> بازگشت به داشبورد
-        </button>
+        <h1 className="mt-3 text-lg font-black text-brand-950">آزمون قابل نمایش نیست</h1>
+        <p className="mt-2 font-bold leading-7 text-amber-900">
+          {error || 'اطلاعات این آزمون کامل نیست.'}
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <button
+            onClick={fetchExam}
+            className="inline-flex items-center gap-2 rounded-2xl bg-brand-700 px-5 py-2.5 font-black text-white hover:bg-brand-800"
+          >
+            <RefreshCw className="h-4 w-4" /> تلاش مجدد
+          </button>
+          {completed && (
+            <button
+              onClick={() => navigate(`/report/${sessionId}`)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-emerald-700 px-5 py-2.5 font-black text-white hover:bg-emerald-800"
+            >
+              <FileText className="h-4 w-4" /> مشاهدهٔ گزارش
+            </button>
+          )}
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="inline-flex items-center gap-2 rounded-2xl border border-brand-200 px-5 py-2.5 font-bold text-brand-800 hover:bg-brand-50"
+          >
+            <Home className="h-4 w-4" /> بازگشت به داشبورد
+          </button>
+        </div>
       </div>
     )
   }
@@ -208,10 +234,10 @@ export default function ExamRoom() {
         </div>
 
         <p className="mt-5 whitespace-pre-line text-[16px] font-bold leading-9 text-brand-950">
-          {current?.text}
+          {current.text}
         </p>
 
-        {current?.diagram_svg && (
+        {current.diagram_svg && (
           <figure className="mt-5 overflow-hidden rounded-2xl border border-teal-200/70 bg-white p-4 shadow-inner">
             <div
               className="mx-auto max-w-md"
