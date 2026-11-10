@@ -142,6 +142,7 @@ _BOOKLET_PROMPT = """شما «متخصص ارشد طراحی آزمون تشخی
 6. نامِ مفهوم هدف و اصطلاح فنیِ همان مفهوم در متن سؤال نیاید — دانش‌آموز نباید بفهمد کدام بخش درس سنجیده می‌شود.
 7. پاسخ، نیمه‌پاسخ یا مسیر استدلالیِ مورد انتظار در سؤال لو نرود.
 8. سؤال تکراریِ پاسخ‌های قبلی نباشد.
+9. **زبان: تمام صورت سؤالات (فیلد text) و همهٔ فیلدهای متنیِ خروجی باید ۱۰۰٪ فارسیِ روان باشند؛ حتی یک کلمهٔ انگلیسی در فیلد text مجاز نیست.** فرمول‌ها و نمادهای علمیِ کوتاه (مثل I = V/R) و اعدادِ انگلیسی مجازند. (نکته: اعتبارسنجِ خودکارِ سیستم هر سؤالِ غیر فارسی را رد می‌کند.)
 
 ══════════════ بخش دوم — مهندسی دقیق SVG و جداول ══════════════
 **قوانین تولید SVG (diagram_svg):**
@@ -150,8 +151,10 @@ _BOOKLET_PROMPT = """شما «متخصص ارشد طراحی آزمون تشخی
    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">`
 ج. تمام شکل‌ها باید استایل درون‌خطیِ ساده داشته باشند (مثل `stroke="black" stroke-width="2" fill="none"`). از `class`، `style` و CSS خارجی پرهیز کنید.
 د. از نوشته‌های فارسی در داخل SVG مطلقاً پرهیز کنید (مرورگرها آن را به‌هم می‌ریزند). فقط لیبل‌های انگلیسی/ریاضی استفاده کنید (A, B, F1, x, y, V, I, R).
-هـ. حتماً تگ `</svg>` در انتها بسته شود و SVG کامل و معتبر باشد (تگ‌های self-closing با `/>`).
-و. نمودار باید واقعاً اطلاعاتی باشد: محورها یا مقادیر کلیدی مشخص، موقعیت‌ها و ابعاد درست.
+هـ. **قانون عدم هم‌انباشتگی (No Overlap): هیچ عنصر `<text>` نباید روی همان مختصات y یک `<line>` یا داخل فضای یک `<rect>`/`<circle>` قرار گیرد؛ لیبل‌ها حتماً حداقل ۲۰ پیکسل بالاتر یا پایین‌تر از هر خط و کادر باشند.** (اعتبارسنجِ هندسیِ سیستم، SVGای که این فاصله را نقض کند حذف می‌کند.)
+و. برای مرکزچین شدن لیبلِ بالای یک قطعه حتماً از ویژگی `text-anchor="middle"` استفاده کنید و x را برابرِ مرکزِ قطعه بگذارید (مثال: rect در x=180 و عرض 64 → لیبل «R» در x=212 با text-anchor="middle").
+ز. حتماً تگ `</svg>` در انتها بسته شود و SVG کامل و معتبر باشد (تگ‌های self-closing با `/>`).
+ح. نمودار باید واقعاً اطلاعاتی باشد: محورها یا مقادیر کلیدی مشخص، موقعیت‌ها و ابعاد درست.
 
 **قوانین تولید جدول:**
 الف. اگر سؤال نیاز به جدول دارد، از فرمت مارک‌داونِ کاملاً استاندارد با فاصله‌گذاری دقیق استفاده کنید.
@@ -200,6 +203,139 @@ _BOOKLET_PROMPT = """شما «متخصص ارشد طراحی آزمون تشخی
 <<<WRONG_ANSWER>>>{wrong_answer}<<<END>>>
 """
 
+_FA_SCRIPT_RE = re.compile(r"[\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF]")
+_EN_WORD_RE = re.compile(r"[A-Za-z]{4,}")   # کلمهٔ انگلیسیِ واقعی (فرمول‌ها و نمادهای تک‌حرفی مستثنا)
+_LATIN_RUN_RE = re.compile(r"[A-Za-z]+")
+
+
+def is_persian_text(text) -> bool:
+    """آیا متن، فارسی است؟ (فرمول‌ها/نمادهای علمی کوتاه مثل I = V/R استثنا هستند)
+
+    - حداقل یک حرف فارسی لازم است.
+    - هیچ کلمهٔ لاتینِ ۴+ حرفی مجاز نیست (یعنی جملهٔ انگلیسی رد می‌شود).
+    - حجم حروف لاتین نباید از حروف فارسی بیشتر باشد.
+    """
+    s = str(text or "").strip()
+    if not s:
+        return False
+    fa = len(_FA_SCRIPT_RE.findall(s))
+    if fa == 0:
+        return False
+    if _EN_WORD_RE.search(s):
+        return False
+    latin = sum(len(m.group(0)) for m in _LATIN_RUN_RE.finditer(s))
+    return latin <= fa
+
+
+# ══════════════ اعتبارسنجی هندسی SVG ══════════════
+_SVG_ATTR_RE = lambda name: re.compile(rf'{name}\s*=\s*"([^"]*)"')
+
+
+def _svg_attr(tag: str, name: str, default=None):
+    m = _SVG_ATTR_RE(name).search(tag)
+    return m.group(1) if m else default
+
+
+def _svg_float(tag: str, name: str, default: float = 0.0) -> float:
+    try:
+        return float(_svg_attr(tag, name, str(default)) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _dist_point_seg(px: float, py: float, x1: float, y1: float, x2: float, y2: float) -> float:
+    dx, dy = x2 - x1, y2 - y1
+    if dx == 0 and dy == 0:
+        return ((px - x1) ** 2 + (py - y1) ** 2) ** 0.5
+    t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+    t = max(0.0, min(1.0, t))
+    cx, cy = x1 + t * dx, y1 + t * dy
+    return ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
+
+
+def _dist_bbox_seg(x0: float, y0: float, x1: float, y1: float, ax: float, ay: float, bx: float, by: float) -> float:
+    """فاصلهٔ یک مستطیل (لیبل) تا پاره‌خط — با نمونه‌برداری از نقاطِ داخل/لبهٔ مستطیل."""
+    pts = [(ax, ay), (bx, by)]
+    for _ in range(40):
+        t = _ / 39
+        pts.append((ax + (bx - ax) * t, ay + (by - ay) * t))
+    best = float("inf")
+    for px, py in pts:
+        # نقطهٔ بیرون از مستطیل → فاصلهٔ مستقیم؛ داخل → ۰
+        dx = max(x0 - px, 0.0, px - x1)
+        dy = max(y0 - py, 0.0, py - y1)
+        best = min(best, (dx * dx + dy * dy) ** 0.5)
+    return best
+
+
+def svg_geometry_ok(svg: str) -> bool:
+    """قانون عدم هم‌انباشتگی: لیبل‌های <text> باید حداقل ۲۰ پیکسل از هر خط/کادر فاصله داشته باشند.
+
+    - فاصلهٔ bbox هر <text> تا هر <line>/<rect>/<circle>/هر پاره‌خطِ <polyline> باید ≥ ۲۰ باشد.
+    - text-anchor / x / y / font-size خوانده می‌شود؛ عرض متن تقریبی محاسبه می‌شود.
+    """
+    s = svg or ""
+    shapes = []  # (kind, geometry)
+    for m in re.finditer(r"<line\b[^>]*>", s, re.IGNORECASE):
+        t = m.group(0)
+        shapes.append(("seg", (_svg_float(t, "x1"), _svg_float(t, "y1"), _svg_float(t, "x2"), _svg_float(t, "y2"))))
+    for m in re.finditer(r"<rect\b[^>]*>", s, re.IGNORECASE):
+        t = m.group(0)
+        x, y = _svg_float(t, "x"), _svg_float(t, "y")
+        w, h = _svg_float(t, "width"), _svg_float(t, "height")
+        shapes.append(("rect", (x, y, x + w, y + h)))
+    for m in re.finditer(r"<circle\b[^>]*>", s, re.IGNORECASE):
+        t = m.group(0)
+        cx, cy, r = _svg_float(t, "cx"), _svg_float(t, "cy"), _svg_float(t, "r")
+        shapes.append(("circle", (cx, cy, r)))
+    for m in re.finditer(r"<polyline\b[^>]*>", s, re.IGNORECASE):
+        t = m.group(0)
+        pts_raw = _svg_attr(t, "points", "") or ""
+        nums = [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?", pts_raw)]
+        coords = list(zip(nums[::2], nums[1::2]))
+        for i in range(len(coords) - 1):
+            shapes.append(("seg", (coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1])))
+
+    texts = []
+    for m in re.finditer(r"<text\b([^>]*)>([^<]*)</text>", s, re.IGNORECASE):
+        attrs, content = m.group(1), m.group(2)
+        x = _svg_float(attrs, "x")
+        y = _svg_float(attrs, "y")
+        fs = _svg_float(attrs, "font-size", 14.0)
+        anchor = (_svg_attr(attrs, "text-anchor", "start") or "start").lower()
+        width = max(1, len(content.strip())) * fs * 0.62
+        if anchor == "middle":
+            x0 = x - width / 2
+        elif anchor == "end":
+            x0 = x - width
+        else:
+            x0 = x
+        texts.append((x0, y - fs, x0 + width, y + fs * 0.25))  # bbox تقریبی لیبل
+
+    for (tx0, ty0, tx1, ty1) in texts:
+        for kind, geom in shapes:
+            if kind == "seg":
+                ax, ay, bx, by = geom
+                if _dist_bbox_seg(tx0, ty0, tx1, ty1, ax, ay, bx, by) < 20.0:
+                    return False
+            elif kind == "rect":
+                rx0, ry0, rx1, ry1 = geom
+                dx = max(rx0 - tx1, tx0 - rx1, 0.0)
+                dy = max(ry0 - ty1, ty0 - ry1, 0.0)
+                if (dx * dx + dy * dy) ** 0.5 < 20.0:
+                    return False
+            elif kind == "circle":
+                cx, cy, r = geom
+                dx = max(tx0 - (cx - r), (cx + r) - tx1, 0.0)
+                dy = max(ty0 - (cy - r), (cy + r) - ty1, 0.0)
+                inner_hit = tx0 >= (cx - r) and tx1 <= (cx + r) and ty0 >= (cy - r) and ty1 <= (cy + r)
+                if inner_hit:
+                    return False
+                if (dx * dx + dy * dy) ** 0.5 < 20.0:
+                    return False
+    return True
+
+
 _CANONICAL_SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
 _ALLOWED_SVG_TAGS = {"svg", "rect", "circle", "line", "polyline", "text"}
 _TAG_RE = re.compile(r"</?([A-Za-z][A-Za-z0-9-]*)")
@@ -237,7 +373,21 @@ def _sanitize_diagram_svg(raw) -> str | None:
             return None
     # نرمال‌سازی تگ بازشونده به ساختار کانونیکال
     s = re.sub(r"<svg[^>]*>", _CANONICAL_SVG_OPEN, s, count=1, flags=re.IGNORECASE)
+    # قانون عدم هم‌انباشتگی: لیبل‌ها باید ≥۲۰px از خطوط/کادرها فاصله داشته باشند
+    if not svg_geometry_ok(s):
+        return None
     return s
+
+
+_FALLBACK_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
+                 '<line x1="44" y1="228" x2="372" y2="228" stroke="black" stroke-width="2"/>'
+                 '<line x1="44" y1="228" x2="44" y2="40" stroke="black" stroke-width="2"/>'
+                 '<rect x="96" y="176" width="36" height="52" fill="none" stroke="black" stroke-width="2"/>'
+                 '<rect x="182" y="116" width="36" height="112" fill="none" stroke="black" stroke-width="2"/>'
+                 '<rect x="268" y="56" width="36" height="172" fill="none" stroke="black" stroke-width="2"/>'
+                 '<text x="114" y="268" font-size="12" text-anchor="middle">A</text>'
+                 '<text x="200" y="268" font-size="12" text-anchor="middle">B</text>'
+                 '<text x="286" y="268" font-size="12" text-anchor="middle">C</text></svg>')
 
 
 def _booklet_items_to_questions(concept, items, model_name: str, cost: float) -> list["Question"]:
@@ -254,6 +404,9 @@ def _booklet_items_to_questions(concept, items, model_name: str, cost: float) ->
         text = str(raw.get("text") or "").strip()
         if len(text) < 15:
             continue  # سؤال بی‌معنی را دور بریز
+        if not is_persian_text(text):
+            print(f"[Booklet] English/non-Persian question rejected: {text[:80]!r}")
+            continue  # صورت سؤال باید ۱۰۰٪ فارسی باشد
         exam_type = str(raw.get("exam_type") or "conceptual").strip().lower()
         if exam_type not in {"conceptual", "real_world", "diagram", "misconception_trap", "computational", "definitional"}:
             exam_type = "conceptual"
@@ -347,9 +500,10 @@ async def generate_test_booklet(concept, wrong_answer: dict | None = None) -> tu
         for i, (et, text, diff, cog) in enumerate(template):
             if have >= 9:
                 break
+            diagram_svg = _FALLBACK_SVG if et == "diagram" else None
             questions.append(Question(
                 concept_id=concept.id, text=text, question_type=et, difficulty=diff, cognitive_type=cog,
-                rubric={"exam_type": et, "diagram_svg": None, "correct_reasoning": f"با تکیه بر «{fallback_prop}»",
+                rubric={"exam_type": et, "diagram_svg": diagram_svg, "correct_reasoning": f"با تکیه بر «{fallback_prop}»",
                         "misconception_indicators": {fallback_mis: "نشانهٔ بدفهمی هدف"} if et == "misconception_trap" else {}},
                 mapped_propositions=[fallback_prop], mapped_misconceptions=[fallback_mis] if et == "misconception_trap" else [],
                 source="ai_generated", approval_status="pending", ai_model_used=model_name or "template-fallback",
@@ -364,6 +518,8 @@ def _validate_payload(data: dict[str, Any], target_proposition: str) -> dict[str
     question_text = str(data.get("question_text") or "").strip()
     if len(question_text) < 20:
         raise QuestionGenerationError("متن سؤال تولیدی بیش از حد کوتاه است")
+    if not is_persian_text(question_text):
+        raise QuestionGenerationError("صورت سؤال تولیدی فارسی نیست — خروجی رد شد")
 
     qtype = str(data.get("question_type") or "phenomenon_explain")
     if qtype not in QUESTION_TYPES:

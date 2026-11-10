@@ -424,24 +424,28 @@ class MockProvider(AIProvider):
         misconception = _extract_marker(prompt, "MISCONCEPTION") or "بدفهمیِ رایجِ نمونه"
         concept = _extract_marker(prompt, "CONCEPT") or "مفهوم نمونه"
         svg1 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
-                '<line x1="40" y1="260" x2="380" y2="260" stroke="black" stroke-width="2"/>'
-                '<line x1="40" y1="260" x2="40" y2="30" stroke="black" stroke-width="2"/>'
-                '<rect x="90" y="190" width="36" height="70" fill="none" stroke="black" stroke-width="2"/>'
-                '<rect x="180" y="120" width="36" height="140" fill="none" stroke="black" stroke-width="2"/>'
-                '<rect x="270" y="60" width="36" height="200" fill="none" stroke="black" stroke-width="2"/>'
-                '<text x="95" y="285" font-size="12">A</text>'
-                '<text x="185" y="285" font-size="12">B</text>'
-                '<text x="275" y="285" font-size="12">C</text>'
-                '<text x="50" y="25" font-size="12">y</text></svg>')
+                '<line x1="44" y1="228" x2="372" y2="228" stroke="black" stroke-width="2"/>'
+                '<line x1="44" y1="228" x2="44" y2="40" stroke="black" stroke-width="2"/>'
+                '<rect x="96" y="176" width="36" height="52" fill="none" stroke="black" stroke-width="2"/>'
+                '<rect x="182" y="116" width="36" height="112" fill="none" stroke="black" stroke-width="2"/>'
+                '<rect x="268" y="56" width="36" height="172" fill="none" stroke="black" stroke-width="2"/>'
+                '<text x="114" y="268" font-size="12" text-anchor="middle">A</text>'
+                '<text x="200" y="268" font-size="12" text-anchor="middle">B</text>'
+                '<text x="286" y="268" font-size="12" text-anchor="middle">C</text></svg>')
         svg2 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
-                '<circle cx="80" cy="150" r="25" fill="none" stroke="black" stroke-width="2"/>'
-                '<line x1="105" y1="150" x2="170" y2="150" stroke="black" stroke-width="2"/>'
-                '<rect x="170" y="130" width="70" height="40" fill="none" stroke="black" stroke-width="2"/>'
-                '<line x1="240" y1="150" x2="320" y2="150" stroke="black" stroke-width="2"/>'
-                '<polyline points="320,150 320,90 80,90 80,125" fill="none" stroke="black" stroke-width="2"/>'
-                '<text x="76" y="155" font-size="12">A</text>'
-                '<text x="195" y="155" font-size="12">R</text>'
-                '<text x="120" y="80" font-size="12">V</text></svg>')
+                '<circle cx="90" cy="150" r="18" fill="none" stroke="black" stroke-width="2"/>'
+                '<line x1="90" y1="132" x2="90" y2="70" stroke="black" stroke-width="2"/>'
+                '<line x1="90" y1="70" x2="180" y2="70" stroke="black" stroke-width="2"/>'
+                '<rect x="180" y="56" width="64" height="28" fill="none" stroke="black" stroke-width="2"/>'
+                '<line x1="244" y1="70" x2="320" y2="70" stroke="black" stroke-width="2"/>'
+                '<line x1="320" y1="70" x2="320" y2="232" stroke="black" stroke-width="2"/>'
+                '<line x1="320" y1="232" x2="210" y2="232" stroke="black" stroke-width="2"/>'
+                '<circle cx="200" cy="232" r="10" fill="none" stroke="black" stroke-width="2"/>'
+                '<line x1="190" y1="232" x2="90" y2="232" stroke="black" stroke-width="2"/>'
+                '<line x1="90" y1="232" x2="90" y2="168" stroke="black" stroke-width="2"/>'
+                '<text x="212" y="32" font-size="12" text-anchor="middle">R</text>'
+                '<text x="46" y="154" font-size="12" text-anchor="middle">V</text>'
+                '<text x="200" y="280" font-size="12" text-anchor="middle">A</text></svg>')
         qs = [
             ("conceptual", f"یک تکنسین تعمیرات، دستگاهی را که با «{concept}» کار می‌کند بررسی کرده و نتیجهٔ A گرفته است؛ مهندس ناظر معتقد است نتیجه A اشتباه است. دقیقاً بنویسید کجای استدلال A می‌شکند و زنجیرهٔ علّیِ درست چیست.", "hard"),
             ("real_world", f"در خطِ تولید یک کارخانهٔ قطعه‌سازی، یک قطعهٔ مشخص به‌صورت تکرارشونده پس از چند هفته کار می‌سوزد. شرایط زیر را خودتان تکمیل کنید: دمای محیط، جنس قطعه، شدت بار و زمان کارکرد. چه اتفاقی دقیقاً رخ می‌دهد (مشاهده) و علت ریشه‌ای آن چیست (تفسیر)؟", "hard"),
