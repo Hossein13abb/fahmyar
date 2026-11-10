@@ -143,6 +143,7 @@ _BOOKLET_PROMPT = """شما «متخصص ارشد طراحی آزمون تشخی
 7. پاسخ، نیمه‌پاسخ یا مسیر استدلالیِ مورد انتظار در سؤال لو نرود.
 8. سؤال تکراریِ پاسخ‌های قبلی نباشد.
 9. **زبان: تمام صورت سؤالات (فیلد text) و همهٔ فیلدهای متنیِ خروجی باید ۱۰۰٪ فارسیِ روان باشند؛ حتی یک کلمهٔ انگلیسی در فیلد text مجاز نیست.** فرمول‌ها و نمادهای علمیِ کوتاه (مثل I = V/R) و اعدادِ انگلیسی مجازند. (نکته: اعتبارسنجِ خودکارِ سیستم هر سؤالِ غیر فارسی را رد می‌کند.)
+10. **ممنوعیت ارجاع به شکلِ ناموجود:** در سؤالاتی که diagram_svg آن‌ها null است (یعنی سؤال‌های ۱، ۲، ۴، ۵، ۶، ۷ و ۸)، استفاده از عبارت‌هایی مانند «نمودار زیر»، «شکل زیر» یا «مدار زیر» مطلقاً ممنوع است؛ متن سؤال باید کاملاً مستقل و بدون نیاز به هیچ شکل و نموداری باشد.
 
 ══════════════ بخش دوم — مهندسی دقیق SVG و جداول ══════════════
 **قوانین تولید SVG (diagram_svg):**
@@ -390,6 +391,31 @@ _FALLBACK_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" 
                  '<text x="286" y="268" font-size="12" text-anchor="middle">C</text></svg>')
 
 
+_FIG_REF_PATTERNS = [
+    ("در نمودار زیر", "در این نمودار"),
+    ("به نمودار زیر", "به این نمودار"),
+    ("در شکل زیر", "در یک شکل مفروض"),
+    ("به شکل زیر", "به یک شکل مفروض"),
+    ("در مدار زیر", "در یک مدار"),
+    ("به مدار زیر", "به یک مدار"),
+    ("با توجه به نمودار زیر", "با توجه به این نمودار"),
+    ("با توجه به شکل زیر", "با توجه به یک شکل مفروض"),
+    ("با توجه به مدار زیر", "با توجه به یک مدار"),
+    # عبارت‌های برهنه — بعد از الگوهای بلندتر
+    ("نمودار زیر", "این نمودار"),
+    ("شکل زیر", "یک شکل مفروض"),
+    ("مدار زیر", "یک مدار"),
+]
+
+
+def _replace_missing_figure_refs(text: str) -> str:
+    """اگر سؤالی diagram_svg ندارد، هیچ ارجاعی به «شکل/نمودار/مدار زیر» نباید بماند."""
+    s = text or ""
+    for a, b in _FIG_REF_PATTERNS:
+        s = s.replace(a, b)
+    return s
+
+
 def _booklet_items_to_questions(concept, items, model_name: str, cost: float) -> list["Question"]:
     """اعتبارسنجی و ساخت اشیای Question دفترچه."""
     propositions = [_stringify_item(p) for p in (concept.core_propositions or [])]
@@ -417,7 +443,19 @@ def _booklet_items_to_questions(concept, items, model_name: str, cost: float) ->
         mapped = [p for p in (raw.get("mapped_propositions") or []) if isinstance(p, str) and p.strip()]
         if not mapped:
             mapped = [fallback_prop]
-        diagram_svg = _sanitize_diagram_svg(raw.get("diagram_svg"))
+        order_raw = raw.get("order")
+        try:
+            order_num = int(order_raw) if order_raw is not None else None
+        except (TypeError, ValueError):
+            order_num = None
+        clean_svg = _sanitize_diagram_svg(raw.get("diagram_svg"))
+        # سؤال‌های نموداری (آیتم ۳ و ۹ یا exam_type=diagram) هرگز بدون شکل نمی‌مانند
+        if clean_svg is None and ((order_num in (3, 9)) or str(raw.get("exam_type") or "").strip().lower() == "diagram"):
+            clean_svg = _FALLBACK_SVG
+        diagram_svg = clean_svg
+        # اگر نهایتاً شکلی وجود ندارد، هر ارجاع به «شکل/نمودار/مدار زیر» حذف/جایگزین شود
+        if diagram_svg is None:
+            text = _replace_missing_figure_refs(text)
         mis_trap = raw.get("misconception_targeted")
         mapped_mis = [mis_trap.strip()] if isinstance(mis_trap, str) and mis_trap.strip() else (
             [misconceptions[0]] if exam_type == "misconception_trap" and misconceptions else [])
