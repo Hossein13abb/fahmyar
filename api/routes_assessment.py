@@ -94,6 +94,15 @@ def _booklet_ids(session: AssessmentSession) -> list[int]:
     for h in session.current_hypotheses or []:
         if h.get("type") == "exam_booklet":
             return [int(i) for i in (h.get("question_ids") or [])]
+    # گوشهٔ سازگاری: جلساتی که از /assess/start با دفترچهٔ متصل ساخته می‌شوند
+    raw = (session.trigger_detail or "").strip()
+    if raw.startswith("{"):
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if payload.get("kind") == "exam_booklet":
+            return [int(i) for i in (payload.get("question_ids") or [])]
     return []
 
 
@@ -132,10 +141,43 @@ async def start_assessment(
     except SessionError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    # دفترچهٔ آزمون جامع را هم به همان جلسه متصل می‌کنیم تا فرانت بتواند به /exam/:id برود.
+    # (سازگاری با مسیر قدیمی: next_question همچنان برگردانده می‌شود.)
+    questions: list[Question] = []
+    concept = db.query(Concept).filter(Concept.id == session.concept_id).first() if session.concept_id else None
+    if concept is not None:
+        try:
+            wrong = body.wrong_answer.model_dump() if body.wrong_answer else None
+            questions, model_name, cost = await generate_test_booklet(concept, wrong_answer=wrong)
+            for q in questions:
+                db.add(q)
+            db.flush()
+            original_detail = session.trigger_detail or ""
+            session.trigger_detail = json.dumps(
+                {
+                    "kind": "exam_booklet",
+                    "question_ids": [q.id for q in questions],
+                    "ai_model_used": model_name,
+                    "generation_cost_usd": cost,
+                    "original_trigger_detail": original_detail[:500],
+                },
+                ensure_ascii=False,
+            )
+            db.commit()
+            db.refresh(session)
+        except Exception as exc:
+            # شکست دفترچه نباید شروع جلسهٔ قدیمی را خراب کند
+            db.rollback()
+            print(f"[start-test-attach] booklet generation failed for session {session.id}: {exc}")
+            questions = []
+
     return {
         "session": _session_dict(session, int(manager.remaining_seconds(session))),
+        "session_id": session.id,
         "hypotheses": session.current_hypotheses or [],
         "next_question": question_to_student_dict(first_question) if first_question else None,
+        "questions": [_question_to_exam_dict(q, i + 1) for i, q in enumerate(questions)],
+        "concept_name": concept.name if concept is not None else None,
         "message": (
             "جلسه شروع شد. به سؤال‌ها با دلیل پاسخ دهید — هدف فهم است نه نمره."
             if first_question

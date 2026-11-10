@@ -6,6 +6,7 @@ import {
   Microscope,
   Sigma,
   Atom,
+  FlaskConical,
   ChevronDown,
   Route,
   GitBranch,
@@ -93,13 +94,16 @@ export default function StudentDashboard() {
     setSubmitting(true)
     setError('')
     try {
-      const { data } = await client.post('/api/assess/start-test', {
+      // بدنه دقیقاً مطابق اسکیما: concept_id عدد صحیح + trigger_type ثابت
+      const { data } = await client.post('/api/assess/start', {
         trigger_type: 'topic_selection',
-        concept_id: Number(conceptId),
+        concept_id: Number.parseInt(conceptId, 10),
         wrong_answer: null,
       })
-      navigate(`/exam/${data.session.id}`, {
-        state: { startData: data, conceptName: selectedConcept?.name },
+      const sessionId = data?.session_id ?? data?.session?.id
+      if (!sessionId) throw new Error('شناسهٔ جلسه از سرور دریافت نشد.')
+      navigate('/exam/' + sessionId, {
+        state: { startData: data, conceptName: selectedConcept?.name ?? data?.concept_name },
       })
     } catch (err) {
       setError(friendlyError(err))
@@ -118,16 +122,18 @@ export default function StudentDashboard() {
     setSubmitting(true)
     setError('')
     try {
-      const { data } = await client.post('/api/assess/start-test', {
+      const { data } = await client.post('/api/assess/start', {
         trigger_type: 'wrong_answer',
-        concept_id: Number(wrongConceptId),
+        concept_id: Number.parseInt(wrongConceptId, 10),
         wrong_answer: {
           problem_text: problemText.trim(),
           student_answer: wrongAnswer.trim(),
-          concept_id: wrongConceptId ? Number(wrongConceptId) : null,
+          concept_id: Number.parseInt(wrongConceptId, 10),
         },
       })
-      navigate(`/exam/${data.session.id}`, {
+      const sessionId = data?.session_id ?? data?.session?.id
+      if (!sessionId) throw new Error('شناسهٔ جلسه از سرور دریافت نشد.')
+      navigate('/exam/' + sessionId, {
         state: {
           startData: data,
           conceptName: allConcepts.find((c) => String(c.id) === String(wrongConceptId))?.name,
