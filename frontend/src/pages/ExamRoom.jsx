@@ -16,11 +16,102 @@ import LoadingSpinner from '../components/LoadingSpinner'
 
 const answersKey = (id) => `fahmyar_exam_${id}`
 
-// فقط تگ‌های نمایشی ساده مجازند؛ اسکریپت و هندلرها حذف می‌شوند
-const sanitizeSvg = (raw) =>
-  String(raw || '')
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+// فقط تگ‌های پایه مجازند: svg/rect/circle/line/polyline/text — ساختار کانونیکال اجباری است
+const _ALLOWED_SVG_TAGS = new Set(['svg', 'rect', 'circle', 'line', 'polyline', 'text'])
+const _CANONICAL_SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
+const sanitizeSvg = (raw) => {
+  let s = String(raw || '').trim()
+  if (!s) return ''
+  // فنس‌های مارک‌داون را از دور SVG بردار
+  s = s.replace(/^```(?:[a-zA-Z]*)\s*/g, '').replace(/\s*```\s*$/gm, '')
+  const start = s.indexOf('<svg')
+  const end = s.lastIndexOf('</svg>')
+  if (start === -1 || end === -1 || end < start) return '' // SVG ناتمام/خراب — رندر نمی‌شود
+  s = s.slice(start, end + '</svg>'.length)
+  // حذف اسکریپت/آبجکت خارجی/هندلرهای رویداد
+  s = s.replace(/<script[\s\S]*?<\/script>/gi, '')
+  s = s.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
+  if (/\son[a-zA-Z]+\s*=/.test(s)) return ''
+  if (/javascript:/i.test(s)) return ''
+  // فقط تگ‌های مجاز — هر تگ دیگر (path, g, ellipse, image, ...) کل SVG را نامعتبر می‌کند
+  const tagRe = /<\/?([A-Za-z][A-Za-z0-9-]*)/g
+  let m
+  while ((m = tagRe.exec(s))) {
+    if (!_ALLOWED_SVG_TAGS.has(m[1].toLowerCase())) return ''
+  }
+  // تگ بازشونده را با ساختار کانونیکال جایگزین کن
+  s = s.replace(/<svg[^>]*>/i, _CANONICAL_SVG_OPEN)
+  return s
+}
+
+// ── رندر مارک‌داونِ حداقلی: جدول‌های استاندارد (با خط جداکنندهٔ ≥۳ خط تیره) + متن ساده ──
+const _MD_TABLE_SEP = /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/
+const _isTableRow = (line) => line.trim().startsWith('|') && line.trim().includes('|', 1)
+const _splitRow = (line) =>
+  line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+
+const renderQuestionText = (text) => {
+  const src = String(text || '')
+  const lines = src.split('\n')
+  const blocks = []
+  let i = 0
+  let buf = []
+  const flushBuf = () => {
+    if (buf.length) {
+      blocks.push({ type: 'text', content: buf.join('\n') })
+      buf = []
+    }
+  }
+  while (i < lines.length) {
+    const line = lines[i]
+    if (
+      _isTableRow(line) &&
+      i + 1 < lines.length &&
+      _MD_TABLE_SEP.test(lines[i + 1].trim())
+    ) {
+      flushBuf()
+      const header = _splitRow(line)
+      const rows = []
+      i += 2
+      while (i < lines.length && _isTableRow(lines[i])) {
+        const cells = _splitRow(lines[i])
+        if (cells.length === header.length) rows.push(cells)
+        i += 1
+      }
+      blocks.push({ type: 'table', header, rows })
+      continue
+    }
+    buf.push(line)
+    i += 1
+  }
+  flushBuf()
+  return blocks.map((b, bi) =>
+    b.type === 'text' ? (
+      <p key={bi} className="whitespace-pre-line">{b.content}</p>
+    ) : (
+      <div key={bi} className="my-3 overflow-x-auto">
+        <table className="w-full border-collapse text-[13px] leading-7">
+          <thead>
+            <tr>
+              {b.header.map((h, j) => (
+                <th key={j} className="border border-brand-200 bg-brand-50 px-3 py-1.5 text-right font-black text-brand-900">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {b.rows.map((row, ri) => (
+              <tr key={ri} className={ri % 2 ? 'bg-slate-50/60' : 'bg-white'}>
+                {row.map((cell, ci) => (
+                  <td key={ci} className="border border-brand-100 px-3 py-1.5 align-top text-brand-950">{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  )
+}
 
 export default function ExamRoom() {
   const { sessionId } = useParams()
@@ -233,9 +324,9 @@ export default function ExamRoom() {
           </span>
         </div>
 
-        <p className="mt-5 whitespace-pre-line text-[16px] font-bold leading-9 text-brand-950">
-          {current.text}
-        </p>
+        <div className="mt-5 text-[16px] font-bold leading-9 text-brand-950">
+          {renderQuestionText(current.text)}
+        </div>
 
         {current.diagram_svg && (
           <figure className="mt-5 overflow-hidden rounded-2xl border border-teal-200/70 bg-white p-4 shadow-inner">

@@ -423,28 +423,35 @@ class MockProvider(AIProvider):
         proposition = _extract_marker(prompt, "PROPOSITION") or "گزارهٔ هدفِ نمونه"
         misconception = _extract_marker(prompt, "MISCONCEPTION") or "بدفهمیِ رایجِ نمونه"
         concept = _extract_marker(prompt, "CONCEPT") or "مفهوم نمونه"
-        svg1 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" role="img">'
-                '<rect x="10" y="120" width="40" height="30" fill="#0f766e"/>'
-                '<rect x="80" y="80" width="40" height="70" fill="#115e59"/>'
-                '<rect x="150" y="40" width="40" height="110" fill="#134e4a"/>'
-                '<line x1="5" y1="150" x2="310" y2="150" stroke="#334155"/>'
-                '<text x="200" y="30" font-size="14" fill="#0f172a">V∝I</text></svg>')
-        svg2 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" role="img">'
-                '<circle cx="60" cy="60" r="16" fill="none" stroke="#0f766e" stroke-width="3"/>'
-                '<line x1="76" y1="60" x2="140" y2="60" stroke="#334155" stroke-width="3"/>'
-                '<rect x="140" y="45" width="60" height="30" fill="none" stroke="#b45309" stroke-width="3"/>'
-                '<line x1="200" y1="60" x2="280" y2="60" stroke="#334155" stroke-width="3"/>'
-                '<text x="150" y="35" font-size="12" fill="#0f172a">R</text></svg>')
+        svg1 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
+                '<line x1="40" y1="260" x2="380" y2="260" stroke="black" stroke-width="2"/>'
+                '<line x1="40" y1="260" x2="40" y2="30" stroke="black" stroke-width="2"/>'
+                '<rect x="90" y="190" width="36" height="70" fill="none" stroke="black" stroke-width="2"/>'
+                '<rect x="180" y="120" width="36" height="140" fill="none" stroke="black" stroke-width="2"/>'
+                '<rect x="270" y="60" width="36" height="200" fill="none" stroke="black" stroke-width="2"/>'
+                '<text x="95" y="285" font-size="12">A</text>'
+                '<text x="185" y="285" font-size="12">B</text>'
+                '<text x="275" y="285" font-size="12">C</text>'
+                '<text x="50" y="25" font-size="12">y</text></svg>')
+        svg2 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
+                '<circle cx="80" cy="150" r="25" fill="none" stroke="black" stroke-width="2"/>'
+                '<line x1="105" y1="150" x2="170" y2="150" stroke="black" stroke-width="2"/>'
+                '<rect x="170" y="130" width="70" height="40" fill="none" stroke="black" stroke-width="2"/>'
+                '<line x1="240" y1="150" x2="320" y2="150" stroke="black" stroke-width="2"/>'
+                '<polyline points="320,150 320,90 80,90 80,125" fill="none" stroke="black" stroke-width="2"/>'
+                '<text x="76" y="155" font-size="12">A</text>'
+                '<text x="195" y="155" font-size="12">R</text>'
+                '<text x="120" y="80" font-size="12">V</text></svg>')
         qs = [
-            ("conceptual", f"«{concept}» را با کلمات خودتان توضیح دهید؛ چرا این پدیده رخ می‌دهد و چه رابطه‌ای بین علت و معلول وجود دارد؟", "medium"),
-            ("real_world", f"یک گارگاه واقعی را در نظر بگیرید که در آن مسئله‌ای دربارهٔ «{concept}» پیش آمده است. چه اتفاقی می‌افتد و علت علمی آن چیست؟", "medium"),
-            ("diagram", f"به نمودار داده‌شده نگاه کنید. با توجه به محورها، روند تغییرات کدام گزاره را تأیید می‌کند؟ استدلال خود را بنویسید.", "medium"),
-            ("misconception_trap", f"«{misconception}» — دوستتان چنین استدلالی کرده است. آیا درست است؟ با دلیل علمی بررسی کنید.", "hard"),
-            ("computational", f"با داده‌های فرضی (V=۱۲ ولت، R=۴ اهم)، کمیت خواسته‌شده را محاسبه کنید و هر مرحله را بنویسید.", "easy"),
-            ("definitional", f"تعریف دقیق «{concept}» را بنویسید و بگویید چه چیزی آن را از مفاهیم مشابه متمایز می‌کند.", "easy"),
-            ("conceptual", f"اگر یکی از کمیت‌های «{concept}» دو برابر شود، چه اتفاقی می‌افتد و چرا؟", "medium"),
-            ("real_world", "یک مثال از زندگی روزمره بیاورید که در آن این قانون/مفهوم نقش دارد و توضیح دهید چگونه عمل می‌کند.", "hard"),
-            ("diagram", "با توجه به مدار/نمودار روبه‌رو، اگر مقدار R دو برابر شود چه اتفاقی برای جریان می‌افتد؟ استدلال خود را بنویسید.", "hard"),
+            ("conceptual", f"یک تکنسین تعمیرات، دستگاهی را که با «{concept}» کار می‌کند بررسی کرده و نتیجهٔ A گرفته است؛ مهندس ناظر معتقد است نتیجه A اشتباه است. دقیقاً بنویسید کجای استدلال A می‌شکند و زنجیرهٔ علّیِ درست چیست.", "hard"),
+            ("real_world", f"در خطِ تولید یک کارخانهٔ قطعه‌سازی، یک قطعهٔ مشخص به‌صورت تکرارشونده پس از چند هفته کار می‌سوزد. شرایط زیر را خودتان تکمیل کنید: دمای محیط، جنس قطعه، شدت بار و زمان کارکرد. چه اتفاقی دقیقاً رخ می‌دهد (مشاهده) و علت ریشه‌ای آن چیست (تفسیر)؟", "hard"),
+            ("diagram", "به نمودار داده‌شده نگاه کنید (محورِ عمودی y و سه نمونه A، B، C). کدام نمونه با بقیه سازگار نیست و چرا؟ به محورها و شیب خط‌ها ارجاع دهید.", "medium"),
+            ("misconception_trap", f"هم‌کلاسی شما می‌گوید: «{misconception}» و اضافه می‌کند: «وقتی عدد را بزرگ‌تر می‌کنم خروجی هم بزرگ‌تر می‌شود؛ پس همین رابطه در همهٔ جاها درست است.» دقیقاً نقطهٔ فروپاشی این استدلال را پیدا کنید و یک مثالِ نقض بیاورید.", "hard"),
+            ("computational", "جدول زیر را برای یک مدار/فرایند واقعی بخوانید و مقادیر خواسته‌شده را محاسبه کنید؛ سپس بنویسید چرا این رابطه برقرار است:\n| کمیت | مقدار | واحد |\n|---|---|---|\n| V | ۱۲ | ولت |\n| R | ۴ | اهم |\n| I | ؟ | آمپر |", "easy"),
+            ("conceptual", f"موقعیتی را تصور کنید که خلاف شهود روزمره دربارهٔ «{concept}» است — مثلاً چیزی که انتظار دارید افزایش یابد، اصلاً تغییر نمی‌کند. چه اتفاقی می‌افتد؟ چرا شهود اولیه‌تان گمراهتان کرد؟", "medium"),
+            ("conceptual", "یک دانش‌آموز فرضی در دفترچه‌اش نوشته: «این اتفاق می‌افتد چون نیرو بیشتر می‌شود.» دقیقاً مشخص کنید: چه چیزی در این جمله درست است؟ چه چیزی غلط است؟ چرا؟", "medium"),
+            ("real_world", "یک پیوند مشخص بین این مفهوم و یک مبحث ریاضی دهم/یازدهم (تناسب، درصد، یا شیب نمودار) در یک موقعیت واقعی بسازید؛ داده‌ها را فرض کنید و نشان دهید این ابزار ریاضی چه تصمیمی را در آن موقعیت ممکن می‌کند.", "hard"),
+            ("diagram", "با توجه به مدار/نمودار روبه‌رو (منبع V، مقاومت R و آمپرمتر A): اگر R دو برابر شود چه اتفاقی برای جریان می‌افتد؟ پاسخ خود را فقط با خواندنِ شکل و قانونِ حاکم بنویسید، نه با حفظ کردن.", "hard"),
         ]
         items = []
         for i, (exam_type, text, diff) in enumerate(qs, start=1):
