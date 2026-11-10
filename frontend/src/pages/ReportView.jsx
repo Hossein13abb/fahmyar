@@ -302,12 +302,12 @@ function ExamReport({ report, mode }) {
             {rootCauses.map((rc, i) => (
               <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 p-4">
                 <p className="flex flex-wrap items-center gap-2 text-[13px] font-black text-amber-950">
-                  <span className="font-black text-amber-500">{i + 1}.</span> {faText(rc.area, 'پیش‌نیازها و مفاهیم پایه')}
+                  <span className="font-black text-amber-500">{i + 1}.</span> {rc.concept_name || rc.area || 'عنوان ریشه ثبت نشد — معلم بررسی کند'}
                   {rc.cross_subject && (
                     <span className="chip bg-amber-100 text-amber-800 ring-1 ring-amber-200">بین‌درسی</span>
                   )}
                 </p>
-                {rc.reasoning && <p className="mt-1.5 pr-6 text-[12px] leading-7 text-amber-900/90">{faText(rc.reasoning, 'این پیش‌نیاز نیاز به مرور مستقیم دارد.')}</p>}
+                {rc.reasoning && <p className="mt-1.5 pr-6 text-[12px] leading-7 text-amber-900/90">{rc.reasoning}</p>}
               </li>
             ))}
           </ol>

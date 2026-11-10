@@ -22,6 +22,7 @@ from models.question import EvidenceStatus
 from ai.model_abstraction import get_router
 from ai.json_sanitize import extract_json_object
 from reports.fa_map import (
+    root_cause_text,
     normalize_dimension,
     normalize_exam_type,
     fa_text,
@@ -343,7 +344,11 @@ _EXAM_PROMPT = """شما «متخصص ارشد تشخیص آموزشیِ سخت�
    - «مواجهه با تله‌ها و بدفهمی‌ها»
    - «شفافیت بیان و خودپایشی»
    هر کدام با status و finding یک‌جمله‌ایِ فارسی.
-6. "root_cause_hypotheses": ریشه‌های احتمالی در دروس پایه/ریاضی (مثلاً «ضعف در نسبت و تناسب (ریاضی پایهٔ ۷-۹)») یا بدفهمیِ بنیادینِ مفهومی؛ به‌ترتیب احتمال؛ area و reasoning حتماً فارسی باشند.
+6. "root_cause_hypotheses": ریشه‌های احتمالی را دقیقاً و به‌صورت اختصاصیِ همین دانش‌آموز در همین آزمون بنویس؛ هرگز یک جملهٔ کلیِ تکراری ننویس.
+   - فیلد "area" باید نامِ دقیق و مشخصِ مفهوم یا پیش‌نیاز باشد، نه عبارت کلی مانند «پیش‌نیازها و مفاهیم پایه». مثال‌های مجاز: «موازنهٔ بار الکتریکی»، «نسبت و تناسب معکوس ریاضی دهم»، «قوانین توان و رادیکال»، «درک رابطهٔ چگالی و حجم».
+   - فیلد "reasoning" باید دلیلِ آموزشیِ دقیق و نوعِ دقیقِ خطای همین دانش‌آموز در پاسخ‌های همین آزمون باشد (کدام پاسخ؟ چه چیزی را اشتباه تصور کرد؟ چرا). هر ریشه reasoningی متفاوت و اختصاصی داشته باشد.
+   - اگر "cross_subject" برابر true است، دقیقاً مشخص کن کدام مفهومِ درس پایه/ریاضی (مثلاً کدام مبحث ریاضی) باعث این خطا شده است.
+   - به‌ترتیبِ احتمال بنویس؛ area و reasoning حتماً فارسیِ ۱۰۰٪ باشند.
 7. "improvement_suggestions": ۴ تا ۶ راهکار عملی و متن‌محور به فارسی (بدون نمره/رتبه/درصد)؛ ابتدا مرور پیش‌نیازها، سپس تمرین هدفمند.
 8. هیچ نمره، رتبه، درصد یا مقایسه‌ای ننویسید. تحلیل کیفیِ مستقیم و قاطع. خروجی اگر حتی یک عنوان/جملهٔ انگلیسی داشته باشد نامعتبر است.
 
@@ -370,7 +375,8 @@ _EXAM_PROMPT = """شما «متخصص ارشد تشخیص آموزشیِ سخت�
     {{"dimension": "شفافیت بیان و خودپایشی", "status": "...", "finding": "یک جملهٔ فارسی"}}
   ],
   "root_cause_hypotheses": [
-    {{"area": "…", "reasoning": "چرا این ریشه محتمل است", "cross_subject": false}}
+    {{"area": "موازنهٔ بار الکتریکی", "reasoning": "در پاسخ سؤال ۳، دانش‌آموز بارِ کل را قبل و بعد از تقسیم نابرابر گرفت؛ یعنی مفهوم حفظ بار را به‌درستی به‌کار نبرد، نه اینکه قانون را بلد نباشد.", "cross_subject": false}},
+    {{"area": "نسبت و تناسب معکوس ریاضی دهم", "reasoning": "در سؤالات ۵ و ۷ با دو برابر شدن مقاومت انتظارِ دو برابر شدن جریان داشت؛ یعنی تناسب معکوس I = V/R را مانند تناسب مستقیم می‌خواند — پیش‌نیاز ریاضی ناتوان است.", "cross_subject": true}}
   ],
   "improvement_suggestions": ["راهکار ۱", "راهکار ۲"]
 }}
@@ -512,12 +518,17 @@ async def analyze_exam(concept_name: str, propositions: list[str], items: list[d
     for h in (data.get("root_cause_hypotheses") or []):
         if not isinstance(h, dict):
             continue
-        area = fa_text(h.get("area"), "پیش‌نیازها و مفاهیم پایه")
-        reasoning = _strip_hedges(str(h.get("reasoning") or "").strip())
-        reasoning = fa_text(reasoning, "الگوی خطا نشان می‌دهد این پیش‌نیاز نیاز به مرور مستقیم دارد.")
+        # متنِ اختصاصیِ مدل را عیناً نگه می‌داریم؛ هرگز با جملهٔ ثابت جایگزین نمی‌کنیم
+        area = root_cause_text(h.get("area") or h.get("concept_name"))
+        reasoning = _strip_hedges(root_cause_text(h.get("reasoning")))
+        if not area and not reasoning:
+            continue  # ریشهٔ کاملاً خالی — کارت نمی‌سازیم
         if not area:
-            continue
-        root_causes.append({"area": area, "reasoning": reasoning, "cross_subject": bool(h.get("cross_subject", False))})
+            area = "عنوان ریشه ثبت نشد — معلم باید شخصاً بررسی کند"
+        if not reasoning:
+            reasoning = "تحلیل ریشه‌ای برای این بند ثبت نشد — معلم باید شخصاً بررسی کند"
+        root_causes.append({"area": area, "concept_name": area, "reasoning": reasoning,
+                            "cross_subject": bool(h.get("cross_subject", False))})
 
     suggestions = [
         fa_text(_strip_hedges(str(x).strip()), suggestion_fallback())

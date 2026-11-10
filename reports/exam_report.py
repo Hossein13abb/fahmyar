@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from models.concept import Concept
 from models.question import AssessmentSession, EvidenceStatus, STATUS_FA
 from reports.fa_map import (
+    root_cause_text,
     normalize_dimension,
     normalize_exam_type,
     fa_text,
@@ -23,6 +24,14 @@ from reports.fa_map import (
     feedback_fallback,
     suggestion_fallback,
 )
+
+def _strip_hedges_local(text: str) -> str:
+    """تردیدهای لفظیِ رایج را از متنِ ریشه پاک می‌کند (بدون تغییر محتوای آموزشی)."""
+    s = text
+    for hedge in ("به نظر می‌رسد که ", "به نظر می‌رسد ", "احتمالاً ", "ممکن است "):
+        s = s.replace(hedge, "")
+    return s.strip()
+
 
 _TYPE_ORDER = {"conceptual": 1, "real_world": 2, "diagram": 3, "misconception_trap": 4, "computational": 5, "definitional": 6}
 
@@ -59,8 +68,8 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
     dimensions = list(meta.get("dimensions") or [])
     suggestions = list(meta.get("suggestions") or [])
     root_causes = [
-        {"area": h.get("concept_name") or h.get("area") or "",
-         "reasoning": h.get("reasoning", ""),
+        {"concept_name": root_cause_text(h.get("concept_name") or h.get("area")),
+         "reasoning": _strip_hedges_local(root_cause_text(h.get("reasoning"))),
          "cross_subject": bool(h.get("cross_subject", False))}
         for h in hypotheses if h.get("type") == "root_cause"
     ]
@@ -84,11 +93,18 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
         })
     dimensions = norm_dimensions
     root_causes = [
-        {"area": fa_text(r.get("area"), "پیش‌نیازها و مفاهیم پایه"),
-         "reasoning": fa_text(r.get("reasoning"), "این پیش‌نیاز نیاز به مرور مستقیم دارد."),
+        {"concept_name": r.get("concept_name"), "area": r.get("concept_name"),
+         "reasoning": r.get("reasoning"),
          "cross_subject": bool(r.get("cross_subject", False))}
         for r in root_causes
+        if r.get("concept_name") or r.get("reasoning")
     ]
+    # placeholderِ گمشده برای فیلدهایی که مدل اصلاً پر نکرده — هیچ جملهٔ ثابتی جایگزین نظر مدل نمی‌شود
+    for r in root_causes:
+        if not r["concept_name"]:
+            r["concept_name"] = r["area"] = "عنوان ریشه ثبت نشد — معلم باید شخصاً بررسی کند"
+        if not r["reasoning"]:
+            r["reasoning"] = "تحلیل ریشه‌ای برای این بند ثبت نشد — معلم باید شخصاً بررسی کند"
     suggestions = [fa_text(x, suggestion_fallback()) for x in suggestions]
 
     dimension_lines = [
@@ -99,7 +115,7 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
         for i, q in enumerate(per_question)
     ]
     root_cause_lines = [
-        f"{r['area']}{' (بین‌درسی)' if r.get('cross_subject') else ''}: {r['reasoning']}" for r in root_causes
+        f"{r['concept_name']}{' (بین‌درسی)' if r.get('cross_subject') else ''}: {r['reasoning']}" for r in root_causes
     ] or ["بدفهمی ریشه‌دارِ تکرارشونده‌ای یافت نشد."]
 
     report = {
