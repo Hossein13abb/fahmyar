@@ -1,12 +1,12 @@
 // نشان وضعیت‌های کیفی فهم‌یار — هرگز عددی نیستند، فقط برچسب فارسی + رنگ پاستلی
 const STATUS = {
   CONFIRMED: {
-    label: 'تأییدشده',
+    label: '✅ درک کامل',
     cls: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
     dot: 'bg-emerald-500',
   },
   LIKELY_UNDERSTOOD: {
-    label: 'احتمالاً آموخته‌شده',
+    label: '👍 به احتمال زیاد درک شده',
     cls: 'bg-teal-50 text-teal-800 ring-1 ring-teal-200',
     dot: 'bg-teal-500',
   },
@@ -21,7 +21,7 @@ const STATUS = {
     dot: 'bg-orange-400',
   },
   INSUFFICIENT_EVIDENCE: {
-    label: 'فاقد شواهد کافی',
+    label: '⚪ پاسخ داده نشده / شواهد ناکافی',
     cls: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
     dot: 'bg-slate-400',
   },

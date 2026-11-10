@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 
@@ -33,6 +34,48 @@ def _strip_hedges_local(text: str) -> str:
     return s.strip()
 
 
+
+# نشانگرهای خروجی خامِ مدل (دانش‌آموز فارسی‌زبان هرگز این‌ها را تایپ نمی‌کند)
+_MODEL_MARKERS = (
+    "<<<",
+    '"per_question"', '"dimension_findings"', '"root_cause_hypotheses"', '"improvement_suggestions"',
+)
+
+
+def _looks_like_model_output(text: str) -> bool:
+    """آیا این رشته شبیه خروجی خام/JSONِ مدل است؟ (برای اینکه آن را اشتباهی به‌عنوان پاسخ دانش‌آموز نشان ندهیم)"""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if any(m in t for m in _MODEL_MARKERS):
+        return True
+    if t.startswith("{") and t.endswith("}"):
+        try:
+            obj = json.loads(t)
+        except Exception:
+            return False
+        return isinstance(obj, dict) and any(
+            k in obj for k in ("per_question", "dimension_findings", "root_cause_hypotheses", "improvement_suggestions")
+        )
+    return False
+
+
+def _raw_student_answer(entry: dict[str, Any]) -> str:
+    """فقط و فقط متنِ خامی که دانش‌آموز تایپ کرده برمی‌گرداند.
+
+    - هیچ‌گاه خروجی JSONِ مدل، متون فال‌بکِ تحلیل‌گر یا reasoning/feedback را در فیلد response کپی نمی‌کند.
+    - اگر به‌هر دلیلی (مثلاً دادهٔ قدیمی) رشته‌ای شبیهِ خروجی مدل در entry["response"] نشسته باشد،
+      به‌جای نمایشِ آن، پاسخ خالی برمی‌گرداند تا UI «پاسخی ثبت نشده بود» نشان دهد.
+    """
+    resp = entry.get("response", "")
+    if resp is None:
+        return ""
+    resp = str(resp).strip()
+    if _looks_like_model_output(resp):
+        return ""
+    return resp
+
+
 _TYPE_ORDER = {"conceptual": 1, "real_world": 2, "diagram": 3, "misconception_trap": 4, "computational": 5, "definitional": 6}
 
 
@@ -52,7 +95,7 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             "status": record.get("status", EvidenceStatus.UNCLEAR.value),
             "evidence_type": record.get("evidence_type"),
             "error_type": record.get("error_type", "none"),
-            "response": entry.get("response", ""),
+            "response": _raw_student_answer(entry),
             "reasoning": fa_text(record.get("reasoning", ""), feedback_fallback(record.get("status", ""))),
             "qualitative_feedback": fa_text(
                 record.get("qualitative_feedback") or record.get("reasoning") or "",

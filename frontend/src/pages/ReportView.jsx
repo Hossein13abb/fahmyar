@@ -191,7 +191,26 @@ const faExamType = (t) => {
   return EXAM_TYPE_TITLES[raw] || (latinHeavy(raw) ? 'تحلیلی' : raw || '—')
 }
 
+
+// پاسخِ خامِ دانش‌آموز — اگر رشته شبیه خروجی/JSONِ مدل باشد، آن را نشان نمی‌دهیم (بک‌اند هم تطهیر می‌کند)
+const _modelMarkers = ['<<<', '"per_question"', '"dimension_findings"', '"root_cause_hypotheses"', '"improvement_suggestions"']
+const rawStudentAnswer = (text) => {
+  const s = String(text ?? '').trim()
+  if (!s) return ''
+  if (_modelMarkers.some((m) => s.includes(m))) return ''
+  if (s.startsWith('{') && s.endsWith('}')) {
+    try {
+      const obj = JSON.parse(s)
+      if (obj && typeof obj === 'object' && ['per_question', 'dimension_findings', 'root_cause_hypotheses', 'improvement_suggestions'].some((k) => k in obj)) return ''
+    } catch {
+      /* JSON نامعتبر — ولی چون با { شروع می‌شود و محتوا فنی نیست، رد نمی‌کنیم مگر نشانگر داشته باشد */
+    }
+  }
+  return s
+}
+
 function ExamReport({ report, mode }) {
+
   const navigate = useNavigate()
   const dimensions = report.dimensions ?? []
   const perQuestion = report.per_question ?? []
@@ -277,7 +296,7 @@ function ExamReport({ report, mode }) {
                   <details className="mt-2">
                     <summary className="cursor-pointer text-[11px] font-bold text-slate-400">پاسخ شما</summary>
                     <p className="mt-1 whitespace-pre-line rounded-xl bg-slate-50 p-3 text-[12px] leading-7 text-slate-700">
-                      {String(q.response || '').trim() || '— پاسخی ثبت نشده بود —'}
+                      {rawStudentAnswer(q.response) || '— پاسخی ثبت نشده بود —'}
                     </p>
                   </details>
                 )}
@@ -343,7 +362,7 @@ function ExamReport({ report, mode }) {
             {report.evidence_log.map((entry, i) => (
               <div key={i} className="rounded-xl border border-slate-100 bg-white p-3 text-[11px] leading-6 text-slate-600">
                 <p className="font-black text-slate-500">سؤال {entry.order ?? i + 1} ({faExamType(entry.exam_type)}) — #{entry.question_id}</p>
-                <p className="mt-0.5 line-clamp-2">{entry.response}</p>
+                <p className="mt-0.5 line-clamp-2">{rawStudentAnswer(entry.response) || '— پاسخی ثبت نشده بود —'}</p>
                 <div className="mt-1 flex flex-wrap gap-1">
                   {(entry.evidence ?? []).map((ev, j) => (
                     <Badge key={j} status={validBadgeStatus(ev.status)} />
@@ -562,7 +581,7 @@ export default function ReportView({ mode = 'student' }) {
                   {report.evidence_log.map((entry, i) => (
                     <div key={i} className="rounded-xl border border-slate-100 bg-white p-3 text-[11px] leading-6 text-slate-600">
                       <p className="font-black text-slate-500">پاسخ {i + 1} — سؤال #{entry.question_id}</p>
-                      <p className="mt-0.5 line-clamp-2">{entry.response}</p>
+                      <p className="mt-0.5 line-clamp-2">{rawStudentAnswer(entry.response) || '— پاسخی ثبت نشده بود —'}</p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {(entry.evidence ?? []).map((ev, j) => (
                           <Badge key={j} status={validBadgeStatus(ev.status)} />
