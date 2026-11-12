@@ -16,6 +16,11 @@ import {
   HeartHandshake,
   SearchCheck,
   Map,
+  GraduationCap,
+  LogOut,
+  ShieldCheck,
+  Compass,
+  BookOpenCheck,
 } from 'lucide-react'
 import client, { friendlyError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -36,7 +41,7 @@ const HOW_STEPS = [
 ]
 
 export default function StudentDashboard() {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
 
   const [tab, setTab] = useState('topic') // topic | wrong_answer
@@ -56,6 +61,11 @@ export default function StudentDashboard() {
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [started, setStarted] = useState(false) // false = صفحهٔ خوش‌آمد، true = جریان فهم‌سنجی
+  const handleLogout = () => {
+    logout()
+    navigate('/', { replace: true })
+  }
 
   // بارگذاری مفاهیم مسیر A
   useEffect(() => {
@@ -150,6 +160,77 @@ export default function StudentDashboard() {
 
   return (
     <div className="animate-fade-up space-y-6">
+      {/* ── هدر داشبورد دانش‌آموز ── */}
+      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white px-5 py-3 shadow-soft">
+        <div className="flex items-center gap-3">
+          <span className="rounded-2xl bg-emerald-50 p-2.5 ring-1 ring-emerald-100">
+            <GraduationCap className="h-5 w-5 text-emerald-700" />
+          </span>
+          <div>
+            <p className="text-[13px] font-black text-slate-800">پنل دانش‌آموز</p>
+            <p className="text-[10px] font-medium text-slate-400">{user?.full_name || user?.username}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-[12px] font-bold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+        >
+          <LogOut className="h-4 w-4" />
+          خروج از حساب
+        </button>
+      </header>
+
+      {!started ? (
+        <section className="relative overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-bl from-emerald-600 via-emerald-700 to-emerald-900 px-6 py-10 text-center text-white shadow-lift sm:px-10 sm:py-14">
+          <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-emerald-400/20 blur-3xl" />
+          <div aria-hidden className="pointer-events-none absolute -left-16 bottom-0 h-64 w-64 rounded-full bg-teal-300/15 blur-3xl" />
+          <div className="relative">
+            <span className="inline-flex rounded-3xl bg-white/10 p-4 ring-1 ring-white/20 backdrop-blur">
+              <BookOpenCheck className="h-11 w-11 text-emerald-100" strokeWidth={1.6} />
+            </span>
+            <h1 className="mt-6 text-3xl font-black leading-snug sm:text-4xl">به فهم‌یار خوش آمدید</h1>
+            <p className="mx-auto mt-4 max-w-xl text-[15px] leading-8 text-emerald-50/95">
+              در اینجا هیچ نمره‌ای وجود ندارد و هدف فقط کشف نقاط قوت و ضعف مفهومی شماست؛
+              نه مقایسه با کسی، نه استرس.
+            </p>
+            <div className="mx-auto mt-7 grid max-w-3xl gap-3 text-right sm:grid-cols-3">
+              {[
+                { Icon: ShieldCheck, title: 'بدون نمره، بدون رتبه', text: 'فقط شواهد کیفی از فهمیدنت ثبت می‌شود.' },
+                { Icon: Compass, title: 'دقیقاً می‌دانی کجایی', text: 'گزارش نشان می‌دهد کدام پیش‌نیاز را مرور کنی.' },
+                { Icon: HeartHandshake, title: 'فقط برای تو و معلمت', text: 'گزارش‌ها خصوصی‌اند و مقایسه‌ای در کار نیست.' },
+              ].map(({ Icon, title, text }) => (
+                <div key={title} className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/15 backdrop-blur">
+                  <Icon className="h-6 w-6 text-emerald-100" strokeWidth={1.8} />
+                  <p className="mt-2 text-[12px] font-black text-white">{title}</p>
+                  <p className="mt-1 text-[10px] leading-5 text-emerald-100/90">{text}</p>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setStarted(true)}
+              className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-white px-8 py-4 text-[16px] font-black text-emerald-800 shadow-lift transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-50 sm:px-10"
+            >
+              شروع ارزیابی / فهم‌سنجی
+              <ArrowLeft className="h-6 w-6" strokeWidth={2.2} />
+            </button>
+            <p className="mt-4 text-[11px] font-medium text-emerald-100/80">
+              حدود ۹ سؤال تشریحی · حداکثر ۳۰ دقیقه · هر وقت خواستی می‌توانی مکث کنی
+            </p>
+          </div>
+        </section>
+      ) : (
+        <>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setStarted(false)}
+          className="text-[11px] font-bold text-slate-400 transition hover:text-slate-600"
+        >
+          ← بازگشت به خوش‌آمد
+        </button>
+      </div>
       {/* ── سربرگ خوش‌آمد ── */}
       <section className="relative overflow-hidden rounded-4xl border border-brand-100 bg-gradient-to-l from-brand-800 to-brand-700 px-6 py-6 text-brand-50 shadow-lift sm:px-8">
         <div
@@ -338,6 +419,8 @@ export default function StudentDashboard() {
       <p className="flex items-center justify-center gap-2 text-center text-[11px] text-slate-400">
         <BookOpen className="h-4 w-4" /> هر جلسه حداکثر ۳۰ دقیقه طول می‌کشد و می‌توانی هر وقت خواستی مکث کنی.
       </p>
+        </>
+      )}
     </div>
   )
 }

@@ -7,7 +7,7 @@ import StudentDashboard from './pages/StudentDashboard'
 import ExamRoom from './pages/ExamRoom'
 import ReportView from './pages/ReportView'
 import TeacherDashboard from './pages/TeacherDashboard'
-import ExamBuilder from './pages/ExamBuilder'
+import SchoolStaffDashboard from './pages/SchoolStaffDashboard'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function RequireAuth({ roles }) {
@@ -17,7 +17,7 @@ function RequireAuth({ roles }) {
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />
   if (roles && !roles.includes(user.role)) {
     // دانش‌آموز به پنل معلم دسترسی ندارد و برعکس
-    return <Navigate to={user.role === 'student' ? '/dashboard' : '/teacher'} replace />
+    return <Navigate to={user.role === 'student' ? '/dashboard' : '/staff'} replace />
   }
   return <Outlet />
 }
@@ -39,7 +39,9 @@ export default function App() {
           </Route>
 
           <Route element={<RequireAuth roles={['teacher', 'admin']} />}>
-            <Route path="/builder" element={<ExamBuilder />} />
+            <Route path="/staff" element={<SchoolStaffDashboard />} />
+            {/* مسیر قدیمی — برای سازگاری به داشبورد جدید هدایت می‌شود */}
+            <Route path="/builder" element={<Navigate to="/staff" replace />} />
             <Route path="/teacher" element={<TeacherDashboard />} />
             <Route path="/teacher/report/:studentId/:sessionId" element={<ReportView mode="teacher" />} />
           </Route>

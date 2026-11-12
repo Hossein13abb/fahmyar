@@ -87,7 +87,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
 
   if (isAuthenticated && user) {
-    return <Navigate to={user.role === 'student' ? '/dashboard' : '/teacher'} replace />
+    return <Navigate to={user.role === 'student' ? '/dashboard' : '/staff'} replace />
   }
 
   const set = (key) => (e) => {
@@ -118,7 +118,7 @@ export default function Login() {
         }
         loggedUser = await register(payload)
       }
-      const target = location.state?.from ?? (loggedUser.role === 'student' ? '/dashboard' : '/teacher')
+      const target = location.state?.from ?? (loggedUser.role === 'student' ? '/dashboard' : '/staff')
       navigate(target, { replace: true })
     } catch (err) {
       setError(friendlyError(err))

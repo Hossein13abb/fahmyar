@@ -33,7 +33,7 @@ export default function Navbar() {
     <header className="no-print sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         {/* راست (RTL اول): لوگو + نام */}
-        <Link to={isTeacher ? '/teacher' : '/dashboard'} className="flex items-center gap-3">
+        <Link to={isTeacher ? '/staff' : '/dashboard'} className="flex items-center gap-3">
           <LogoMark />
           <span className="leading-tight">
             <span className="block text-[19px] font-black tracking-tight text-brand-900">فهم‌یار</span>

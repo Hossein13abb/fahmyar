@@ -15,8 +15,8 @@ export default function Home() {
   const { isAuthenticated, isTeacher } = useAuth()
 
   const goStaff = () =>
-    navigate(isAuthenticated && isTeacher ? '/builder' : '/login', {
-      state: isAuthenticated && isTeacher ? undefined : { from: '/builder' },
+    navigate(isAuthenticated && isTeacher ? '/staff' : '/login', {
+      state: isAuthenticated && isTeacher ? undefined : { from: '/staff' },
     })
   const goStudent = () =>
     navigate(isAuthenticated && !isTeacher ? '/dashboard' : '/login', {
@@ -69,7 +69,7 @@ export default function Home() {
                 <li className="flex items-center gap-2"><Wand2 className="h-4 w-4 shrink-0 text-brand-300" /> دفترچه‌های تشخیصی با سؤالات عمیق، نه حفظی</li>
               </ul>
               <span className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-amber-300 px-5 py-3 text-[13px] font-black text-brand-950 shadow transition group-hover:bg-amber-200">
-                ورود به پنل طراحی آزمون
+                ورود به داشبورد مدرسه
                 <ArrowLeft className="h-5 w-5 transition-transform group-hover:-translate-x-1" />
               </span>
             </div>

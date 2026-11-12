@@ -50,7 +50,7 @@ const loadDrafts = () => {
   }
 }
 
-export default function ExamBuilder() {
+export default function ExamBuilder({ embedded = false }) {
   const [selected, setSelected] = useState(['math'])           // درس‌های انتخابی
   const [counts, setCounts] = useState({ math: 10 })           // تعداد سؤال هر درس
   const [duration, setDuration] = useState(100)                // دقیقه
@@ -141,7 +141,8 @@ export default function ExamBuilder() {
 
   return (
     <div className="animate-fade-up space-y-6">
-      {/* ── سربرگ صفحه ── */}
+      {/* ── سربرگ صفحه (در حالت نهفته داخل داشبورد کادر مدرسه حذف می‌شود) ── */}
+      {!embedded && (
       <section className="relative overflow-hidden rounded-2xl border border-brand-800/50 bg-gradient-to-bl from-brand-800 via-brand-900 to-brand-950 p-6 text-brand-50 shadow-lift sm:p-7">
         <div aria-hidden className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-brand-400/20 blur-3xl" />
         <div aria-hidden className="pointer-events-none absolute -bottom-14 left-1/3 h-48 w-48 rounded-full bg-amber-400/10 blur-3xl" />
@@ -163,6 +164,7 @@ export default function ExamBuilder() {
           </div>
         </div>
       </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-12">
         {/* ══════════ ستون فرم ══════════ */}
