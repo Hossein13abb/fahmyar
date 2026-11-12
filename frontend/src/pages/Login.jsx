@@ -12,10 +12,10 @@ import {
   Eye,
   EyeOff,
   Loader2,
-  ChevronDown,
   Lightbulb,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import CustomDropdown from '../components/CustomDropdown'
 import { friendlyError } from '../api/client'
 
 const SUBJECTS = [
@@ -65,7 +65,7 @@ function HeroArt() {
 const FEATURES = [
   { Icon: Brain, text: 'ریشهٔ خطا را پیدا می‌کند — حتی اگر بین‌درسی باشد (مثلاً خطای فیزیک ریشه‌اش در ریاضی است).' },
   { Icon: Compass, text: 'با سؤال‌های انطباقیِ پی‌درپی، شواهد کیفیِ کافی دربارهٔ فهمیدنت جمع می‌کند.' },
-  { Icon: ShieldCheck, text: 'هیچ نمره، رتبه یا مقایسه‌ای نیست — فقط یک نقشهٔ آرام از «فهمیده شد / مبهم است / نونوار».' },
+  { Icon: ShieldCheck, text: 'نقشهٔ روشن از وضعیت فهم: چه چیزی را می‌دانی، چه چیزی مبهم است و چه چیزی را باید از صفر یاد بگیری.' },
 ]
 
 export default function Login() {
@@ -142,7 +142,7 @@ export default function Login() {
         <div className="relative flex h-full flex-col">
           <span className="chip w-fit bg-white/10 text-brand-100 ring-1 ring-white/20">
             <Sparkles className="h-4 w-4 text-amber-200" />
-            سامانهٔ تشخیصیِ آموزشی — بدون نمره، بدون استرس
+            سامانهٔ فهم‌سنجی تشخیصی
           </span>
           <h1 className="mt-6 text-3xl font-black leading-[1.35] sm:text-4xl">
             اینجا «جواب درست» مهم نیست؛
@@ -272,25 +272,23 @@ export default function Login() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label" htmlFor="grade">پایه</label>
-                  <div className="relative">
-                    <select id="grade" className="input appearance-none pl-9" value={form.grade} onChange={set('grade')}>
-                      {GRADES.map((g) => (
-                        <option key={g} value={g}>پایهٔ {g}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  </div>
+                  <CustomDropdown
+                    id="grade"
+                    value={form.grade}
+                    onChange={(v) => setForm((f) => ({ ...f, grade: v }))}
+                    ariaLabel="پایه"
+                    options={GRADES.map((g) => ({ value: g, label: `پایهٔ ${g}` }))}
+                  />
                 </div>
                 <div>
                   <label className="label" htmlFor="major">رشته</label>
-                  <div className="relative">
-                    <select id="major" className="input appearance-none pl-9" value={form.major} onChange={set('major')}>
-                      {SUBJECTS.map((s) => (
-                        <option key={s.value} value={s.value}>{s.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  </div>
+                  <CustomDropdown
+                    id="major"
+                    value={form.major}
+                    onChange={(v) => setForm((f) => ({ ...f, major: v }))}
+                    ariaLabel="رشته"
+                    options={SUBJECTS.map((s) => ({ value: s.value, label: s.label }))}
+                  />
                 </div>
               </div>
             )}

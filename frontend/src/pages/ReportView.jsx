@@ -222,17 +222,6 @@ function ExamReport({ report, mode }) {
 
   return (
     <div className="animate-fade-up space-y-5">
-      {/* ── بنر الزامی ── */}
-      <div className="no-print flex items-center gap-3 rounded-3xl border border-amber-300/70 bg-gradient-to-l from-amber-100 to-calm-100 px-5 py-3.5 text-amber-900 shadow-card">
-        <AlertTriangle className="h-6 w-6 shrink-0" />
-        <p className="text-[13px] font-black leading-7">
-          ⚠️ نمرهٔ آزمون — نه سنجش فهم
-          <span className="block text-[11px] font-medium text-amber-800">
-            این گزارش «فهمیدن» را توصیف می‌کند؛ هیچ عدد، نمره یا رتبه‌ای در آن نیست و جایگزین گفت‌وگوی معلم با دانش‌آموز نمی‌شود.
-          </span>
-        </p>
-      </div>
-
       {/* ── سربرگ گزارش ── */}
       <section className="card flex flex-wrap items-start justify-between gap-4 p-6">
         <div>
@@ -375,7 +364,7 @@ function ExamReport({ report, mode }) {
       )}
 
       <p className="pb-2 text-center text-[11px] text-slate-400">
-        این گزارش شخصی است و فقط برای تو (و معلمت) قابل مشاهده است — هیچ نمره، رتبه‌بندی یا مقایسه‌ای در آن وجود ندارد.
+        این گزارش فقط برای تو و معلمت قابل مشاهده است.
       </p>
     </div>
   )
@@ -434,17 +423,6 @@ export default function ReportView({ mode = 'student' }) {
 
   return (
     <div className="animate-fade-up space-y-5">
-      {/* ── بنر الزامی ── */}
-      <div className="no-print flex items-center gap-3 rounded-3xl border border-amber-300/70 bg-gradient-to-l from-amber-100 to-calm-100 px-5 py-3.5 text-amber-900 shadow-card">
-        <AlertTriangle className="h-6 w-6 shrink-0" />
-        <p className="text-[13px] font-black leading-7">
-          ⚠️ نمرهٔ آزمون — نه سنجش فهم
-          <span className="block text-[11px] font-medium text-amber-800">
-            این گزارش «فهمیدن» را توصیف می‌کند؛ هیچ عدد، نمره یا رتبه‌ای در آن نیست و جایگزین گفت‌وگوی معلم با دانش‌آموز نمی‌شود.
-          </span>
-        </p>
-      </div>
-
       {/* ── سربرگ گزارش ── */}
       <section className="card flex flex-wrap items-start justify-between gap-4 p-6">
         <div>

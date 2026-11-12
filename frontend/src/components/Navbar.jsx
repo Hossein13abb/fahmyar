@@ -30,16 +30,13 @@ export default function Navbar() {
   const onLoginPage = location.pathname === '/login'
 
   return (
-    <header className="no-print sticky top-0 z-40 border-b border-brand-100/70 bg-[#f7faf8]/85 backdrop-blur-lg">
+    <header className="no-print sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         {/* راست (RTL اول): لوگو + نام */}
         <Link to={isTeacher ? '/teacher' : '/dashboard'} className="flex items-center gap-3">
           <LogoMark />
           <span className="leading-tight">
             <span className="block text-[19px] font-black tracking-tight text-brand-900">فهم‌یار</span>
-            <span className="hidden text-[10px] font-medium text-brand-600 sm:block">
-              سنجش فهمیدن، نه فقط درستی پاسخ
-            </span>
           </span>
         </Link>
 

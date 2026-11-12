@@ -1,11 +1,13 @@
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
+import Home from './pages/Home'
 import Login from './pages/Login'
 import StudentDashboard from './pages/StudentDashboard'
 import ExamRoom from './pages/ExamRoom'
 import ReportView from './pages/ReportView'
 import TeacherDashboard from './pages/TeacherDashboard'
+import ExamBuilder from './pages/ExamBuilder'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function RequireAuth({ roles }) {
@@ -20,12 +22,6 @@ function RequireAuth({ roles }) {
   return <Outlet />
 }
 
-function HomeRedirect() {
-  const { isAuthenticated, user } = useAuth()
-  if (!isAuthenticated) return <Navigate to="/login" replace />
-  return <Navigate to={user.role === 'student' ? '/dashboard' : '/teacher'} replace />
-}
-
 export default function App() {
   const { user } = useAuth()
   return (
@@ -33,7 +29,7 @@ export default function App() {
       <Navbar />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
         <Routes>
-          <Route path="/" element={<HomeRedirect />} />
+          <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
 
           <Route element={<RequireAuth roles={['student']} />}>
@@ -43,6 +39,7 @@ export default function App() {
           </Route>
 
           <Route element={<RequireAuth roles={['teacher', 'admin']} />}>
+            <Route path="/builder" element={<ExamBuilder />} />
             <Route path="/teacher" element={<TeacherDashboard />} />
             <Route path="/teacher/report/:studentId/:sessionId" element={<ReportView mode="teacher" />} />
           </Route>
@@ -51,14 +48,11 @@ export default function App() {
         </Routes>
       </main>
 
-      <footer className="no-print border-t border-brand-100/70 bg-white/60 py-4 text-center">
-        <p className="text-[11px] font-medium text-brand-700">
-          فهم‌یار — فهمیدن را با آرامش بسنجیم · بدون نمره، بدون رتبه، بدون مقایسه
-          <span className="mx-2 text-amber-600">|</span>
-          <span className="text-amber-700">⚠️ نمرهٔ آزمون — نه سنجش فهم</span>
-          {user ? <span className="mx-2 text-slate-300">•</span> : null}
-          {user ? <span className="text-slate-400">{user.username}</span> : null}
-        </p>
+      <footer className="no-print border-t border-slate-200/70 bg-white/70 py-4 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 text-[11px] font-medium text-slate-500 sm:px-6">
+          <span className="font-bold text-brand-800">فهم‌یار</span>
+          {user ? <span className="text-slate-400">{user.full_name || user.username}</span> : <span>سامانهٔ فهم‌سنجی تشخیصی</span>}
+        </div>
       </footer>
     </div>
   )

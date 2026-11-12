@@ -7,7 +7,6 @@ import {
   Wallet,
   UserRound,
   Search,
-  ChevronDown,
   FileText,
   CalendarDays,
   ThumbsUp,
@@ -19,6 +18,7 @@ import {
 import client, { friendlyError } from '../api/client'
 import Badge from '../components/Badge'
 import LoadingSpinner from '../components/LoadingSpinner'
+import CustomDropdown from '../components/CustomDropdown'
 
 const TRIGGER_LABEL = { topic_selection: 'انتخاب موضوع', wrong_answer: 'پاسخ غلط' }
 
@@ -143,13 +143,19 @@ export default function TeacherDashboard() {
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} className="input py-2.5 pr-10 text-[13px]" placeholder="جستجوی نام دانش‌آموز…" aria-label="جستجوی دانش‌آموز" />
             </div>
-            <div className="relative">
-              <select value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)} className="input appearance-none py-2.5 pl-8 pr-3 text-[13px]" aria-label="فیلتر پایه">
-                <option value="">همهٔ پایه‌ها</option>
-                {[10, 11, 12].map((g) => <option key={g} value={g}>پایهٔ {g}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            </div>
+            <CustomDropdown
+              value={gradeFilter}
+              onChange={(v) => setGradeFilter(v)}
+              ariaLabel="فیلتر پایه"
+              className="w-36"
+              buttonClassName="py-2.5 text-[13px]"
+              options={[
+                { value: '', label: 'همهٔ پایه‌ها' },
+                { value: 10, label: 'پایهٔ ۱۰' },
+                { value: 11, label: 'پایهٔ ۱۱' },
+                { value: 12, label: 'پایهٔ ۱۲' },
+              ]}
+            />
           </div>
 
           <ul className="mt-3 flex-1 space-y-1.5 overflow-auto" role="listbox" aria-label="دانش‌آموزان">

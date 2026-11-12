@@ -15,10 +15,10 @@ body,
 body {
   font-family: 'Vazirmatn', Tahoma, ui-sans-serif, system-ui, sans-serif;
   background:
-    radial-gradient(1200px 600px at 85% -10%, rgba(126, 212, 181, 0.28), transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, rgba(237, 218, 185, 0.35), transparent 55%),
-    #f7faf8;
-  color: #1d473b;
+    radial-gradient(1100px 520px at 88% -12%, rgba(178, 230, 207, 0.35), transparent 62%),
+    radial-gradient(850px 480px at -8% 108%, rgba(237, 218, 185, 0.28), transparent 58%),
+    #f8fafc; /* slate-50 */
+  color: #0f172a;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -48,7 +48,7 @@ body {
 
 /* ورودی‌های متنی */
 .input {
-  @apply w-full rounded-2xl border border-brand-100 bg-white/80 px-4 py-3 text-[15px] leading-7 text-brand-900 placeholder-slate-400 shadow-sm transition focus:border-brand-300 focus:bg-white focus:ring-0;
+  @apply w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-[15px] leading-7 text-brand-900 placeholder-slate-400 shadow-sm transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100;
 }
 
 .label {
@@ -56,7 +56,7 @@ body {
 }
 
 .card {
-  @apply rounded-3xl border border-brand-100/70 bg-white/85 shadow-card backdrop-blur;
+  @apply rounded-2xl border border-slate-200/60 bg-white shadow-[0_10px_36px_-10px_rgba(2,20,15,0.18)];
 }
 
 .chip {

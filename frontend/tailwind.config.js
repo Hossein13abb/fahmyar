@@ -34,9 +34,9 @@ export default {
         '4xl': '2rem',
       },
       boxShadow: {
-        soft: '0 10px 34px rgba(13, 39, 31, 0.10)',
-        card: '0 2px 14px rgba(13, 39, 31, 0.07)',
-        lift: '0 18px 48px rgba(13, 39, 31, 0.16)',
+        soft: '0 10px 34px rgba(13, 39, 31, 0.12)',
+        card: '0 8px 28px rgba(2, 20, 15, 0.10)',
+        lift: '0 18px 48px rgba(2, 20, 15, 0.20)',
       },
       keyframes: {
         fadeUp: {

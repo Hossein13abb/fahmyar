@@ -7,7 +7,6 @@ import {
   Sigma,
   Atom,
   FlaskConical,
-  ChevronDown,
   Route,
   GitBranch,
   ArrowLeft,
@@ -21,6 +20,7 @@ import {
 import client, { friendlyError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
+import CustomDropdown from '../components/CustomDropdown'
 
 const SUBJECTS = [
   { value: 'math', label: 'ریاضی', Icon: Sigma },
@@ -32,7 +32,7 @@ const GRADES = [10, 11, 12]
 const HOW_STEPS = [
   { Icon: SearchCheck, title: '۱. دفترچهٔ ۹ سؤالی', text: 'از مفهومی تا نموداری — کل ابعاد فهم در یک آزمون.' },
   { Icon: Waypoints, title: '۲. بدون بازخورد لحظه‌ای', text: 'حین آزمون چیزی فاش نمی‌شود؛ پاسخ‌ها جمع می‌شوند تا تحلیل یکپارچه انجام شود.' },
-  { Icon: Map, title: '۳. گزارش تشخیصی', text: 'ابعاد فهم، ریشهٔ بدفهمی‌ها و راهکارهای کیفی — بدون نمره و رتبه.' },
+  { Icon: Map, title: '۳. گزارش تشخیصی', text: 'ابعاد فهم، ریشهٔ بدفهمی‌ها و راهکارهای کیفی.' },
 ]
 
 export default function StudentDashboard() {
@@ -167,15 +167,15 @@ export default function StudentDashboard() {
               آماده‌ای برای آزمون جامع تشخیصی؟
             </h1>
             <p className="mt-2 max-w-lg text-[13px] leading-7 text-brand-100/90">
-              یک دفترچهٔ ۹ سؤالی در انتظارت است — بدون نمره و بدون چت.
+              دفترچهٔ ۹ سؤالی از همین مفهوم آماده است.
               در پایان، گزارش تشخیصیِ کامل با ریشه‌یابی بدفهمی‌هایت می‌سازیم.
             </p>
           </div>
           <div className="hidden shrink-0 flex-col items-center gap-2 rounded-3xl bg-white/10 px-6 py-4 text-center ring-1 ring-white/15 backdrop-blur md:flex">
             <HeartHandshake className="h-9 w-9 text-amber-200" />
             <p className="text-[11px] font-bold leading-5 text-brand-100">
-              بدون نمره · بدون رتبه
-              <br /> فقط شواهد کیفی
+              دفترچهٔ ۹ سؤالی
+              <br /> تحلیل تک‌تک سؤال‌ها
             </p>
           </div>
         </div>
@@ -219,25 +219,23 @@ export default function StudentDashboard() {
             <div className="flex flex-wrap items-end gap-4">
               <div className="min-w-[10rem] flex-1">
                 <label className="label" htmlFor="subject">درس</label>
-                <div className="relative">
-                  <select id="subject" className="input appearance-none pl-10" value={subject} onChange={(e) => setSubject(e.target.value)}>
-                    {SUBJECTS.map(({ value, label }) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                </div>
+                <CustomDropdown
+                  id="subject"
+                  value={subject}
+                  onChange={(v) => setSubject(v)}
+                  ariaLabel="درس"
+                  options={SUBJECTS.map(({ value, label }) => ({ value, label }))}
+                />
               </div>
               <div className="min-w-[8rem] flex-1">
                 <label className="label" htmlFor="grade">پایه</label>
-                <div className="relative">
-                  <select id="grade" className="input appearance-none pl-10" value={grade} onChange={(e) => setGrade(Number(e.target.value))}>
-                    {GRADES.map((g) => (
-                      <option key={g} value={g}>پایهٔ {g}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                </div>
+                <CustomDropdown
+                  id="grade"
+                  value={grade}
+                  onChange={(v) => setGrade(Number(v))}
+                  ariaLabel="پایه"
+                  options={GRADES.map((g) => ({ value: g, label: `پایهٔ ${g}` }))}
+                />
               </div>
             </div>
 
@@ -246,17 +244,20 @@ export default function StudentDashboard() {
               {loadingConcepts ? (
                 <LoadingSpinner label="در حال دریافت مفهوم‌ها…" className="py-6" />
               ) : (
-                <div className="relative">
-                  <select id="concept" className="input appearance-none pl-10" value={conceptId} onChange={(e) => setConceptId(e.target.value)}>
-                    <option value="">— یک مفهوم انتخاب کن —</option>
-                    {concepts.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.chapter ? `(${c.chapter})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                </div>
+                <CustomDropdown
+                  id="concept"
+                  value={conceptId}
+                  onChange={(v) => setConceptId(v)}
+                  ariaLabel="مفهوم مورد نظر"
+                  placeholder="— یک مفهوم انتخاب کن —"
+                  options={[
+                    { value: '', label: '— یک مفهوم انتخاب کن —' },
+                    ...concepts.map((c) => ({
+                      value: c.id,
+                      label: `${c.name}${c.chapter ? ` (${c.chapter})` : ''}`,
+                    })),
+                  ]}
+                />
               )}
               {!loadingConcepts && concepts.length === 0 && (
                 <p className="mt-2 flex items-center gap-2 text-[12px] text-amber-800">
@@ -296,15 +297,17 @@ export default function StudentDashboard() {
             </div>
             <div>
               <label className="label" htmlFor="wconcept">مفهوم مرتبط (الزامی — دفترچهٔ سؤالات از این مفهوم ساخته می‌شود)</label>
-              <div className="relative">
-                <select id="wconcept" className="input appearance-none pl-10" value={wrongConceptId} onChange={(e) => setWrongConceptId(e.target.value)}>
-                  <option value="">— یک مفهوم انتخاب کن —</option>
-                  {allConcepts.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name} · {c.subject}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              </div>
+              <CustomDropdown
+                id="wconcept"
+                value={wrongConceptId}
+                onChange={(v) => setWrongConceptId(v)}
+                ariaLabel="مفهوم مرتبط"
+                placeholder="— یک مفهوم انتخاب کن —"
+                options={[
+                  { value: '', label: '— یک مفهوم انتخاب کن —' },
+                  ...allConcepts.map((c) => ({ value: c.id, label: `${c.name} · ${c.subject}` })),
+                ]}
+              />
             </div>
             <button onClick={startWrongAnswerSession} disabled={submitting} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-700 py-4 text-[15px] font-black text-white shadow-lift transition hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-60">
               {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <GitBranch className="h-5 w-5" />}
