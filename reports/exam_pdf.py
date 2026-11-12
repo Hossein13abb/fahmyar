@@ -36,7 +36,6 @@ from reportlab.platypus import (
     Table,
     TableStyle,
     Flowable,
-    KeepTogether,
 )
 
 from models.concept import Concept
@@ -113,9 +112,16 @@ def _fa_date() -> str:
         return date.today().strftime("%Y/%m/%d")
 
 
+def prepare_farsi_text(text: str) -> str:
+    """متن فارسی را برای رندر در ReportLab آماده می‌کند (اتصال حروف + ترتیب دیداری RTL)."""
+    if not text:
+        return ""
+    return get_display(arabic_reshaper.reshape(text))
+
+
 def reshaped(text: Any) -> str:
-    """متن فارسی را برای رندرِ تک‌خطی آماده می‌کند (اتصال حروف + ترتیب نمایشی راست‌به‌چپ)."""
-    return get_display(arabic_reshaper.reshape(str(text or "")))
+    """نام مستعار — برای سازگاری با فراخوان‌های قبلی."""
+    return prepare_farsi_text(str(text or ""))
 
 
 def _esc_xml(visual: str) -> str:
@@ -150,7 +156,9 @@ def rtl_flowables(
     """متن فارسی را به خط‌های پاراگراف راست‌چین تبدیل می‌کند (امن برای Platypus)."""
     font = style.fontName or FONT_REG
     size = style.fontSize
-    max_width = max_width_mm * mm
+    # حاشیهٔ اطمینان: اندازه‌گیری ما با اندکی خطا نسبت به چینش داخلی ReportLab انجام می‌شود؛
+    # کوچک‌تر گرفتن عرض، شکستن‌های تصادفیِ خط آخر را جلوگیری می‌کند.
+    max_width = max_width_mm * mm - 18
     out: list[Paragraph] = []
     for line in _split_rtl_lines(text, font, size, max_width):
         out.append(Paragraph(_esc_xml(reshaped(line)), style))
@@ -235,29 +243,6 @@ class DottedLine(Flowable):
         c.restoreState()
 
 
-class CircleNumber(Flowable):
-    """نشانگرِ دایره‌ایِ سبز با شمارهٔ سؤال به فارسی."""
-
-    def __init__(self, number: int, size: float = 9 * mm):
-        super().__init__()
-        self.number = number
-        self.size = size
-
-    def wrap(self, availWidth, availHeight):
-        return self.size, self.size
-
-    def draw(self):
-        c = self.canv
-        s = self.size
-        c.saveState()
-        c.setFillColor(BRAND)
-        c.circle(s / 2, s / 2, s / 2, fill=1, stroke=0)
-        c.setFillColor(colors.white)
-        c.setFont(FONT_XBOLD, 13)
-        c.drawCentredString(s / 2, s / 2 - 4.6, reshaped(_fa(self.number)))
-        c.restoreState()
-
-
 class NumberedCanvas(canvas.Canvas):
     """کانواس دوگذری برای نوشتن «صفحه X از Y» در پاورقی همهٔ صفحات."""
 
@@ -285,6 +270,25 @@ class NumberedCanvas(canvas.Canvas):
         self.drawCentredString(A4[0] / 2, 8 * mm, text)
         self.restoreState()
 
+
+
+def _question_header(item: dict[str, Any], tag: str = "سؤال") -> Paragraph:
+    """خطِ سربرگِ سؤال — پاراگرافِ تکی با پس‌زمینه و کادرِ نرم (بدون جدول)."""
+    subj = SUBJECT_LABELS.get(item["subject"], item["subject"])
+    style = _style(
+        "q-head",
+        fontName=FONT_BOLD,
+        fontSize=9.5,
+        leading=19,
+        textColor=TEAL_TEXT,
+        alignment=TA_RIGHT,
+        backColor=SLATE_50,
+        borderWidth=0.6,
+        borderColor=BRAND_LINE,
+        borderPadding=5,
+        borderRadius=3,
+    )
+    return Paragraph(_esc_xml(reshaped(f"{tag} {_fa(item['order'])} — {subj}")), style)
 
 # ---------------------------------------------------------------------------
 # انتخاب سؤال‌ها
@@ -526,99 +530,55 @@ def _instruction_box() -> Table:
     return t
 
 
-def _question_block(item: dict[str, Any], with_lines: bool = True) -> Table:
-    subj = SUBJECT_LABELS.get(item["subject"], item["subject"])
-    body: list[Flowable] = rtl_flowables(subj, _style("q-subj", fontName=FONT_BOLD, fontSize=8.5, textColor=TEAL_TEXT, leading=15), 144)
-    body += rtl_flowables(item["text"], _style("q-text", fontSize=10.5, leading=21), 144)
+def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowable]:
+    """سؤال به‌صورتِ چند پاراگراف/خط جداگانه در story — بدون هیچ جدولِ غیرقابل‌شکست."""
+    story: list[Flowable] = [_question_header(item)]
+    story += rtl_flowables(item["text"], _style("q-text", fontSize=10.5, leading=21), 178)
     if with_lines:
-        body += [Spacer(1, 1 * mm), DottedLine(), DottedLine(), DottedLine()]
-    badge = CircleNumber(int(item["order"]), 9 * mm)
-    t = Table([[body, badge]], colWidths=[160 * mm, 18 * mm])
-    t.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (1, 0), (1, 0), "CENTER"),
-                ("BOX", (0, 0), (-1, -1), 0.8, BRAND_LINE),
-                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-                ("TOPPADDING", (0, 0), (-1, -1), 8),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (0, 0), 9),
-                ("LEFTPADDING", (0, 0), (-1, -1), 7),
-            ]
-        )
-    )
-    return t
+        story += [Spacer(1, 1 * mm), DottedLine(), DottedLine(), DottedLine()]
+    story.append(Spacer(1, 4 * mm))
+    return story
 
 
-def _answer_block(item: dict[str, Any]) -> Table:
-    subj = SUBJECT_LABELS.get(item["subject"], item["subject"])
-    body: list[Flowable] = rtl_flowables(subj, _style("ak-subj", fontName=FONT_BOLD, fontSize=8.5, textColor=TEAL_TEXT, leading=15), 144)
+def _answer_flow(item: dict[str, Any]) -> list[Flowable]:
+    """بلوکِ پاسخ تشریحی — پاراگراف‌های مستقیم در story (قابل‌تقسیم در صفحات)."""
+    story: list[Flowable] = [_question_header(item)]
     preview = item["text"] if len(item["text"]) <= 110 else item["text"][:110] + "…"
-    body += rtl_flowables(preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 144)
-    body.append(Spacer(1, 1.5 * mm))
-    body += rtl_flowables("پاسخ / منطق صحیح:", _style("ak-l1", fontName=FONT_XBOLD, fontSize=8.5, textColor=EMERALD_TEXT, leading=16), 144)
-    body += rtl_flowables(item["correct_reasoning"], _style("ak-a", fontSize=9.5, leading=19), 144)
+    story += rtl_flowables(preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 178)
+    story.append(Spacer(1, 1.5 * mm))
+    story += rtl_flowables("پاسخ / منطق صحیح:", _style("ak-l1", fontName=FONT_XBOLD, fontSize=8.5, textColor=EMERALD_TEXT, leading=16), 178)
+    story += rtl_flowables(item["correct_reasoning"], _style("ak-a", fontSize=9.5, leading=19), 178)
 
     mism = item["misconception_indicators"] or item["mapped_misconceptions"]
     if mism:
-        body += rtl_flowables("بدفهمی‌های رایجِ هدف:", _style("ak-l2", fontName=FONT_XBOLD, fontSize=8.5, textColor=BROWN_TEXT, leading=16), 144)
+        story += rtl_flowables("بدفهمی‌های رایجِ هدف:", _style("ak-l2", fontName=FONT_XBOLD, fontSize=8.5, textColor=BROWN_TEXT, leading=16), 178)
         for m in mism:
-            body += rtl_flowables(f"• {m}", _style("ak-m", fontSize=8.5, leading=16, textColor=BROWN_TEXT), 144)
-
-    badge = CircleNumber(int(item["order"]), 9 * mm)
-    t = Table([[body, badge]], colWidths=[160 * mm, 18 * mm])
-    t.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (1, 0), (1, 0), "CENTER"),
-                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#E2E8F0")),
-                ("BACKGROUND", (0, 0), (-1, -1), SLATE_50),
-                ("TOPPADDING", (0, 0), (-1, -1), 8),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (0, 0), 9),
-                ("LEFTPADDING", (0, 0), (-1, -1), 7),
-            ]
-        )
-    )
-    return t
+            story += rtl_flowables(f"• {m}", _style("ak-m", fontSize=8.5, leading=16, textColor=BROWN_TEXT), 178)
+    story.append(Spacer(1, 4 * mm))
+    return story
 
 
-def _correction_guide(items: list[dict[str, Any]]) -> Table:
-    """راهنمای تصحیح کیفی — سطح‌های کامل/نسبی/ناقص بدون نمره و رتبه."""
+def _correction_flow(items: list[dict[str, Any]]) -> list[Flowable]:
+    """راهنمای تصحیح کیفی — سطح‌های کامل/نسبی/ناقص؛ پاراگراف‌های مستقیم (بدون جدول)."""
     blocks: list[Flowable] = rtl_flowables(
         "تصحیح این آزمون کیفی است: هر پاسخ در یکی از سه سطح «کامل / نسبی / ناقص» قرار می‌گیرد. "
         "هیچ نمره‌ای عددی ثبت نمی‌شود و مقایسهٔ دانش‌آموزان با یکدیگر ممنوع است؛ هدف، تشخیص ریشهٔ بدفهمی است.",
         _style("chg-intro", fontSize=9.5, leading=19, textColor=colors.HexColor("#1F2937")),
-        178 - 20,
+        178,
     )
     blocks.append(Spacer(1, 2 * mm))
     for item in items:
         order = _fa(item["order"])
-        blocks += rtl_flowables(f"سؤال {order} — راهنمای بارم‌دهی کیفی", _style("chg-q", fontName=FONT_XBOLD, fontSize=9.5, textColor=BRAND_DARK, leading=19), 178 - 20)
-        blocks += rtl_flowables(f"• کامل: {item['correct_reasoning']}", _style("chg-full", fontSize=8.5, leading=16, textColor=EMERALD_TEXT), 178 - 20)
+        blocks += rtl_flowables(f"سؤال {order} — راهنمای بارم‌دهی کیفی", _style("chg-q", fontName=FONT_XBOLD, fontSize=9.5, textColor=BRAND_DARK, leading=19), 178)
+        blocks += rtl_flowables(f"• کامل: {item['correct_reasoning']}", _style("chg-full", fontSize=8.5, leading=16, textColor=EMERALD_TEXT), 178)
         partial = item["partial_credit_signs"] or ["به پاسخ نزدیک شده ولی استدلال/برهان کامل نیست"]
         for sign in partial:
-            blocks += rtl_flowables(f"• نسبی: {sign}", _style("chg-part", fontSize=8.5, leading=16, textColor=AMBER_DARK), 178 - 20)
+            blocks += rtl_flowables(f"• نسبی: {sign}", _style("chg-part", fontSize=8.5, leading=16, textColor=AMBER_DARK), 178)
         mism = item["misconception_indicators"] or item["mapped_misconceptions"] or ["پاسخ هیچ نشانه‌ای از درک گزارهٔ هدف ندارد"]
         for sign in mism:
-            blocks += rtl_flowables(f"• ناقص: {sign}", _style("chg-bad", fontSize=8.5, leading=16, textColor=BROWN_TEXT), 178 - 20)
+            blocks += rtl_flowables(f"• ناقص: {sign}", _style("chg-bad", fontSize=8.5, leading=16, textColor=BROWN_TEXT), 178)
         blocks.append(Spacer(1, 1.5 * mm))
-    t = Table([[blocks]], colWidths=[PAGE_W])
-    t.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#FFFBEB")),
-                ("BOX", (0, 0), (0, 0), 1.0, colors.HexColor("#FDE68A")),
-                ("TOPPADDING", (0, 0), (0, 0), 8),
-                ("BOTTOMPADDING", (0, 0), (0, 0), 8),
-                ("RIGHTPADDING", (0, 0), (0, 0), 10),
-                ("LEFTPADDING", (0, 0), (0, 0), 10),
-            ]
-        )
-    )
-    return t
+    return blocks
 
 
 def _answer_sheet_table(items: list[dict[str, Any]]) -> Table:
@@ -711,19 +671,17 @@ def build_exam_pdf(
     story.append(_instruction_box())
     story.append(Spacer(1, 4 * mm))
 
-    # ── بخش ۱ — دفترچه سؤالات ──
+    # ── بخش ۱ — دفترچه سؤالات (هر سؤال: پاراگراف‌های جداگانه، بدون KeepTogether/جدولِ غول‌پیکر) ──
     story.append(_section_banner("بخش ۱ — دفترچه سؤالات"))
     story.append(Spacer(1, 3.5 * mm))
     for item in questions:
-        story.append(KeepTogether([_question_block(item, with_lines=True), Spacer(1, 3.5 * mm)]))
+        story += _question_flow(item, with_lines=True)
 
-    # ── جدول پاسخنامه (ثبت پاسخ کوتاه) ──
+    # ── جدول پاسخنامه (ثبت پاسخ کوتاه) — colWidths دقیق + سلول‌های پاراگرافی + repeatRows برای شکستن جدول ──
     story.append(Spacer(1, 1 * mm))
-    story.append(KeepTogether([
-        _section_banner("جدول پاسخنامهٔ دانش‌آموز", accent=colors.HexColor("#0EA5E9"), bg=colors.HexColor("#F0F9FF"), fg=colors.HexColor("#0C4A6E")),
-        Spacer(1, 3 * mm),
-        _answer_sheet_table(questions),
-    ]))
+    story.append(_section_banner("جدول پاسخنامهٔ دانش‌آموز", accent=colors.HexColor("#0EA5E9"), bg=colors.HexColor("#F0F9FF"), fg=colors.HexColor("#0C4A6E")))
+    story.append(Spacer(1, 3 * mm))
+    story.append(_answer_sheet_table(questions))
 
     # ── بخش ۲ — پاسخنامهٔ تشریحی + راهنمای تصحیح کیفی (صفحهٔ مجزا) ──
     story.append(PageBreak())
@@ -738,12 +696,12 @@ def build_exam_pdf(
     story.append(secret)
     story.append(Spacer(1, 4 * mm))
     for item in questions:
-        story.append(KeepTogether([_answer_block(item), Spacer(1, 3 * mm)]))
+        story += _answer_flow(item)
 
     story.append(Spacer(1, 2 * mm))
     story.append(_section_banner("راهنمای تصحیح کیفی", accent=colors.HexColor("#F59E0B"), bg=colors.HexColor("#FFFBEB"), fg=AMBER_DARK))
     story.append(Spacer(1, 3 * mm))
-    story.append(_correction_guide(questions))
+    story += _correction_flow(questions)
 
     story.append(Spacer(1, 4 * mm))
     story += rtl_flowables(
