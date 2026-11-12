@@ -17,11 +17,11 @@ from models.user import User
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from reports.report_generator import build_report, _aggregate_by_proposition, _final_prop_status
-from reports.exam_pdf import SUBJECT_LABELS, DIFFICULTY_LABELS, gather_questions, build_exam_pdf
+from reports.exam_pdf import SUBJECT_LABELS, gather_questions, build_exam_pdf
 
 router = APIRouter(prefix="/api/teacher", tags=["teacher"])
 
@@ -332,6 +332,8 @@ def student_results(
 class GenerateExamPdfRequest(BaseModel):
     title: str = Field(default="", max_length=140)
     school_name: str = Field(default="مدرسهٔ نمونه", max_length=140)
+    grade: Optional[int] = Field(default=None, ge=10, le=12)
+    major: str = Field(default="", max_length=80)
     subjects: list[str] = Field(min_length=1, max_length=len(SUBJECT_LABELS))
     counts: dict[str, int] = Field(default_factory=dict)
     duration_minutes: int = Field(default=75, ge=10, le=240)
@@ -379,6 +381,8 @@ def generate_exam_pdf(
         duration_minutes=payload.duration_minutes,
         difficulty=payload.difficulty,
         source=payload.source,
+        grade=payload.grade,
+        major=payload.major,
     )
 
     filename = "fahmyar-exam.pdf"
@@ -391,4 +395,5 @@ def generate_exam_pdf(
     }
     if meta.get("shortfalls"):
         headers["X-Exam-Shortfalls"] = ",".join(f"{k}:{v}" for k, v in meta["shortfalls"].items())
-    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+    headers["Content-Length"] = str(len(pdf_bytes))
+    return StreamingResponse(iter([pdf_bytes]), media_type="application/pdf", headers=headers)

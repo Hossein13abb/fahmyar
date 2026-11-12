@@ -7,8 +7,11 @@ google-generativeai>=0.5.4
 python-dotenv>=1.0
 PyJWT>=2.8
 # پایگاه‌داده — SQLite (داخل پایتون) به‌همراه SQLAlchemy به‌عنوان ORM
-# PDF فارسی آزمون (دفترچه + پاسخنامه تشریحی) — WeasyPrint با فونت همراه Vazirmatn در assets/fonts
-weasyprint>=66
+# PDF فارسی آزمون (دفترچهٔ سؤالات + پاسخنامهٔ تشریحی) — ReportLab (Pure Python؛ بدون DLL/GTK — مناسب ویندوز)
+# چینش راست‌به‌چپ و اتصال حروف فارسی با arabic-reshaper و python-bidi انجام می‌شود
+reportlab>=4
+arabic-reshaper>=3
+python-bidi>=0.4
 jdatetime>=5
 # تست
 pytest>=8.0

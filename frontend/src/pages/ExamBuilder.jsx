@@ -90,6 +90,20 @@ export default function ExamBuilder({ embedded = false }) {
       return 'مدرسهٔ نمونه'
     }
   })
+  const [grade, setGrade] = useState(() => {
+    try {
+      return Number(localStorage.getItem('fahmyar_grade')) || 11
+    } catch {
+      return 11
+    }
+  })
+  const [major, setMajor] = useState(() => {
+    try {
+      return localStorage.getItem('fahmyar_major') || 'علوم تجربی'
+    } catch {
+      return 'علوم تجربی'
+    }
+  })
 
   useEffect(() => {
     // اگر درسی برداشته شد، تعداد سؤالش هم پاک شود؛ اگر اضافه شد، پیش‌فرض ۱۰
@@ -125,7 +139,7 @@ export default function ExamBuilder({ embedded = false }) {
       return null
     })
     setPdfMeta(null)
-  }, [selected, counts, duration, source, difficulty, title, bankShare, schoolName])
+  }, [selected, counts, duration, source, difficulty, title, bankShare, schoolName, grade, major])
 
   const persist = (list) => {
     setDrafts(list)
@@ -177,6 +191,8 @@ export default function ExamBuilder({ embedded = false }) {
         {
           title: title.trim(),
           school_name: schoolName.trim() || 'مدرسهٔ نمونه',
+          grade,
+          major: major.trim(),
           subjects: selected,
           counts,
           duration_minutes: duration,
@@ -272,6 +288,55 @@ export default function ExamBuilder({ embedded = false }) {
               placeholder="مثلاً: دبیرستان نمونهٔ اندیشه"
               className="input"
             />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <span className="label">پایه (سربرگ PDF)</span>
+                <div className="mt-1.5 grid grid-cols-3 gap-2" role="group" aria-label="پایه">
+                  {[10, 11, 12].map((g) => {
+                    const active = grade === g
+                    return (
+                      <button
+                        key={g}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => {
+                          setGrade(g)
+                          try {
+                            localStorage.setItem('fahmyar_grade', String(g))
+                          } catch {
+                            /* فضای ذخیره در دسترس نیست */
+                          }
+                        }}
+                        className={`rounded-2xl border py-2.5 text-[12px] font-black transition-all duration-200 ${
+                          active
+                            ? 'border-transparent bg-emerald-600 text-white shadow-soft'
+                            : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-emerald-200 hover:text-emerald-700'
+                        }`}
+                      >
+                        {g === 10 ? 'دهم' : g === 11 ? 'یازدهم' : 'دوازدهم'}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div>
+                <label htmlFor="exam-major" className="label">رشته (سربرگ PDF)</label>
+                <input
+                  id="exam-major"
+                  value={major}
+                  onChange={(e) => {
+                    setMajor(e.target.value)
+                    try {
+                      localStorage.setItem('fahmyar_major', e.target.value)
+                    } catch {
+                      /* فضای ذخیره در دسترس نیست */
+                    }
+                  }}
+                  placeholder="مثلاً: علوم تجربی"
+                  className="input"
+                />
+              </div>
+            </div>
           </section>
 
           {/* ── ۱) انتخاب درس‌های ترکیبی ── */}
@@ -476,6 +541,10 @@ export default function ExamBuilder({ embedded = false }) {
               <h2 className="flex items-center gap-2 text-[14px] font-black text-brand-950"><FileText className="h-4 w-4 text-brand-700" /> پیش‌نمایش آزمون</h2>
             </div>
             <dl className="space-y-2.5 px-5 py-4 text-[12px] leading-7">
+              <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                <dt className="text-slate-500">پایه / رشته</dt>
+                <dd className="font-bold text-brand-950">پایهٔ {toFarsiNumber(grade)}{major.trim() ? ` — ${major.trim()}` : ''}</dd>
+              </div>
               <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                 <dt className="text-slate-500">درس‌ها</dt>
                 <dd className="text-left font-bold text-brand-950">{selectedSubjects.map((s) => s.label).join(' + ') || '—'}</dd>
