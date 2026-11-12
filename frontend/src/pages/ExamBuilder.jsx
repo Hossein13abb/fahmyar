@@ -25,8 +25,10 @@ import {
   Rocket,
   Wand2,
   Loader2,
+  FileDown,
 } from 'lucide-react'
 import { toFarsiNumber } from '../utils/faNumbers'
+import client, { friendlyError } from '../api/client'
 
 const SUBJECTS = [
   { id: 'math', label: 'ریاضی', Icon: Sigma, grad: 'from-indigo-500 to-blue-600' },
@@ -74,11 +76,20 @@ export default function ExamBuilder({ embedded = false }) {
   const [source, setSource] = useState('hybrid')               // bank | ai | hybrid
   const [bankShare, setBankShare] = useState(60)               // درصد سهم بانک در حالت ترکیبی
   const [difficulty, setDifficulty] = useState('medium')       // easy | medium | hard | challenging
-  const [generating, setGenerating] = useState(false)          // در حال تولید آزمون (شبیه‌سازی)
+  const [generating, setGenerating] = useState(false)          // در حال تولید آزمون واقعی در بک‌اند
   const [genStep, setGenStep] = useState(0)                    // کپشن‌های در حال چرخش
   const [drafts, setDrafts] = useState(loadDrafts)
   const [notice, setNotice] = useState('')
   const [title, setTitle] = useState('')
+  const [pdfUrl, setPdfUrl] = useState(null)                   // آدرس موقت فایل PDF آماده
+  const [pdfMeta, setPdfMeta] = useState(null)                 // { total, ai, bank } از سربرگ‌های پاسخ
+  const [schoolName, setSchoolName] = useState(() => {
+    try {
+      return localStorage.getItem('fahmyar_school_name') || 'مدرسهٔ نمونه'
+    } catch {
+      return 'مدرسهٔ نمونه'
+    }
+  })
 
   useEffect(() => {
     // اگر درسی برداشته شد، تعداد سؤالش هم پاک شود؛ اگر اضافه شد، پیش‌فرض ۱۰
@@ -106,6 +117,15 @@ export default function ExamBuilder({ embedded = false }) {
     const t = window.setInterval(() => setGenStep((s) => (s + 1) % GEN_STEPS.length), 750)
     return () => window.clearInterval(t)
   }, [generating])
+
+  // PDF ساخته‌شده فقط با همین پارامترها معتبر است؛ هر تغییری آن را باطل می‌کند
+  useEffect(() => {
+    setPdfUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    setPdfMeta(null)
+  }, [selected, counts, duration, source, difficulty, title, bankShare, schoolName])
 
   const persist = (list) => {
     setDrafts(list)
@@ -144,18 +164,52 @@ export default function ExamBuilder({ embedded = false }) {
     setNotice('✓ پیش‌نویس آزمون ذخیره شد.')
   }
 
-  // ── تولید آزمون — شبیه‌سازی کامل جریان واقعی: Loading → موفقیت → انتشار برای دانش‌آموزان ──
-  const generateExam = () => {
+  // ── تولید آزمون واقعی — POST /api/teacher/generate-exam-pdf (دو بخش: دفترچه + کلید تشریحی) ──
+  const generateExam = async () => {
     const err = validate()
     if (err) return setNotice(`⚠️ ${err}`)
     setNotice('')
     setGenStep(0)
     setGenerating(true)
-    window.setTimeout(() => {
-      persist([buildDraft('published'), ...drafts].slice(0, 12))
+    try {
+      const { data, headers } = await client.post(
+        '/api/teacher/generate-exam-pdf',
+        {
+          title: title.trim(),
+          school_name: schoolName.trim() || 'مدرسهٔ نمونه',
+          subjects: selected,
+          counts,
+          duration_minutes: duration,
+          difficulty,
+          source,
+          bank_share: bankShare,
+        },
+        { responseType: 'blob', timeout: 180000 },
+      )
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+      setPdfUrl(URL.createObjectURL(data))
+      setPdfMeta({
+        total: Number(headers['x-exam-total-questions'] ?? 0),
+        ai: Number(headers['x-exam-ai-used'] ?? 0),
+        bank: Number(headers['x-exam-bank-used'] ?? 0),
+      })
+      persist([buildDraft('generated'), ...drafts].slice(0, 12))
+    } catch (error) {
+      // در پاسخ خطا، بدنه blob است — تلاش می‌کنیم detail فارسی را بخوانیم
+      let message = friendlyError(error)
+      try {
+        const blob = error?.response?.data
+        if (blob instanceof Blob) {
+          const parsed = JSON.parse(await blob.text())
+          if (typeof parsed?.detail === 'string') message = parsed.detail
+        }
+      } catch {
+        /* همان پیام عمومی نمایش داده می‌شود */
+      }
+      setNotice(`⚠️ ${message}`)
+    } finally {
       setGenerating(false)
-      setNotice('آزمون با موفقیت ساخته شد و در دسترس دانش‌آموزان قرار گرفت')
-    }, 2400)
+    }
   }
 
   const removeDraft = (id) => persist(drafts.filter((d) => d.id !== id))
@@ -201,6 +255,21 @@ export default function ExamBuilder({ embedded = false }) {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="مثلاً: آزمون جامع هماهنگ نوبت اول — تجربی"
+              className="input"
+            />
+            <label htmlFor="school-name" className="label mt-4">نام مدرسه/مؤسسه (روی سربرگ PDF)</label>
+            <input
+              id="school-name"
+              value={schoolName}
+              onChange={(e) => {
+                setSchoolName(e.target.value)
+                try {
+                  localStorage.setItem('fahmyar_school_name', e.target.value)
+                } catch {
+                  /* فضای ذخیره در دسترس نیست */
+                }
+              }}
+              placeholder="مثلاً: دبیرستان نمونهٔ اندیشه"
               className="input"
             />
           </section>
@@ -443,6 +512,22 @@ export default function ExamBuilder({ embedded = false }) {
               <button onClick={saveDraft} className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-white py-3 text-[13px] font-bold text-brand-800 transition hover:bg-brand-50">
                 <Save className="h-5 w-5" /> ذخیرهٔ پیش‌نویس
               </button>
+              {pdfUrl && (
+                <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-center">
+                  <p className="text-[11px] font-bold leading-6 text-emerald-900">
+                    فایل آزمون و پاسخنامه آماده شد
+                    {pdfMeta?.total ? ` — ${toFarsiNumber(pdfMeta.total)} سؤال (${toFarsiNumber(pdfMeta.bank)} از بانک · ${toFarsiNumber(pdfMeta.ai)} هوش مصنوعی)` : ''}
+                  </p>
+                  <a
+                    href={pdfUrl}
+                    download="fahmyar-exam.pdf"
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 py-3 text-[13px] font-black text-white shadow-lift transition hover:bg-emerald-800"
+                  >
+                    <FileDown className="h-5 w-5" />
+                    دانلود PDF آزمون و پاسخنامه
+                  </a>
+                </div>
+              )}
               {notice && (
                 <p className={`mt-3 rounded-2xl px-4 py-2.5 text-[11px] font-bold leading-6 ${notice.startsWith('⚠️') ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900'}`} role="status">
                   {notice}
@@ -465,7 +550,7 @@ export default function ExamBuilder({ embedded = false }) {
                       <p className="mt-0.5 text-[10px] leading-5 text-slate-500">
                         {fmtFa(d.totalQuestions)} سؤال · {fmtFa(d.duration)} دقیقه · {SOURCE_OPTIONS.find((s) => s.id === d.source)?.label}
                         {d.difficulty && ` · سختی: ${DIFFICULTY_OPTIONS.find((x) => x.id === d.difficulty)?.label ?? ''}`}
-                        {d.status === 'published' ? ' · ✓ منتشر شد' : d.status === 'submitted' ? ' · ✓ ثبت‌شده' : ' · پیش‌نویس'}
+                        {d.status === 'generated' ? ' · ✓ PDF ساخته شد' : d.status === 'published' ? ' · ✓ منتشر شد' : d.status === 'submitted' ? ' · ✓ ثبت‌شده' : ' · پیش‌نویس'}
                       </p>
                     </div>
                     <button onClick={() => removeDraft(d.id)} aria-label="حذف پیش‌نویس" className="shrink-0 rounded-xl p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600">
