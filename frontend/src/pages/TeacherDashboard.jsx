@@ -19,6 +19,7 @@ import client, { friendlyError } from '../api/client'
 import Badge from '../components/Badge'
 import LoadingSpinner from '../components/LoadingSpinner'
 import CustomDropdown from '../components/CustomDropdown'
+import { toFarsiNumber } from '../utils/faNumbers'
 
 const TRIGGER_LABEL = { topic_selection: 'انتخاب موضوع', wrong_answer: 'پاسخ غلط' }
 
@@ -177,7 +178,7 @@ export default function TeacherDashboard() {
                       </span>
                       <span>
                         <span className="block text-[13px] font-bold text-brand-950">{s.full_name || s.username}</span>
-                        <span className="block text-[10px] text-slate-500">پایهٔ {s.grade ?? '—'} · {s.major === 'math' ? 'ریاضی' : s.major === 'experimental' ? 'تجربی' : 'عمومی'}</span>
+                        <span className="block text-[10px] text-slate-500">پایهٔ {s.grade != null ? toFarsiNumber(s.grade) : '—'} · {s.major === 'math' ? 'ریاضی' : s.major === 'experimental' ? 'تجربی' : 'عمومی'}</span>
                       </span>
                     </span>
                     <ChevronLeft className={`h-4 w-4 transition ${active ? 'text-brand-600' : 'text-slate-300'}`} />
@@ -199,7 +200,7 @@ export default function TeacherDashboard() {
             <h2 className="text-[15px] font-black text-brand-950">
               جلساتِ تشخیصیِ {selected ? (selected.full_name || selected.username) : '…'}
             </h2>
-            <span className="chip bg-slate-100 text-slate-500 ring-1 ring-slate-200">{sessions.length} جلسه</span>
+            <span className="chip bg-slate-100 text-slate-500 ring-1 ring-slate-200">{toFarsiNumber(sessions.length)} جلسه</span>
           </div>
 
           {loadingSessions ? (
@@ -241,7 +242,7 @@ export default function TeacherDashboard() {
             <div className="mt-5 rounded-3xl border border-amber-200/70 bg-amber-50/50 p-4">
               <h3 className="flex items-center justify-between text-[13px] font-black text-amber-900">
                 سؤالات تولیدیِ AI در انتظار تصویب تو
-                <span className="chip bg-amber-100 text-amber-900 ring-1 ring-amber-300">{pendingQuestions.length} مورد</span>
+                <span className="chip bg-amber-100 text-amber-900 ring-1 ring-amber-300">{toFarsiNumber(pendingQuestions.length)} مورد</span>
               </h3>
               <ul className="mt-2 space-y-2">
                 {pendingQuestions.map((q) => (

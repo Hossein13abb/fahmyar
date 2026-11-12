@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import client, { friendlyError } from '../api/client'
 import LoadingSpinner from '../components/LoadingSpinner'
+import { toFarsiNumber } from '../utils/faNumbers'
 
 const answersKey = (id) => `fahmyar_exam_${id}`
 
@@ -277,14 +278,14 @@ export default function ExamRoom() {
         <div className="flex shrink-0 items-center gap-3">
           <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-2 text-center">
             <p className="text-[10px] font-bold text-brand-700">پیشرفت</p>
-            <p className="text-[15px] font-black tabular-nums text-brand-900">{answeredCount} از {total}</p>
+            <p className="text-[15px] font-black tabular-nums text-brand-900">{toFarsiNumber(answeredCount)} از {toFarsiNumber(total)}</p>
           </div>
           <div
             className="h-11 w-11 shrink-0 rounded-full text-center text-[10px] font-black leading-[2.75rem] text-white"
             style={{ background: `conic-gradient(#0f766e ${progress * 3.6}deg, #e2e8f0 0deg)` }}
-            aria-label={`${progress}% تکمیل شده`}
+            aria-label={`${toFarsiNumber(progress)}٪ تکمیل شده`}
           >
-            <span className="tabular-nums">{progress}%</span>
+            <span className="tabular-nums">{toFarsiNumber(progress)}٪</span>
           </div>
         </div>
       </div>
@@ -299,9 +300,9 @@ export default function ExamRoom() {
               key={q.id}
               onClick={() => setIndex(i)}
               aria-current={currentStep ? 'step' : undefined}
-              aria-label={`سؤال ${i + 1}${done ? ' — پاسخ داده شده' : ''}`}
+              aria-label={`سؤال ${toFarsiNumber(i + 1)}${done ? ' — پاسخ داده شده' : ''}`}
               className={[
-                'flex h-10 w-10 items-center justify-center rounded-xl text-[12px] font-black tabular-nums transition',
+                'flex h-10 w-10 items-center justify-center rounded-2xl text-[12px] font-black tabular-nums transition',
                 currentStep
                   ? 'bg-brand-700 text-amber-200 ring-2 ring-brand-400 shadow-lift scale-110'
                   : done
@@ -309,7 +310,7 @@ export default function ExamRoom() {
                     : 'bg-slate-100 text-slate-400 ring-1 ring-slate-200 hover:bg-slate-200',
               ].join(' ')}
             >
-              {i + 1}
+              {toFarsiNumber(i + 1)}
             </button>
           )
         })}
@@ -318,7 +319,7 @@ export default function ExamRoom() {
       {/* ── کارت سؤال ── */}
       <div className="card border-brand-100/80 p-6 sm:p-8">
         <div className="flex items-center justify-between gap-3 border-b border-brand-100/70 pb-4">
-          <p className="text-[13px] font-black text-brand-700">سؤال {index + 1} از {total}</p>
+          <p className="text-[13px] font-black text-brand-700">سؤال {toFarsiNumber(index + 1)} از {toFarsiNumber(total)}</p>
           <span className="inline-flex items-center gap-2 text-[10px] font-bold text-slate-400">
             آزمون جامع تشخیصی
           </span>
@@ -397,11 +398,11 @@ export default function ExamRoom() {
             <h2 className="mt-3 text-lg font-black text-brand-950">ثبت نهایی آزمون</h2>
             {unanswered > 0 ? (
               <p className="mt-2 text-[13px] leading-7 text-amber-900">
-                <strong>{unanswered} سؤال بی‌پاسخ</strong> باقی مانده است. بعد از ثبت نهایی، امکان اصلاح پاسخ‌ها نیست.
+                <strong>{toFarsiNumber(unanswered)} سؤال بی‌پاسخ</strong> باقی مانده است. بعد از ثبت نهایی، امکان اصلاح پاسخ‌ها نیست.
               </p>
             ) : (
               <p className="mt-2 text-[13px] leading-7 text-slate-600">
-                همهٔ {total} پاسخ ثبت می‌شود و تحلیل یکپارچه انجام می‌شود. بعد از ثبت نهایی، امکان اصلاح نیست.
+                همهٔ {toFarsiNumber(total)} پاسخ ثبت می‌شود و تحلیل یکپارچه انجام می‌شود. بعد از ثبت نهایی، امکان اصلاح نیست.
               </p>
             )}
             <div className="mt-5 flex justify-center gap-3">

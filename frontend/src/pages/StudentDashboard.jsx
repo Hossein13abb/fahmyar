@@ -26,6 +26,7 @@ import client, { friendlyError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
 import CustomDropdown from '../components/CustomDropdown'
+import { toFarsiNumber, subjectFa } from '../utils/faNumbers'
 
 const SUBJECTS = [
   { value: 'math', label: 'ریاضی', Icon: Sigma },
@@ -315,7 +316,7 @@ export default function StudentDashboard() {
                   value={grade}
                   onChange={(v) => setGrade(Number(v))}
                   ariaLabel="پایه"
-                  options={GRADES.map((g) => ({ value: g, label: `پایهٔ ${g}` }))}
+                  options={GRADES.map((g) => ({ value: g, label: `پایهٔ ${toFarsiNumber(g)}` }))}
                 />
               </div>
             </div>
@@ -386,7 +387,7 @@ export default function StudentDashboard() {
                 placeholder="— یک مفهوم انتخاب کن —"
                 options={[
                   { value: '', label: '— یک مفهوم انتخاب کن —' },
-                  ...allConcepts.map((c) => ({ value: c.id, label: `${c.name} · ${c.subject}` })),
+                  ...allConcepts.map((c) => ({ value: c.id, label: `${c.name} · ${subjectFa(c.subject)}` })),
                 ]}
               />
             </div>

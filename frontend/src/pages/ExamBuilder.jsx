@@ -15,12 +15,18 @@ import {
   Sparkles,
   Shuffle,
   Save,
-  Send,
   Trash2,
   FileText,
   ChevronDown,
   Info,
+  Smile,
+  Meh,
+  Flame,
+  Rocket,
+  Wand2,
+  Loader2,
 } from 'lucide-react'
+import { toFarsiNumber } from '../utils/faNumbers'
 
 const SUBJECTS = [
   { id: 'math', label: 'ریاضی', Icon: Sigma, grad: 'from-indigo-500 to-blue-600' },
@@ -33,6 +39,17 @@ const SUBJECTS = [
 ]
 
 const TIME_PRESETS = [45, 60, 75, 90, 100, 120]
+const DIFFICULTY_OPTIONS = [
+  { id: 'easy', label: 'آسان', desc: 'سؤال‌های مستقیم و پایه‌ای', Icon: Smile },
+  { id: 'medium', label: 'متوسط', desc: 'استاندارد و متعادل', Icon: Meh },
+  { id: 'hard', label: 'سخت', desc: 'عمیق و تحلیلی', Icon: Flame },
+  { id: 'challenging', label: 'چالش‌برانگیز', desc: 'بالاتر از سطح کتاب درسی', Icon: Rocket },
+]
+const GEN_STEPS = [
+  'در حال انتخاب سؤال‌های متناسب از بانک مؤسسات…',
+  'در حال تولید سؤال‌های هوش مصنوعی…',
+  'در حال چینش دفترچه و زمان‌بندی آزمون…',
+]
 const SOURCE_OPTIONS = [
   { id: 'bank', label: 'بانک سؤالات مؤسسات', desc: 'سؤال‌های استاندارد و تأییدشده از بانک‌های معتبر', Icon: Building2 },
   { id: 'ai', label: 'تولید هوش مصنوعی', desc: 'دفترچهٔ تشخیصی تولیدشده توسط فهم‌یار', Icon: Sparkles },
@@ -41,7 +58,7 @@ const SOURCE_OPTIONS = [
 
 const DRAFT_KEY = 'fahmyar_exam_drafts'
 
-const fmtFa = (n) => Number(n).toLocaleString('fa-IR')
+const fmtFa = (n) => toFarsiNumber(Number(n).toLocaleString('fa-IR'))
 const loadDrafts = () => {
   try {
     return JSON.parse(localStorage.getItem(DRAFT_KEY) || '[]')
@@ -56,6 +73,9 @@ export default function ExamBuilder({ embedded = false }) {
   const [duration, setDuration] = useState(100)                // دقیقه
   const [source, setSource] = useState('hybrid')               // bank | ai | hybrid
   const [bankShare, setBankShare] = useState(60)               // درصد سهم بانک در حالت ترکیبی
+  const [difficulty, setDifficulty] = useState('medium')       // easy | medium | hard | challenging
+  const [generating, setGenerating] = useState(false)          // در حال تولید آزمون (شبیه‌سازی)
+  const [genStep, setGenStep] = useState(0)                    // کپشن‌های در حال چرخش
   const [drafts, setDrafts] = useState(loadDrafts)
   const [notice, setNotice] = useState('')
   const [title, setTitle] = useState('')
@@ -81,6 +101,12 @@ export default function ExamBuilder({ embedded = false }) {
   const bump = (id, delta) =>
     setCounts((prev) => ({ ...prev, [id]: Math.min(30, Math.max(1, (Number(prev[id]) || 10) + delta)) }))
 
+  useEffect(() => {
+    if (!generating) return undefined
+    const t = window.setInterval(() => setGenStep((s) => (s + 1) % GEN_STEPS.length), 750)
+    return () => window.clearInterval(t)
+  }, [generating])
+
   const persist = (list) => {
     setDrafts(list)
     try {
@@ -97,47 +123,45 @@ export default function ExamBuilder({ embedded = false }) {
     return ''
   }
 
+  const buildDraft = (status) => ({
+    id: Date.now(),
+    title: title.trim() || `آزمون ${SUBJECTS.filter((s) => selected.includes(s.id)).map((s) => s.label).join(' + ')}`,
+    subjects: selected,
+    counts,
+    duration,
+    source,
+    bankShare: source === 'hybrid' ? bankShare : null,
+    totalQuestions,
+    difficulty,
+    createdAt: new Date().toISOString(),
+    status,
+  })
+
   const saveDraft = () => {
     const err = validate()
     if (err) return setNotice(`⚠️ ${err}`)
-    const draft = {
-      id: Date.now(),
-      title: title.trim() || `آزمون ${SUBJECTS.filter((s) => selected.includes(s.id)).map((s) => s.label).join(' + ')}`,
-      subjects: selected,
-      counts,
-      duration,
-      source,
-      bankShare: source === 'hybrid' ? bankShare : null,
-      totalQuestions,
-      createdAt: new Date().toISOString(),
-      status: 'draft',
-    }
-    persist([draft, ...drafts].slice(0, 12))
+    persist([buildDraft('draft'), ...drafts].slice(0, 12))
     setNotice('✓ پیش‌نویس آزمون ذخیره شد.')
   }
 
-  const submitExam = () => {
+  // ── تولید آزمون — شبیه‌سازی کامل جریان واقعی: Loading → موفقیت → انتشار برای دانش‌آموزان ──
+  const generateExam = () => {
     const err = validate()
     if (err) return setNotice(`⚠️ ${err}`)
-    const draft = {
-      id: Date.now(),
-      title: title.trim() || `آزمون ${SUBJECTS.filter((s) => selected.includes(s.id)).map((s) => s.label).join(' + ')}`,
-      subjects: selected,
-      counts,
-      duration,
-      source,
-      bankShare: source === 'hybrid' ? bankShare : null,
-      totalQuestions,
-      createdAt: new Date().toISOString(),
-      status: 'submitted',
-    }
-    persist([draft, ...drafts].slice(0, 12))
-    setNotice('✓ آزمون ثبت شد و به صف طراحان اضافه شد. (اتصال به سرور در نسخهٔ بعد فعال می‌شود؛ فعلاً به‌صورت پیش‌نویس محلی نگه‌داری می‌شود.)')
+    setNotice('')
+    setGenStep(0)
+    setGenerating(true)
+    window.setTimeout(() => {
+      persist([buildDraft('published'), ...drafts].slice(0, 12))
+      setGenerating(false)
+      setNotice('آزمون با موفقیت ساخته شد و در دسترس دانش‌آموزان قرار گرفت')
+    }, 2400)
   }
 
   const removeDraft = (id) => persist(drafts.filter((d) => d.id !== id))
 
   const selectedSubjects = SUBJECTS.filter((s) => selected.includes(s.id))
+  const difficultyLabel = DIFFICULTY_OPTIONS.find((d) => d.id === difficulty)?.label ?? 'متوسط'
 
   return (
     <div className="animate-fade-up space-y-6">
@@ -288,7 +312,37 @@ export default function ExamBuilder({ embedded = false }) {
             </div>
           </section>
 
-          {/* ── ۴) منبع سؤالات ── */}
+          {/* ── ۴) تعیین سطح سختی ── */}
+          <section className="card p-6 sm:p-7">
+            <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
+              <Flame className="h-5 w-5 text-brand-700" /> تعیین سطح سختی
+            </h2>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4" role="radiogroup" aria-label="سطح سختی آزمون">
+              {DIFFICULTY_OPTIONS.map(({ id, label, desc, Icon }) => {
+                const on = difficulty === id
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setDifficulty(id)}
+                    className={`rounded-2xl border p-4 text-center transition-all duration-200 ${
+                      on
+                        ? 'border-brand-500 bg-brand-50 shadow-lift ring-2 ring-brand-200'
+                        : 'border-slate-200/80 bg-white hover:-translate-y-0.5 hover:border-brand-200'
+                    }`}
+                  >
+                    <Icon className={`mx-auto h-6 w-6 ${on ? 'text-brand-700' : 'text-slate-400'}`} strokeWidth={1.8} />
+                    <span className="mt-2 block text-[13px] font-black text-brand-950">{label}</span>
+                    <span className="mt-1 block text-[9px] font-medium leading-4 text-slate-400">{desc}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          {/* ── ۵) منبع سؤالات ── */}
           <section className="card p-5 sm:p-6">
             <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۴</span>
@@ -366,6 +420,10 @@ export default function ExamBuilder({ embedded = false }) {
                 <dd className="font-black tabular-nums text-brand-950">{fmtFa(duration)} دقیقه</dd>
               </div>
               <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                <dt className="text-slate-500">سطح سختی</dt>
+                <dd className="font-bold text-brand-950">{difficultyLabel}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                 <dt className="text-slate-500">سرعت تقریبی</dt>
                 <dd className="font-bold tabular-nums text-brand-950">{questionsPerMinute} سؤال/دقیقه</dd>
               </div>
@@ -378,8 +436,9 @@ export default function ExamBuilder({ embedded = false }) {
               </div>
             </dl>
             <div className="border-t border-slate-100 bg-white px-5 py-4">
-              <button onClick={submitExam} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-[14px] font-black text-white shadow-lift transition hover:bg-brand-800">
-                <Send className="h-5 w-5" /> ثبت آزمون
+              <button onClick={generateExam} disabled={generating} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3.5 text-[14px] font-black text-white shadow-lift transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-80">
+                {generating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
+                {generating ? 'در حال تولید آزمون…' : 'تولید آزمون'}
               </button>
               <button onClick={saveDraft} className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-white py-3 text-[13px] font-bold text-brand-800 transition hover:bg-brand-50">
                 <Save className="h-5 w-5" /> ذخیرهٔ پیش‌نویس
@@ -405,7 +464,8 @@ export default function ExamBuilder({ embedded = false }) {
                       <p className="truncate text-[12px] font-black text-brand-950">{d.title}</p>
                       <p className="mt-0.5 text-[10px] leading-5 text-slate-500">
                         {fmtFa(d.totalQuestions)} سؤال · {fmtFa(d.duration)} دقیقه · {SOURCE_OPTIONS.find((s) => s.id === d.source)?.label}
-                        {d.status === 'submitted' ? ' · ✓ ثبت‌شده' : ' · پیش‌نویس'}
+                        {d.difficulty && ` · سختی: ${DIFFICULTY_OPTIONS.find((x) => x.id === d.difficulty)?.label ?? ''}`}
+                        {d.status === 'published' ? ' · ✓ منتشر شد' : d.status === 'submitted' ? ' · ✓ ثبت‌شده' : ' · پیش‌نویس'}
                       </p>
                     </div>
                     <button onClick={() => removeDraft(d.id)} aria-label="حذف پیش‌نویس" className="shrink-0 rounded-xl p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600">
@@ -418,6 +478,23 @@ export default function ExamBuilder({ embedded = false }) {
           )}
         </div>
       </div>
+
+      {/* ── پوشش تمام‌صفحهٔ «در حال تولید آزمون» ── */}
+      {generating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" role="alertdialog" aria-modal="true" aria-label="در حال تولید آزمون">
+          <div className="w-full max-w-md rounded-3xl border border-emerald-100 bg-white p-8 text-center shadow-lift">
+            <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 ring-1 ring-emerald-100">
+              <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            </span>
+            <h3 className="mt-5 text-lg font-black text-slate-800">در حال تولید آزمون…</h3>
+            <p className="mt-1.5 min-h-6 text-[12px] font-bold leading-6 text-emerald-700">{GEN_STEPS[genStep]}</p>
+            <div className="mt-5 h-2.5 w-full overflow-hidden rounded-full bg-emerald-100">
+              <div className="h-full w-1/3 animate-[genbar_1.15s_linear_infinite] rounded-full bg-gradient-to-l from-emerald-500 to-teal-500" />
+            </div>
+            <p className="mt-3 text-[10px] font-medium text-slate-400">لطفاً صفحه را نبند؛ این کار چند لحظه طول می‌کشد.</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

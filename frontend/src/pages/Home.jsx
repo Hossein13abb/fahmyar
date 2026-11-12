@@ -8,20 +8,12 @@ import {
   Wand2,
   ListChecks,
 } from 'lucide-react'
-import { useAuth } from '../context/AuthContext'
 
 export default function Home() {
   const navigate = useNavigate()
-  const { isAuthenticated, isTeacher } = useAuth()
-
-  const goStaff = () =>
-    navigate(isAuthenticated && isTeacher ? '/staff' : '/login', {
-      state: isAuthenticated && isTeacher ? undefined : { from: '/staff' },
-    })
-  const goStudent = () =>
-    navigate(isAuthenticated && !isTeacher ? '/dashboard' : '/login', {
-      state: isAuthenticated && !isTeacher ? undefined : { from: '/dashboard' },
-    })
+  // کلیک روی کارت‌ها، کاربر را مستقیماً لاگین نمی‌کند — بلکه فرم ورود همان درگاه را باز می‌کند
+  const goStaff = () => navigate('/login/staff')
+  const goStudent = () => navigate('/login/student')
 
   return (
     <div className="relative overflow-hidden">

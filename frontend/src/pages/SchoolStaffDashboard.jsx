@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import ExamBuilder from './ExamBuilder'
+import { toFarsiNumber } from '../utils/faNumbers'
 
 // ── داده‌های نمونه برای نمایش (Mock) — اتصال به دادهٔ واقعی در نسخهٔ بعد ──
 const STATUS_META = {
@@ -178,7 +179,7 @@ export default function SchoolStaffDashboard() {
                             </span>
                             <div>
                               <p className="font-black text-slate-800">{s.name}</p>
-                              <p className="text-[10px] font-medium text-slate-400">پایهٔ {s.grade}</p>
+                              <p className="text-[10px] font-medium text-slate-400">پایهٔ {toFarsiNumber(s.grade)}</p>
                             </div>
                           </div>
                         </td>

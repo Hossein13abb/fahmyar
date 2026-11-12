@@ -27,7 +27,7 @@ export default function Navbar() {
   const navigate = useNavigate()
   const location = useLocation()
   const role = ROLE_META[user?.role] ?? ROLE_META.student
-  const onLoginPage = location.pathname === '/login'
+  const onLoginPage = location.pathname.startsWith('/login')
 
   return (
     <header className="no-print sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">

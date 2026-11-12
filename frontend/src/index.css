@@ -80,3 +80,9 @@ body {
     padding: 0 !important;
   }
 }
+
+/* نوار پیشرفت «در حال تولید آزمون» */
+@keyframes genbar {
+  from { transform: translateX(220%); }
+  to { transform: translateX(-340%); }
+}

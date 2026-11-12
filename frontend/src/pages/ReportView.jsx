@@ -19,6 +19,7 @@ import {
 import client, { friendlyError } from '../api/client'
 import Badge from '../components/Badge'
 import LoadingSpinner from '../components/LoadingSpinner'
+import { toFarsiNumber } from '../utils/faNumbers'
 
 function SectionCard({ Icon, title, tone = 'brand', children, className = '' }) {
   const tones = {
@@ -232,7 +233,7 @@ function ExamReport({ report, mode }) {
           <h1 className="mt-1.5 text-2xl font-black text-brand-950 sm:text-3xl">{report.concept_name ?? 'مفهوم نامشخص'}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Badge status="completed" />
-            <span className="chip bg-slate-100 text-slate-600 ring-1 ring-slate-200">{report.questions_answered ?? perQuestion.length} سؤال تحلیل شد</span>
+            <span className="chip bg-slate-100 text-slate-600 ring-1 ring-slate-200">{toFarsiNumber(report.questions_answered ?? perQuestion.length)} سؤال تحلیل شد</span>
           </div>
         </div>
         <div className="no-print flex shrink-0 flex-col gap-2">
@@ -273,7 +274,7 @@ function ExamReport({ report, mode }) {
             <article key={i} className="overflow-hidden rounded-2xl border border-brand-100/70 bg-white/80">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-50 bg-brand-50/40 px-4 py-2.5">
                 <p className="text-[12px] font-black text-brand-800">
-                  سؤال {q.order ?? i + 1} <span className="font-medium text-slate-400">· {faExamType(q.exam_type)}</span>
+                  سؤال {toFarsiNumber(q.order ?? i + 1)} <span className="font-medium text-slate-400">· {faExamType(q.exam_type)}</span>
                 </p>
                 <Badge status={validBadgeStatus(q.status)} />
               </div>
@@ -284,7 +285,7 @@ function ExamReport({ report, mode }) {
                 {q.response !== undefined && (
                   <details className="mt-2">
                     <summary className="cursor-pointer text-[11px] font-bold text-slate-400">پاسخ شما</summary>
-                    <p className="mt-1 whitespace-pre-line rounded-xl bg-slate-50 p-3 text-[12px] leading-7 text-slate-700">
+                    <p className="mt-1 whitespace-pre-line rounded-2xl bg-slate-50 p-3 text-[12px] leading-7 text-slate-700">
                       {rawStudentAnswer(q.response) || '— پاسخی ثبت نشده بود —'}
                     </p>
                   </details>
@@ -310,7 +311,7 @@ function ExamReport({ report, mode }) {
             {rootCauses.map((rc, i) => (
               <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 p-4">
                 <p className="flex flex-wrap items-center gap-2 text-[13px] font-black text-amber-950">
-                  <span className="font-black text-amber-500">{i + 1}.</span> {rc.concept_name || rc.area || 'عنوان ریشه ثبت نشد — معلم بررسی کند'}
+                  <span className="font-black text-amber-500">{toFarsiNumber(i + 1)}.</span> {rc.concept_name || rc.area || 'عنوان ریشه ثبت نشد — معلم بررسی کند'}
                   {rc.cross_subject && (
                     <span className="chip bg-amber-100 text-amber-800 ring-1 ring-amber-200">بین‌درسی</span>
                   )}
@@ -327,7 +328,7 @@ function ExamReport({ report, mode }) {
         <ol className="space-y-2">
           {suggestions.map((sug, i) => (
             <li key={i} className="flex items-start gap-2.5 rounded-2xl border border-brand-50 bg-brand-50/40 px-4 py-3 text-[13px] leading-7 text-brand-950">
-              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-700 text-[11px] font-black text-white">{i + 1}</span>
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-700 text-[11px] font-black text-white">{toFarsiNumber(i + 1)}</span>
               {faSuggestion(sug)}
             </li>
           ))}
@@ -349,7 +350,7 @@ function ExamReport({ report, mode }) {
         <SectionCard Icon={ScanSearch} title="لاگ خام شواهد (برای معلم)" tone="amber">
           <div className="max-h-96 space-y-2 overflow-auto">
             {report.evidence_log.map((entry, i) => (
-              <div key={i} className="rounded-xl border border-slate-100 bg-white p-3 text-[11px] leading-6 text-slate-600">
+              <div key={i} className="rounded-2xl border border-slate-100 bg-white p-3 text-[11px] leading-6 text-slate-600">
                 <p className="font-black text-slate-500">سؤال {entry.order ?? i + 1} ({faExamType(entry.exam_type)}) — #{entry.question_id}</p>
                 <p className="mt-0.5 line-clamp-2">{rawStudentAnswer(entry.response) || '— پاسخی ثبت نشده بود —'}</p>
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -461,7 +462,7 @@ export default function ReportView({ mode = 'student' }) {
             <ul className="space-y-2">
               {observations.map((o, i) => (
                 <li key={i} className="flex items-start gap-2 rounded-2xl border border-brand-50 bg-brand-50/40 px-4 py-2.5 text-[13px] leading-7 text-brand-950">
-                  <span className="mt-0.5 shrink-0 font-black text-brand-400">{i + 1}.</span>
+                  <span className="mt-0.5 shrink-0 font-black text-brand-400">{toFarsiNumber(i + 1)}.</span>
                   <span>{o}</span>
                 </li>
               ))}
@@ -531,7 +532,7 @@ export default function ReportView({ mode = 'student' }) {
           <ul className="space-y-2">
             {studentActions.map((a, i) => (
               <li key={i} className="flex items-start gap-2 text-[13px] leading-7 text-brand-950">
-                <span className="mt-0.5 shrink-0 font-black text-brand-400">{i + 1}.</span>
+                <span className="mt-0.5 shrink-0 font-black text-brand-400">{toFarsiNumber(i + 1)}.</span>
                 {a}
               </li>
             ))}
@@ -546,7 +547,7 @@ export default function ReportView({ mode = 'student' }) {
               <ul className="space-y-2">
                 {teacherNotes.map((t, i) => (
                   <li key={i} className="flex items-start gap-2 text-[13px] leading-7 text-amber-950">
-                    <span className="mt-0.5 shrink-0 font-black text-amber-500">{i + 1}.</span>
+                    <span className="mt-0.5 shrink-0 font-black text-amber-500">{toFarsiNumber(i + 1)}.</span>
                     {t}
                   </li>
                 ))}
@@ -557,8 +558,8 @@ export default function ReportView({ mode = 'student' }) {
                 <summary className="cursor-pointer text-[12px] font-black text-amber-900">لاگ خام شواهد (برای معلم)</summary>
                 <div className="mt-3 max-h-72 space-y-2 overflow-auto">
                   {report.evidence_log.map((entry, i) => (
-                    <div key={i} className="rounded-xl border border-slate-100 bg-white p-3 text-[11px] leading-6 text-slate-600">
-                      <p className="font-black text-slate-500">پاسخ {i + 1} — سؤال #{entry.question_id}</p>
+                    <div key={i} className="rounded-2xl border border-slate-100 bg-white p-3 text-[11px] leading-6 text-slate-600">
+                      <p className="font-black text-slate-500">پاسخ {toFarsiNumber(i + 1)} — سؤال {toFarsiNumber(entry.question_id)}</p>
                       <p className="mt-0.5 line-clamp-2">{rawStudentAnswer(entry.response) || '— پاسخی ثبت نشده بود —'}</p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {(entry.evidence ?? []).map((ev, j) => (

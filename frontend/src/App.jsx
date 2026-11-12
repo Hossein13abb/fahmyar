@@ -10,16 +10,32 @@ import TeacherDashboard from './pages/TeacherDashboard'
 import SchoolStaffDashboard from './pages/SchoolStaffDashboard'
 import LoadingSpinner from './components/LoadingSpinner'
 
+function homeFor(user) {
+  return user?.role === 'student' ? '/dashboard' : '/staff'
+}
+
 function RequireAuth({ roles }) {
   const { isAuthenticated, user, booting } = useAuth()
   const location = useLocation()
   if (booting) return <LoadingSpinner label="در حال آماده‌سازی نشست شما…" />
-  if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (!isAuthenticated) {
+    // هر نقش از درگاه خودش وارد می‌شود
+    const portalPath = roles?.includes('student') ? '/login/student' : roles ? '/login/staff' : '/login'
+    return <Navigate to={portalPath} replace state={{ from: location.pathname }} />
+  }
   if (roles && !roles.includes(user.role)) {
-    // دانش‌آموز به پنل معلم دسترسی ندارد و برعکس
-    return <Navigate to={user.role === 'student' ? '/dashboard' : '/staff'} replace />
+    // دانش‌آموز به پنل کادر مدرسه دسترسی ندارد و برعکس
+    return <Navigate to={homeFor(user)} replace />
   }
   return <Outlet />
+}
+
+/** اگر کاربر لاگین باشد، هرگز صفحه اصلی (Landing) را نمی‌بیند — مستقیم به داشبوردش می‌رود */
+function Landing() {
+  const { isAuthenticated, user, booting } = useAuth()
+  if (booting) return <LoadingSpinner label="در حال آماده‌سازی نشست شما…" />
+  if (isAuthenticated) return <Navigate to={homeFor(user)} replace />
+  return <Home />
 }
 
 export default function App() {
@@ -29,8 +45,10 @@ export default function App() {
       <Navbar />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/login/staff" element={<Login portal="staff" />} />
+          <Route path="/login/student" element={<Login portal="student" />} />
 
           <Route element={<RequireAuth roles={['student']} />}>
             <Route path="/dashboard" element={<StudentDashboard />} />

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useNavigate, useLocation, Navigate } from 'react-router-dom'
+import { useNavigate, useLocation, Navigate, Link } from 'react-router-dom'
+import { toFarsiNumber } from '../utils/faNumbers'
 import {
   Sparkles,
   ShieldCheck,
@@ -9,6 +10,8 @@ import {
   BookOpenCheck,
   User,
   Lock,
+  School,
+  ArrowLeft,
   Eye,
   EyeOff,
   Loader2,
@@ -68,13 +71,18 @@ const FEATURES = [
   { Icon: ShieldCheck, text: 'نقشهٔ روشن از وضعیت فهم: چه چیزی را می‌دانی، چه چیزی مبهم است و چه چیزی را باید از صفر یاد بگیری.' },
 ]
 
-export default function Login() {
-  const { login, register, isAuthenticated, user } = useAuth()
+export default function Login({ portal }) {
+  const { login, register, isAuthenticated, user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
+  const isStaff = portal === 'staff'
+  const isStudent = portal === 'student'
+
   const [mode, setMode] = useState('login') // login | register
-  const [role, setRole] = useState('student') // student | teacher
+  // درگاه کادر مدرسه فقط حساب admin را می‌پذیرد؛ درگاه دانش‌آموز فقط حساب student را
+  const role = isStaff ? 'admin' : 'student'
+  const activeMode = isStaff ? 'login' : mode
   const [showPassword, setShowPassword] = useState(false)
   const [form, setForm] = useState({
     username: '',
@@ -90,6 +98,42 @@ export default function Login() {
     return <Navigate to={user.role === 'student' ? '/dashboard' : '/staff'} replace />
   }
 
+  if (!portal) {
+    // صفحهٔ انتخاب درگاه — دو مسیر کاملاً جدا برای ورود
+    return (
+      <div className="mx-auto max-w-3xl py-6 text-center sm:py-10">
+        <span className="chip bg-white text-brand-800 shadow-soft ring-1 ring-brand-100">ورود به فهم‌یار</span>
+        <h1 className="mt-4 text-3xl font-black text-brand-950">از کدام درگاه وارد می‌شوی؟</h1>
+        <p className="mx-auto mt-2 max-w-md text-[13px] leading-7 text-slate-500">
+          هر درگاه حساب و دسترسی خودش را دارد — ورود از درگاه اشتباه ممکن نیست.
+        </p>
+        <div className="mt-8 grid gap-5 sm:grid-cols-2">
+          <Link
+            to="/login/staff"
+            className="group rounded-2xl border border-brand-800/60 bg-gradient-to-bl from-brand-800 via-brand-900 to-brand-950 p-6 text-right text-brand-50 shadow-lift transition hover:-translate-y-0.5"
+          >
+            <span className="inline-flex rounded-2xl bg-white/10 p-3 ring-1 ring-white/15"><School className="h-7 w-7 text-amber-200" /></span>
+            <span className="mt-4 block text-lg font-black text-white">ورود کادر مدرسه</span>
+            <span className="mt-1 block text-[11px] font-bold text-amber-200/90">فقط حساب مدیر مدرسه (admin) مجاز است</span>
+            <span className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-amber-300 px-4 py-2.5 text-[12px] font-black text-brand-950 transition group-hover:bg-amber-200">ادامه به درگاه کادر مدرسه <ArrowLeft className="h-4 w-4" /></span>
+          </Link>
+          <Link
+            to="/login/student"
+            className="group rounded-2xl border border-slate-200/70 bg-white p-6 text-right shadow-lift transition hover:-translate-y-0.5"
+          >
+            <span className="inline-flex rounded-2xl bg-brand-50 p-3 ring-1 ring-brand-100"><GraduationCap className="h-7 w-7 text-brand-700" /></span>
+            <span className="mt-4 block text-lg font-black text-brand-950">ورود دانش‌آموز</span>
+            <span className="mt-1 block text-[11px] font-bold text-brand-700">حساب دانش‌آموزی — فهم‌سنجی بدون نمره</span>
+            <span className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-brand-700 px-4 py-2.5 text-[12px] font-black text-white transition group-hover:bg-brand-800">ادامه به درگاه دانش‌آموز <ArrowLeft className="h-4 w-4" /></span>
+          </Link>
+        </div>
+        <p className="mx-auto mt-6 text-[11px] leading-6 text-slate-400">
+          حساب دمو — مدیر مدرسه: <code className="rounded bg-slate-100 px-1.5 py-0.5">admin / admin123</code> · دانش‌آموز: <code className="rounded bg-slate-100 px-1.5 py-0.5">student1 / student123</code>
+        </p>
+      </div>
+    )
+  }
+
   const set = (key) => (e) => {
     setForm((f) => ({ ...f, [key]: e.target.value }))
     setError('')
@@ -103,7 +147,7 @@ export default function Login() {
     setLoading(true)
     try {
       let loggedUser
-      if (mode === 'login') {
+      if (activeMode === 'login') {
         loggedUser = await login(form.username.trim(), form.password)
       } else {
         const payload = {
@@ -118,7 +162,18 @@ export default function Login() {
         }
         loggedUser = await register(payload)
       }
-      const target = location.state?.from ?? (loggedUser.role === 'student' ? '/dashboard' : '/staff')
+      // ── دیوار آتش بین دو درگاه ──
+      const allowed = isStaff ? loggedUser.role === 'admin' : loggedUser.role === 'student'
+      if (!allowed) {
+        logout()
+        setError(isStaff
+          ? 'این حساب دسترسی کادر مدرسه ندارد؛ این درگاه فقط برای حساب مدیر مدرسه (admin) است.'
+          : 'این حساب با درگاه دانش‌آموز سازگار نیست؛ لطفاً از درگاه کادر مدرسه وارد شوید.')
+        setLoading(false)
+        return
+      }
+      const from = location.state?.from
+      const target = typeof from === 'string' && !from.startsWith('/login') ? from : (isStaff ? '/staff' : '/dashboard')
       navigate(target, { replace: true })
     } catch (err) {
       setError(friendlyError(err))
@@ -172,6 +227,7 @@ export default function Login() {
       {/* ── ستون فرم ── */}
       <section className="card flex flex-col justify-center p-6 sm:p-9">
         <div className="mx-auto w-full max-w-md">
+          {isStudent && (
           <div className="mb-6 flex rounded-2xl bg-brand-50 p-1.5 ring-1 ring-brand-100">
             {[
               { key: 'login', label: 'ورود' },
@@ -191,43 +247,27 @@ export default function Login() {
               </button>
             ))}
           </div>
+          )}
+          {isStaff && (
+            <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[11px] font-bold leading-6 text-amber-900">
+              ورود دانش‌آموز از این درگاه ممکن نیست — فقط حساب مدیر مدرسه (admin) پذیرفته می‌شود.
+            </div>
+          )}
 
           <h2 className="text-2xl font-black text-brand-950">
-            {mode === 'login' ? 'خوش آمدی 👋' : 'به خانوادهٔ فهم‌یار خوش آمدی'}
+            {isStaff ? 'ورود کادر مدرسه' : mode === 'login' ? 'خوش آمدی 👋' : 'به خانوادهٔ فهم‌یار خوش آمدی'}
           </h2>
           <p className="mt-1.5 text-[13px] text-slate-500">
-            {mode === 'login'
-              ? 'با حساب خودت وارد شو و مسیر فهمیدنت را ادامه بده.'
-              : 'در کمتر از یک دقیقه حسابت را بساز و اولین فهم‌سنجی را شروع کن.'}
+            {isStaff
+              ? 'برای مدیریت آزمون‌ها و مشاهدهٔ نتایج کیفی دانش‌آموزان وارد شو.'
+              : mode === 'login'
+                ? 'با حساب خودت وارد شو و مسیر فهمیدنت را ادامه بده.'
+                : 'در کمتر از یک دقیقه حسابت را بساز و اولین فهم‌سنجی را شروع کن.'}
           </p>
 
           <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
-            {mode === 'register' && (
+            {activeMode === 'register' && (
               <>
-                <div>
-                  <span className="label">شما…</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { key: 'student', label: 'دانش‌آموز هستم', Icon: GraduationCap },
-                      { key: 'teacher', label: 'معلم / کادر مدرسه', Icon: BookOpenCheck },
-                    ].map(({ key, label, Icon }) => (
-                      <button
-                        type="button"
-                        key={key}
-                        onClick={() => setRole(key)}
-                        aria-pressed={role === key}
-                        className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-[13px] font-bold transition ${
-                          role === key
-                            ? 'border-brand-400 bg-brand-50 text-brand-900 ring-2 ring-brand-200'
-                            : 'border-slate-200 bg-white text-slate-500 hover:border-brand-200 hover:text-brand-800'
-                        }`}
-                      >
-                        <Icon className="h-5 w-5" />
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
                 <div>
                   <label className="label" htmlFor="full_name">نام و نام خانوادگی (اختیاری)</label>
                   <input id="full_name" className="input" value={form.full_name} onChange={set('full_name')} placeholder="مثلاً: رها محمدی" autoComplete="name" />
@@ -254,7 +294,7 @@ export default function Login() {
                   value={form.password}
                   onChange={set('password')}
                   placeholder="حداقل ۶ نویسه"
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  autoComplete={activeMode === 'login' ? 'current-password' : 'new-password'}
                   dir="auto"
                 />
                 <button
@@ -268,7 +308,7 @@ export default function Login() {
               </div>
             </div>
 
-            {mode === 'register' && role === 'student' && (
+            {activeMode === 'register' && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label" htmlFor="grade">پایه</label>
@@ -277,7 +317,7 @@ export default function Login() {
                     value={form.grade}
                     onChange={(v) => setForm((f) => ({ ...f, grade: v }))}
                     ariaLabel="پایه"
-                    options={GRADES.map((g) => ({ value: g, label: `پایهٔ ${g}` }))}
+                    options={GRADES.map((g) => ({ value: g, label: `پایهٔ ${toFarsiNumber(g)}` }))}
                   />
                 </div>
                 <div>
@@ -301,13 +341,15 @@ export default function Login() {
 
             <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-[15px] font-black text-white shadow-lift transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70">
               {loading && <Loader2 className="h-5 w-5 animate-spin" />}
-              {mode === 'login' ? 'ورود به فهم‌یار' : 'ساخت حساب و شروع'}
+              {isStaff ? 'ورود کادر مدرسه' : activeMode === 'login' ? 'ورود به فهم‌یار' : 'ساخت حساب و شروع'}
             </button>
           </form>
 
           <p className="mt-5 flex items-start gap-2 text-[11px] leading-6 text-slate-500">
             <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-calm-400" />
-            حساب دمو برای امتحان: <code className="mx-1 rounded bg-brand-50 px-1.5 py-0.5 text-brand-800">student1 / student123</code> یا <code className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-800">teacher1 / teacher123</code>
+            {isStaff
+              ? <>حساب دمو مدیر مدرسه: <code className="mx-1 rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-800">admin / admin123</code></>
+              : <>حساب دمو دانش‌آموز: <code className="mx-1 rounded bg-brand-50 px-1.5 py-0.5 text-brand-800">student1 / student123</code></>}
           </p>
         </div>
       </section>
