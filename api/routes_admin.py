@@ -20,8 +20,12 @@ from urllib.parse import quote
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+import json
+import re
+
 from reports.report_generator import build_report, _aggregate_by_proposition, _final_prop_status
-from reports.exam_pdf import SUBJECT_LABELS, gather_questions, build_exam_pdf
+from reports.exam_pdf import DIFFICULTY_LABELS, build_exam_pdf
+from ai.model_abstraction import get_router
 
 router = APIRouter(prefix="/api/teacher", tags=["teacher"])
 
@@ -326,52 +330,225 @@ def student_results(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# تولید PDF واقعی آزمون — دفترچهٔ سؤالات + پاسخنامهٔ تشریحی (کلید معلم)
+# آزمون‌ساز کنکوری — پیش‌نمایش چهارگزینه‌ای (AI) + PDF نهایی از لیست تأییدشده
 # ─────────────────────────────────────────────────────────────────────────────
+
+SUBJECT_SLUGS = {
+    "math": {
+        "calculus": "حسابان",
+        "geometry": "هندسه",
+        "discrete": "گسسته",
+        "physics": "فیزیک",
+        "chemistry": "شیمی",
+    },
+    "tajrobi": {
+        "biology": "زیست‌شناسی",
+        "math": "ریاضیات",
+        "physics": "فیزیک",
+        "chemistry": "شیمی",
+    },
+}
+
+FIELD_LABELS = {"math": "ریاضی و فیزیک", "tajrobi": "علوم تجربی"}
+
+GRADE_LABELS = {"10": "دهم", "11": "یازدهم", "12": "دوازدهم", "comprehensive": "جامع (دهم تا دوازدهم)"}
+
+QUESTION_TYPE_LABELS = {
+    "conceptual": "مفهومی",
+    "recall": "حفظی",
+    "computational": "محاسباتی",
+    "problem": "مسئله",
+    "mixed": "ترکیبی",
+}
+
+KONKUR_PREVIEW_PROMPT = """شما «مؤلف ارشد سؤالات کنکوری» در سامانهٔ فهم‌یار هستید.
+
+دستورات اکید:
+۱. دقیقاً COUNT سؤالِ چهارگزینه‌ایِ سطح‌کنکورِ سراسری (نه سطح مدرسه) در مبحث خواسته‌شده طراحی کن.
+۲. هر سؤال دقیقاً ۴ گزینه دارد و فقط یک گزینه درست است. گزینه‌های انحرافی باید «دام‌های» حلال باشند که بدفهمی‌های رایج همان مبحث را هدف بگیرند.
+۳. خروجی را فقط و فقط به صورت یک آرایهٔ JSON خالص برگردان؛ هیچ توضیح، مقدمه یا Markdown اضافه ننویس.
+۴. ساختار هر عنصر آرایه دقیقاً این است:
+   {{"id": 1, "text": "متن سؤال (فارسی)", "options": ["گزینهٔ ۱", "گزینهٔ ۲", "گزینهٔ ۳", "گزینهٔ ۴"], "correct_answer": 2, "source_tag": "تألیفی AI", "explanation": "یک خط استدلال کوتاه برای کلید"}}
+   - correct_answer شمارهٔ گزینهٔ درست است (از ۱ تا ۴).
+   - source_tag یکی از این‌ها باشد: «کنکور ۱۴۰۱» تا «کنکور ۱۴۰۴»، «قلم‌چی»، «گاج»؛ اگر سؤالِ تألیفیِ خودت است دقیقاً «تألیفی AI» بگذار.
+۵. سطح سختی باید «{difficulty_label}» باشد و سبک سؤال‌ها متناسب با «{question_type_label}».
+۶. اگر «دستورالعمل سفارشی» کاربر چیزی خواست، آن را رعایت کن ولی ساختار JSON و چهارگزینه‌بودن حفظ شود.
+
+<<<FIELD>>>{field_label}<<<END>>>
+<<<SUBJECT>>>{subject_slug}<<<END>>>
+<<<SUBJECT_LABEL>>>{subject_label}<<<END>>>
+<<<GRADE>>>{grade_label}<<<END>>>
+<<<TOPIC>>>{topic}<<<END>>>
+<<<QUESTION_TYPE>>>{question_type_label}<<<END>>>
+<<<DIFFICULTY>>>{difficulty_label}<<<END>>>
+<<<COUNT>>>{count}<<<END>>>
+<<<CUSTOM>>>{custom_prompt}<<<END>>>
+"""
+
+
+class GenerateExamPreviewRequest(BaseModel):
+    field: str = Field(pattern="^(math|tajrobi)$")
+    grade: str = Field(pattern="^(10|11|12|comprehensive)$")
+    subject: str = Field(min_length=1, max_length=30)
+    topic: str = Field(min_length=1, max_length=140)
+    question_type: str = Field(pattern="^(conceptual|recall|computational|problem|mixed)$")
+    difficulty: str = Field(pattern="^(easy|medium|hard|challenging)$")
+    count: int = Field(default=10, ge=1, le=20)
+    custom_prompt: str = Field(default="", max_length=600)
+
+
+def _extract_json_array(raw: str):
+    text = (raw or "").strip()
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S).strip()
+    match = re.search(r"\[.*\]", text, flags=re.S)
+    if match:
+        text = match.group(0)
+    return json.loads(text)
+
+
+_LETTER_TO_INDEX = {"A": 1, "B": 2, "C": 3, "D": 4, "الف": 1, "ب": 2, "ج": 3, "د": 4}
+
+
+def _validate_preview_questions(data) -> list[dict]:
+    if not isinstance(data, list):
+        raise ValueError("خروجی مدل آرایه نیست")
+    clean: list[dict] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        options = [str(o).strip() for o in (item.get("options") or [])][:4]
+        if not text or len(options) != 4 or any(not o for o in options):
+            continue
+        ca = item.get("correct_answer")
+        try:
+            ca = int(str(ca).strip())
+        except (TypeError, ValueError):
+            ca = _LETTER_TO_INDEX.get(str(ca).strip().upper(), 0)
+        if not 1 <= ca <= 4:
+            continue
+        tag = str(item.get("source_tag") or "").strip()[:60] or "تألیفی AI"
+        explanation = str(item.get("explanation") or "").strip()
+        clean.append(
+            {
+                "id": len(clean) + 1,
+                "text": text,
+                "options": options,
+                "correct_answer": ca,
+                "source_tag": tag,
+                "explanation": explanation,
+            }
+        )
+    return clean
+
+
+@router.post("/generate-exam-preview")
+async def generate_exam_preview(
+    payload: GenerateExamPreviewRequest,
+    user: User = Depends(require_roles("teacher", "admin")),
+):
+    subjects = SUBJECT_SLUGS[payload.field]
+    if payload.subject not in subjects:
+        raise HTTPException(status_code=422, detail="درس انتخابی برای این رشته معتبر نیست.")
+    subject_label = subjects[payload.subject]
+    grade_fa = GRADE_LABELS[payload.grade]
+    difficulty_label = DIFFICULTY_LABELS.get(payload.difficulty, payload.difficulty)
+    qtype_label = QUESTION_TYPE_LABELS[payload.question_type]
+
+    prompt = KONKUR_PREVIEW_PROMPT.format(
+        count=payload.count,
+        field_label=FIELD_LABELS[payload.field],
+        subject_slug=payload.subject,
+        subject_label=subject_label,
+        grade_label=grade_fa,
+        topic=payload.topic.strip(),
+        question_type_label=qtype_label,
+        difficulty_label=difficulty_label,
+        custom_prompt=(payload.custom_prompt or "").strip() or "—",
+    )
+
+    try:
+        response = await get_router().generate(prompt, "generate_konkur_preview", temperature=0.8)
+    except Exception as exc:  # خطای مدل/شبکه — هیچ سؤال جعلی‌ای ساخته نمی‌شود
+        raise HTTPException(status_code=502, detail=f"ارتباط با مدل هوش مصنوعی برقرار نشد: {exc.__class__.__name__}")
+
+    try:
+        raw_questions = _extract_json_array(response.text or "")
+        questions = _validate_preview_questions(raw_questions)
+    except (json.JSONDecodeError, ValueError, re.error):
+        questions = []
+
+    if not questions:
+        raise HTTPException(
+            status_code=502,
+            detail="مدل خروجی ساختارمند و معتبری نداد؛ لطفاً دوباره تلاش کنید یا دستورالعمل سفارشی را خلاصه‌تر بنویسید.",
+        )
+
+    return {
+        "questions": questions,
+        "meta": {
+            "field": payload.field,
+            "field_label": FIELD_LABELS[payload.field],
+            "grade": payload.grade,
+            "grade_label": grade_fa,
+            "subject": payload.subject,
+            "subject_label": subject_label,
+            "topic": payload.topic.strip(),
+            "question_type": payload.question_type,
+            "question_type_label": qtype_label,
+            "difficulty": payload.difficulty,
+            "difficulty_label": difficulty_label,
+            "count_requested": payload.count,
+            "count_returned": len(questions),
+        },
+    }
+
+
+class KonkurQuestion(BaseModel):
+    """یک سؤال چهارگزینه‌ای تأییدشده توسط کادر مدرسه — منبع آن (source_tag) در PDF چاپ نمی‌شود."""
+
+    id: Optional[int] = None
+    text: str = Field(min_length=1, max_length=2000)
+    options: list[str] = Field(min_length=4, max_length=4)
+    correct_answer: int = Field(ge=1, le=4)
+    source_tag: str = Field(default="", max_length=60)
+    explanation: str = Field(default="", max_length=1200)
+
 
 class GenerateExamPdfRequest(BaseModel):
     title: str = Field(default="", max_length=140)
     school_name: str = Field(default="مدرسهٔ نمونه", max_length=140)
-    grade: Optional[int] = Field(default=None, ge=10, le=12)
+    grade: str = Field(default="comprehensive", pattern="^(10|11|12|comprehensive)$")
     major: str = Field(default="", max_length=80)
-    subjects: list[str] = Field(min_length=1, max_length=len(SUBJECT_LABELS))
-    counts: dict[str, int] = Field(default_factory=dict)
-    duration_minutes: int = Field(default=75, ge=10, le=240)
+    subject_label: str = Field(default="", max_length=60)
+    topic: str = Field(default="", max_length=140)
+    duration_minutes: int = Field(default=90, ge=10, le=240)
     difficulty: str = Field(default="medium", pattern="^(easy|medium|hard|challenging)$")
-    source: str = Field(default="hybrid", pattern="^(bank|ai|hybrid)$")
-    bank_share: int = Field(default=60, ge=10, le=90)
+    questions: list[KonkurQuestion] = Field(min_length=1, max_length=120)
 
 
 @router.post("/generate-exam-pdf")
 def generate_exam_pdf(
     payload: GenerateExamPdfRequest,
-    db: Session = Depends(get_db),
     user: User = Depends(require_roles("teacher", "admin")),
 ):
-    """یک آزمون واقعی می‌سازد (بانک مؤسسات + مدل فعال) و یک PDF دوبخشی برمی‌گرداند:
-    ۱) دفترچهٔ سؤالات با سربرگ استاندارد  ۲) پاسخنامهٔ تشریحی (مختص دبیر)."""
-    unknown = [s for s in payload.subjects if s not in SUBJECT_LABELS]
-    if unknown:
-        raise HTTPException(status_code=422, detail=f"درسِ نامعتبر: {', '.join(unknown)}")
-
+    """PDF نهایی کنکوری از لیستِ تأییدشدهٔ سؤال‌ها — تگِ منبع مطلقاً چاپ نمی‌شود."""
     school_name = (payload.school_name or "").strip() or "مدرسهٔ نمونه"
-    title = (payload.title or "").strip() or (
-        "آزمون جامع تشخیصی — " + " + ".join(SUBJECT_LABELS[s] for s in dict.fromkeys(payload.subjects))
-    )
+    title = (payload.title or "").strip() or "آزمون کنکوری — فهم‌یار"
+    major = (payload.major or "").strip()
+    subject_label = (payload.subject_label or "").strip() or "کنکور"
+    topic = (payload.topic or "").strip()
 
-    counts = {s: int(payload.counts.get(s) or 0) for s in payload.subjects}
-    questions, meta = gather_questions(
-        db,
-        list(dict.fromkeys(payload.subjects)),
-        counts,
-        payload.difficulty,
-        payload.source,
-        payload.bank_share,
-    )
-    if not questions:
-        raise HTTPException(
-            status_code=422,
-            detail="سؤالِ کافی برای این ترکیب (درس/سطح سختی) در بانک یافت نشد و تولید خودکار هم نتیجه‌ای نداد؛ ترکیب دیگری انتخاب کنید.",
+    questions = []
+    for i, q in enumerate(payload.questions, start=1):
+        questions.append(
+            {
+                "order": i,
+                "text": q.text.strip(),
+                "options": [str(o).strip() for o in q.options],
+                "correct_answer": int(q.correct_answer),
+                "explanation": (q.explanation or "").strip(),
+            }
         )
 
     pdf_bytes = build_exam_pdf(
@@ -380,20 +557,18 @@ def generate_exam_pdf(
         questions=questions,
         duration_minutes=payload.duration_minutes,
         difficulty=payload.difficulty,
-        source=payload.source,
         grade=payload.grade,
-        major=payload.major,
+        major=major,
+        subject_label=subject_label,
+        topic=topic,
     )
 
-    filename = "fahmyar-exam.pdf"
+    filename = "fahmyar-konkur-exam.pdf"
     headers = {
-        "Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote('آزمون-فهم‌یار.pdf')}",
+        "Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote('آزمون-کنکوری-فهم‌یار.pdf')}",
+        "Content-Length": str(len(pdf_bytes)),
         "X-Exam-Total-Questions": str(len(questions)),
-        "X-Exam-AI-Used": str(meta.get("ai_used", 0)),
-        "X-Exam-Bank-Used": str(meta.get("bank_used", 0)),
         "X-Exam-Difficulty": payload.difficulty,
     }
-    if meta.get("shortfalls"):
-        headers["X-Exam-Shortfalls"] = ",".join(f"{k}:{v}" for k, v in meta["shortfalls"].items())
-    headers["Content-Length"] = str(len(pdf_bytes))
     return StreamingResponse(iter([pdf_bytes]), media_type="application/pdf", headers=headers)
+

@@ -266,15 +266,27 @@ class NumberedCanvas(canvas.Canvas):
         self.saveState()
         self.setFont(FONT_REG, 8)
         self.setFillColor(SLATE_500)
-        text = reshaped(f"فهم‌یار · آزمون جامع تشخیصی — صفحهٔ {_fa(self._pageNumber)} از {_fa(total)}")
+        text = reshaped(f"فهم‌یار · آزمون کنکوری — صفحهٔ {_fa(self._pageNumber)} از {_fa(total)}")
         self.drawCentredString(A4[0] / 2, 8 * mm, text)
         self.restoreState()
 
 
 
+GRADE_FA = {"10": "دهم", "11": "یازدهم", "12": "دوازدهم", "comprehensive": "جامع (دهم تا دوازدهم)"}
+OPTION_LETTERS = ["الف", "ب", "ج", "د"]
+
+
+def _grade_label(grade: Any) -> str:
+    if grade is None:
+        return "—"
+    key = str(grade).strip()
+    if key in GRADE_FA:
+        return f"پایهٔ {GRADE_FA[key]}"
+    return f"پایهٔ {_fa(key)}" if key else "—"
+
+
 def _question_header(item: dict[str, Any], tag: str = "سؤال") -> Paragraph:
     """خطِ سربرگِ سؤال — پاراگرافِ تکی با پس‌زمینه و کادرِ نرم (بدون جدول)."""
-    subj = SUBJECT_LABELS.get(item["subject"], item["subject"])
     style = _style(
         "q-head",
         fontName=FONT_BOLD,
@@ -288,7 +300,7 @@ def _question_header(item: dict[str, Any], tag: str = "سؤال") -> Paragraph:
         borderPadding=5,
         borderRadius=3,
     )
-    return Paragraph(_esc_xml(reshaped(f"{tag} {_fa(item['order'])} — {subj}")), style)
+    return Paragraph(_esc_xml(reshaped(f"{tag} {_fa(item['order'])}")), style)
 
 # ---------------------------------------------------------------------------
 # انتخاب سؤال‌ها
@@ -508,9 +520,10 @@ def _meta_table(rows: list[tuple[str, str]]) -> Table:
 def _instruction_box() -> Table:
     items: list[Flowable] = rtl_flowables("دستورالعمل آزمون:", _style("ins-t", fontName=FONT_XBOLD, textColor=EMERALD_TEXT, leading=20), 178 - 20)
     bullets = [
-        "پاسخ‌ها را با خودکار آبی به‌صورت کامل و با دلیل بنویسید؛ صرفاً نوشتن جواب نهایی نمره نمی‌گیرد.",
-        "نوشتن پاسخ تشریحی الزامی است — کشفِ «چرایی» مهم‌تر از «چیستی» است.",
-        "همراه داشتن جزوه و ابزار هوشمند ممنوع است. فضای پاسخ زیر هر سؤال تعبیه شده است.",
+        "هر سؤال فقط یک گزینهٔ صحیح دارد؛ بیش از یک گزینه علامت نزنید.",
+        "پاسخ‌ها را فقط با علامت ضربدر (×) در گزیدهٔ پاسخنامه علامت بزنید و از خط‌خوردگیِ زیاد خودداری کنید.",
+        "همراه داشتن جزوه، کتاب و هرگونه ابزار هوشمند ممنوع است.",
+        "حتماً پاسخنامه را مطابق با شمارهٔ سؤال پر کنید؛ ابهام در گزیدهٔ پاسخنامه به سودِ شما نیست.",
     ]
     for b in bullets:
         items += rtl_flowables(f"• {b}", _style("ins-b", fontSize=9.5, leading=19, textColor=colors.HexColor("#1F2937")), 178 - 20)
@@ -530,80 +543,105 @@ def _instruction_box() -> Table:
     return t
 
 
-def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowable]:
-    """سؤال به‌صورتِ چند پاراگراف/خط جداگانه در story — بدون هیچ جدولِ غیرقابل‌شکست."""
-    story: list[Flowable] = [_question_header(item)]
-    story += rtl_flowables(item["text"], _style("q-text", fontSize=10.5, leading=21), 178)
-    if with_lines:
-        story += [Spacer(1, 1 * mm), DottedLine(), DottedLine(), DottedLine()]
-    story.append(Spacer(1, 4 * mm))
-    return story
+def _option_cell(text: str, index: int) -> list[Flowable]:
+    label = OPTION_LETTERS[index]
+    return rtl_flowables(f"{label}) {text}", _style(f"opt-{index}", fontSize=9.5, leading=18), 89 - 8)
 
 
-def _answer_flow(item: dict[str, Any]) -> list[Flowable]:
-    """بلوکِ پاسخ تشریحی — پاراگراف‌های مستقیم در story (قابل‌تقسیم در صفحات)."""
-    story: list[Flowable] = [_question_header(item)]
-    preview = item["text"] if len(item["text"]) <= 110 else item["text"][:110] + "…"
-    story += rtl_flowables(preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 178)
-    story.append(Spacer(1, 1.5 * mm))
-    story += rtl_flowables("پاسخ / منطق صحیح:", _style("ak-l1", fontName=FONT_XBOLD, fontSize=8.5, textColor=EMERALD_TEXT, leading=16), 178)
-    story += rtl_flowables(item["correct_reasoning"], _style("ak-a", fontSize=9.5, leading=19), 178)
-
-    mism = item["misconception_indicators"] or item["mapped_misconceptions"]
-    if mism:
-        story += rtl_flowables("بدفهمی‌های رایجِ هدف:", _style("ak-l2", fontName=FONT_XBOLD, fontSize=8.5, textColor=BROWN_TEXT, leading=16), 178)
-        for m in mism:
-            story += rtl_flowables(f"• {m}", _style("ak-m", fontSize=8.5, leading=16, textColor=BROWN_TEXT), 178)
-    story.append(Spacer(1, 4 * mm))
-    return story
-
-
-def _correction_flow(items: list[dict[str, Any]]) -> list[Flowable]:
-    """راهنمای تصحیح کیفی — سطح‌های کامل/نسبی/ناقص؛ پاراگراف‌های مستقیم (بدون جدول)."""
-    blocks: list[Flowable] = rtl_flowables(
-        "تصحیح این آزمون کیفی است: هر پاسخ در یکی از سه سطح «کامل / نسبی / ناقص» قرار می‌گیرد. "
-        "هیچ نمره‌ای عددی ثبت نمی‌شود و مقایسهٔ دانش‌آموزان با یکدیگر ممنوع است؛ هدف، تشخیص ریشهٔ بدفهمی است.",
-        _style("chg-intro", fontSize=9.5, leading=19, textColor=colors.HexColor("#1F2937")),
-        178,
-    )
-    blocks.append(Spacer(1, 2 * mm))
-    for item in items:
-        order = _fa(item["order"])
-        blocks += rtl_flowables(f"سؤال {order} — راهنمای بارم‌دهی کیفی", _style("chg-q", fontName=FONT_XBOLD, fontSize=9.5, textColor=BRAND_DARK, leading=19), 178)
-        blocks += rtl_flowables(f"• کامل: {item['correct_reasoning']}", _style("chg-full", fontSize=8.5, leading=16, textColor=EMERALD_TEXT), 178)
-        partial = item["partial_credit_signs"] or ["به پاسخ نزدیک شده ولی استدلال/برهان کامل نیست"]
-        for sign in partial:
-            blocks += rtl_flowables(f"• نسبی: {sign}", _style("chg-part", fontSize=8.5, leading=16, textColor=AMBER_DARK), 178)
-        mism = item["misconception_indicators"] or item["mapped_misconceptions"] or ["پاسخ هیچ نشانه‌ای از درک گزارهٔ هدف ندارد"]
-        for sign in mism:
-            blocks += rtl_flowables(f"• ناقص: {sign}", _style("chg-bad", fontSize=8.5, leading=16, textColor=BROWN_TEXT), 178)
-        blocks.append(Spacer(1, 1.5 * mm))
-    return blocks
-
-
-def _answer_sheet_table(items: list[dict[str, Any]]) -> Table:
-    """جدول پاسخنامهٔ دانش‌آموز برای ثبتِ پاسخِ کوتاهِ هر سؤال."""
-    header_num = Paragraph(_esc_xml(reshaped("شمارهٔ سؤال")), _style("as-h1", fontName=FONT_XBOLD, textColor=colors.white, alignment=TA_CENTER, leading=17))
-    header_ans = Paragraph(_esc_xml(reshaped("پاسخ کوتاه / واژهٔ کلیدی")), _style("as-h2", fontName=FONT_XBOLD, textColor=colors.white, alignment=TA_CENTER, leading=17))
-    data = [[header_ans, header_num]]  # ستون‌ها: [پاسخ، شماره] برای چیدمان راست‌به‌چپ
-    for item in items:
-        num = Paragraph(_esc_xml(reshaped(_fa(item["order"]))), _style("as-n", alignment=TA_CENTER, leading=23))
-        data.append([Paragraph("&nbsp;", _style("as-e")), num])
-    t = Table(data, colWidths=[140 * mm, 38 * mm], repeatRows=1)
+def _options_table(item: dict[str, Any]) -> Table:
+    """گزینه‌های چهارگانه در دو ستون — چینش استاندارد کنکور (راست→چپ: الف/ب سپس ج/د)."""
+    opts = list(item["options"])
+    cells = [_option_cell(opts[i], i) for i in range(4)]
+    # ستون‌ها از چپِ فیزیکی چیده می‌شوند: [ج (چپ)، الف (راست)] و [د (چپ)، ب (راست)]
+    data = [
+        [cells[2], cells[0]],
+        [cells[3], cells[1]],
+    ]
+    t = Table(data, colWidths=[89 * mm, 89 * mm])
     t.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), BRAND),
-                ("GRID", (0, 0), (-1, -1), 0.7, BRAND_LINE_SOFT),
-                ("BACKGROUND", (1, 1), (1, -1), SLATE_50),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ]
         )
     )
     return t
 
+
+def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowable]:
+    """سؤال کنکوری: سربرگ + متن + چهار گزینه در دو ستون — بدون هیچ جدولِ غیرقابل‌شکست."""
+    story: list[Flowable] = [_question_header(item)]
+    story += rtl_flowables(item["text"], _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
+    story.append(Spacer(1, 1.5 * mm))
+    story.append(_options_table(item))
+    story.append(Spacer(1, 4.5 * mm))
+    return story
+
+
+def _answer_flow(item: dict[str, Any]) -> list[Flowable]:
+    """بلوکِ کلیدِ هر سؤال — شماره، گزینهٔ صحیح (با حرف)، استدلال کوتاه؛ بدون هیچ تگ منبعی."""
+    order = _fa(item["order"])
+    ca = int(item["correct_answer"])
+    letter = OPTION_LETTERS[ca - 1]
+    story: list[Flowable] = [_question_header(item, tag="کلید")]
+    preview = item["text"] if len(item["text"]) <= 150 else item["text"][:150] + "…"
+    story += rtl_flowables(preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 178)
+    story.append(Spacer(1, 1.5 * mm))
+    story += rtl_flowables(f"پاسخ صحیح: گزینهٔ {_fa(ca)} ({letter})", _style("ak-key", fontName=FONT_XBOLD, fontSize=11, textColor=BRAND_DARK, leading=20), 178)
+    explanation = (item.get("explanation") or "").strip()
+    if explanation:
+        story += rtl_flowables(explanation, _style("ak-a", fontSize=9, leading=18, textColor=colors.HexColor("#1F2937")), 178)
+    else:
+        story += rtl_flowables("استدلال تشریحی برای این سؤال در سامانه ثبت نشده است.", _style("ak-a-empty", fontSize=8.5, leading=17, textColor=SLATE_500), 178)
+    story.append(Spacer(1, 4 * mm))
+    return story
+
+
+def _correction_flow(items: list[dict[str, Any]]) -> list[Flowable]:
+    """راهنمای کیفی برای دبیر — جمع‌بندی و آسیب‌شناسی، بدون نمره‌دهی عددی (ECD)."""
+    blocks: list[Flowable] = rtl_flowables(
+        "این آزمون چهارگزینه‌ای و کیفی است؛ ثبتِ «درستی/نادرستیِ» هر سؤال — نه نمرهٔ عددی — ملاک است. "
+        "مقایسهٔ دانش‌آموزان با یکدیگر ممنوع است. هدف از اجرای آزمون، شناساییِ الگویِ بدفهمیِ هر دانش‌آموز در مبحثِ مورد نظر است.",
+        _style("chg-intro", fontSize=9.5, leading=19, textColor=colors.HexColor("#1F2937")),
+        178,
+    )
+    blocks.append(Spacer(1, 2 * mm))
+    blocks += rtl_flowables("• هر سؤالِ نادرست را به یکی از این ریشه‌ها نسبت دهید: «بدفهمیِ مفهومی»، «خطای محاسباتی»، «بی‌دقتی در خواندن سؤال»، «ندانستن مطلب».", _style("chg-a", fontSize=9, leading=18), 178)
+    blocks += rtl_flowables("• بدون مقایسه با همکلاسی‌ها، فقط به خودِ دانش‌آموز بگویید کدام مبحث/دام اشتباه تکرار شده است.", _style("chg-b", fontSize=9, leading=18), 178)
+    blocks += rtl_flowables("• سؤال‌هایی که بیش از نصف کلاس در آن‌ها غلط زده‌اند، شاخصِ «شکافِ آموزشی» هستند؛ آن مبحث را در جلسهٔ بعد مرور کنید.", _style("chg-c", fontSize=9, leading=18), 178)
+    blocks += rtl_flowables("• برای گزارشِ هر دانش‌آموز، وضعیت هر سؤال را «کامل / نسبی / ناقص» ثبت کنید و از هرگونه نمرهٔ عددی یا رتبه‌بندی گروهی خودداری کنید.", _style("chg-d", fontSize=9, leading=18), 178)
+    blocks.append(Spacer(1, 2 * mm))
+    return blocks
+
+
+def _answer_sheet_table(items: list[dict[str, Any]]) -> Table:
+    """جدول پاسخنامهٔ کنکوری — هر سؤال یک ردیف، چهار چک‌باکسه (۱ تا ۴)."""
+    header_num = Paragraph(_esc_xml(reshaped("شمارهٔ سؤال")), _style("as-h1", fontName=FONT_XBOLD, textColor=colors.white, alignment=TA_CENTER, leading=17))
+    headers = [Paragraph(_esc_xml(reshaped(_fa(n))), _style(f"as-h{n}", fontName=FONT_XBOLD, textColor=colors.white, alignment=TA_CENTER, leading=17)) for n in (4, 3, 2, 1)]
+    data = [[*headers, header_num]]  # چیدمان راست→چپ: شماره، ۱، ۲، ۳، ۴
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND),
+        ("GRID", (0, 0), (-1, -1), 0.7, BRAND_LINE_SOFT),
+        ("BACKGROUND", (4, 1), (4, -1), SLATE_50),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]
+    for i, item in enumerate(items, start=1):
+        num = Paragraph(_esc_xml(reshaped(_fa(item["order"]))), _style("as-n", alignment=TA_CENTER, leading=20, fontName=FONT_BOLD))
+        data.append([Paragraph("&nbsp;", _style("as-b", alignment=TA_CENTER, leading=20)) for _ in range(4)] + [num])
+        # چک‌باکس هر گزینه: کادرِ تو گذاری در همان سلول
+        for col in range(4):
+            style_cmds.append(("BOX", (col, i), (col, i), 0.9, colors.HexColor("#94A3B8")))
+    t = Table(data, colWidths=[18 * mm, 18 * mm, 18 * mm, 18 * mm, 30 * mm], repeatRows=1)
+    t.setStyle(TableStyle(style_cmds))
+    return t
 
 # ---------------------------------------------------------------------------
 # ساخت PDF — خروجی بایت‌ها
@@ -614,19 +652,21 @@ def build_exam_pdf(
     questions: list[dict[str, Any]],
     duration_minutes: int,
     difficulty: str,
-    source: str,
-    grade: Optional[int] = None,
+    grade: Any = None,
     major: Optional[str] = None,
+    subject_label: str = "",
+    topic: str = "",
 ) -> bytes:
+    """PDF نهایی از لیستِ سؤال‌های کنکوریِ تأییدشده — تگِ منبع (source_tag) مطلقاً چاپ نمی‌شود."""
     _register_fonts()
 
     diff_label = DIFFICULTY_LABELS.get(difficulty, difficulty)
-    source_label = SOURCE_LABELS.get(source, source)
-    subjects_label = " + ".join(SUBJECT_LABELS.get(s, s) for s in dict.fromkeys(q["subject"] for q in questions))
     total = len(questions)
     stamp = _fa_date()
-    grade_label = f"پایهٔ {_fa(grade)}" if grade else "—"
+    grade_fa = _grade_label(grade)
     major_label = (major or "").strip() or "—"
+    subject_fa = (subject_label or "").strip() or "کنکور"
+    topic_fa = (topic or "").strip() or "—"
 
     from io import BytesIO
 
@@ -638,7 +678,7 @@ def build_exam_pdf(
         rightMargin=16 * mm,
         topMargin=13 * mm,
         bottomMargin=17 * mm,
-        title=title or "آزمون فهم‌یار",
+        title=title or "آزمون کنکوری — فهم‌یار",
         author="فهم‌یار",
     )
     frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="frame")
@@ -650,19 +690,19 @@ def build_exam_pdf(
     story += rtl_flowables(school_name, _style("school", fontName=FONT_XBOLD, fontSize=13, textColor=colors.HexColor("#0F5132"), alignment=TA_CENTER, leading=21), 178)
     story += rtl_flowables("«فهم‌یار» — سامانهٔ تشخیصی فهمِ مفهومی", _style("school-sub", alignment=TA_CENTER, fontSize=8.5, leading=16, textColor=SLATE_500), 178)
     story.append(Spacer(1, 3 * mm))
-    story.append(RoundedBanner(title))
+    story.append(RoundedBanner(title or "آزمون کنکوری — فهم‌یار"))
     story.append(Spacer(1, 4 * mm))
     story.append(
         _meta_table(
             [
                 ("نام و نام خانوادگی", ""),
-                ("پایه / رشته", f"{grade_label} — {major_label}"),
-                ("درس / دروس", subjects_label),
-                ("مباحث آزمون", subjects_label),
-                ("تعداد سؤال‌ها", f"{_fa(total)} سؤال تشریحی"),
+                ("پایه", grade_fa),
+                ("رشته", major_label),
+                ("درس", subject_fa),
+                ("مبحث", topic_fa),
+                ("تعداد سؤال‌ها", f"{_fa(total)} سؤال چهارگزینه‌ای"),
                 ("زمان آزمون", f"{_fa(duration_minutes)} دقیقه"),
                 ("سطح سختی", diff_label),
-                ("منبع سؤالات", source_label),
                 ("تاریخ برگزاری", stamp),
             ]
         )
@@ -671,21 +711,21 @@ def build_exam_pdf(
     story.append(_instruction_box())
     story.append(Spacer(1, 4 * mm))
 
-    # ── بخش ۱ — دفترچه سؤالات (هر سؤال: پاراگراف‌های جداگانه، بدون KeepTogether/جدولِ غول‌پیکر) ──
-    story.append(_section_banner("بخش ۱ — دفترچه سؤالات"))
+    # ── بخش ۱ — دفترچه سؤالات (گزینه‌ها در دو ستون، بدون تگ منبع) ──
+    story.append(_section_banner("بخش ۱ — دفترچهٔ سؤالات"))
     story.append(Spacer(1, 3.5 * mm))
     for item in questions:
-        story += _question_flow(item, with_lines=True)
+        story += _question_flow(item)
 
-    # ── جدول پاسخنامه (ثبت پاسخ کوتاه) — colWidths دقیق + سلول‌های پاراگرافی + repeatRows برای شکستن جدول ──
+    # ── جدول پاسخنامه (گزیدهٔ ۱ تا ۴) ──
     story.append(Spacer(1, 1 * mm))
     story.append(_section_banner("جدول پاسخنامهٔ دانش‌آموز", accent=colors.HexColor("#0EA5E9"), bg=colors.HexColor("#F0F9FF"), fg=colors.HexColor("#0C4A6E")))
     story.append(Spacer(1, 3 * mm))
     story.append(_answer_sheet_table(questions))
 
-    # ── بخش ۲ — پاسخنامهٔ تشریحی + راهنمای تصحیح کیفی (صفحهٔ مجزا) ──
+    # ── بخش ۲ (صفحهٔ آخر) — پاسخنامهٔ کلید آزمون ──
     story.append(PageBreak())
-    secret_p = Paragraph(_esc_xml(reshaped("مختص دبیر محترم — پاسخنامهٔ تشریحی (کلید آزمون)")), _style("secret", fontName=FONT_XBOLD, fontSize=9.5, textColor=RED_TEXT, alignment=TA_CENTER, leading=18))
+    secret_p = Paragraph(_esc_xml(reshaped("مختص دبیر محترم — پاسخنامهٔ کلید آزمون (هرگز در اختیار دانش‌آموز قرار نگیرد)")), _style("secret", fontName=FONT_XBOLD, fontSize=9.5, textColor=RED_TEXT, alignment=TA_CENTER, leading=18))
     secret = Table([[secret_p]], colWidths=[PAGE_W])
     secret.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, 0), RED_SOFT),
@@ -699,13 +739,13 @@ def build_exam_pdf(
         story += _answer_flow(item)
 
     story.append(Spacer(1, 2 * mm))
-    story.append(_section_banner("راهنمای تصحیح کیفی", accent=colors.HexColor("#F59E0B"), bg=colors.HexColor("#FFFBEB"), fg=AMBER_DARK))
+    story.append(_section_banner("راهنمای استفاده از کلید (کیفی)", accent=colors.HexColor("#F59E0B"), bg=colors.HexColor("#FFFBEB"), fg=AMBER_DARK))
     story.append(Spacer(1, 3 * mm))
     story += _correction_flow(questions)
 
     story.append(Spacer(1, 4 * mm))
     story += rtl_flowables(
-        f"این آزمون و پاسخنامه توسط فهم‌یار ساخته شد · {_fa(total)} سؤال · سطح سختی: {diff_label} · تاریخ: {stamp}",
+        f"این آزمون و پاسخنامه توسط فهم‌یار ساخته شد · {_fa(total)} سؤال چهارگزینه‌ای · سطح سختی: {diff_label} · تاریخ: {stamp}",
         _style("foot-note", alignment=TA_CENTER, fontSize=7.5, leading=15, textColor=SLATE_400),
         178,
     )

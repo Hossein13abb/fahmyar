@@ -5,19 +5,9 @@ import {
   Atom,
   FlaskConical,
   Leaf,
-  BookOpen,
-  Languages,
-  MoonStar,
-  Minus,
-  Plus,
+  Shapes,
+  Binary,
   Timer,
-  Building2,
-  Sparkles,
-  Shuffle,
-  Save,
-  Trash2,
-  FileText,
-  ChevronDown,
   Info,
   Smile,
   Meh,
@@ -26,36 +16,73 @@ import {
   Wand2,
   Loader2,
   FileDown,
+  FileText,
+  ChevronDown,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Check,
+  CheckCircle2,
+  RotateCcw,
 } from 'lucide-react'
 import { toFarsiNumber } from '../utils/faNumbers'
 import client, { friendlyError } from '../api/client'
 
-const SUBJECTS = [
+const FIELDS = [
   { id: 'math', label: 'ریاضی', Icon: Sigma, grad: 'from-indigo-500 to-blue-600' },
-  { id: 'physics', label: 'فیزیک', Icon: Atom, grad: 'from-cyan-500 to-teal-600' },
-  { id: 'chemistry', label: 'شیمی', Icon: FlaskConical, grad: 'from-emerald-500 to-green-600' },
-  { id: 'biology', label: 'زیست‌شناسی', Icon: Leaf, grad: 'from-lime-500 to-emerald-600' },
-  { id: 'literature', label: 'ادبیات فارسی', Icon: BookOpen, grad: 'from-rose-500 to-pink-600' },
-  { id: 'english', label: 'زبان انگلیسی', Icon: Languages, grad: 'from-violet-500 to-purple-600' },
-  { id: 'arabic', label: 'عربی', Icon: MoonStar, grad: 'from-amber-500 to-orange-600' },
+  { id: 'tajrobi', label: 'تجربی', Icon: Leaf, grad: 'from-emerald-500 to-green-600' },
 ]
 
-const TIME_PRESETS = [45, 60, 75, 90, 100, 120]
+const SUBJECTS_BY_FIELD = {
+  math: [
+    { id: 'calculus', label: 'حسابان', Icon: Sigma },
+    { id: 'geometry', label: 'هندسه', Icon: Shapes },
+    { id: 'discrete', label: 'گسسته', Icon: Binary },
+    { id: 'physics', label: 'فیزیک', Icon: Atom },
+    { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
+  ],
+  tajrobi: [
+    { id: 'biology', label: 'زیست‌شناسی', Icon: Leaf },
+    { id: 'math', label: 'ریاضیات', Icon: Sigma },
+    { id: 'physics', label: 'فیزیک', Icon: Atom },
+    { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
+  ],
+}
+
+const FIELD_LABELS = { math: 'ریاضی', tajrobi: 'تجربی' }
+const FIELD_PRINT_LABELS = { math: 'ریاضی و فیزیک', tajrobi: 'علوم تجربی' }
+
+const GRADES = [
+  { id: '10', label: 'دهم' },
+  { id: '11', label: 'یازدهم' },
+  { id: '12', label: 'دوازدهم' },
+  { id: 'comprehensive', label: 'جامع' },
+]
+const GRADE_LABELS = Object.fromEntries(GRADES.map((g) => [g.id, g.label]))
+
+const QUESTION_TYPES = [
+  { id: 'conceptual', label: 'مفهومی' },
+  { id: 'recall', label: 'حفظی' },
+  { id: 'computational', label: 'محاسباتی' },
+  { id: 'problem', label: 'مسئله' },
+  { id: 'mixed', label: 'ترکیبی' },
+]
+const QUESTION_TYPE_LABELS = Object.fromEntries(QUESTION_TYPES.map((t) => [t.id, t.label]))
+
+const COUNT_PRESETS = [5, 10, 15, 20]
+const TIME_PRESETS = [45, 60, 75, 100, 120]
 const DIFFICULTY_OPTIONS = [
   { id: 'easy', label: 'آسان', desc: 'سؤال‌های مستقیم و پایه‌ای', Icon: Smile },
-  { id: 'medium', label: 'متوسط', desc: 'استاندارد و متعادل', Icon: Meh },
+  { id: 'medium', label: 'متوسط', desc: 'استاندارد کنکور', Icon: Meh },
   { id: 'hard', label: 'سخت', desc: 'عمیق و تحلیلی', Icon: Flame },
-  { id: 'challenging', label: 'چالش‌برانگیز', desc: 'بالاتر از سطح کتاب درسی', Icon: Rocket },
+  { id: 'challenging', label: 'چالش‌برانگیز', desc: 'بالاتر از کنکور', Icon: Rocket },
 ]
+const DIFFICULTY_LABELS = Object.fromEntries(DIFFICULTY_OPTIONS.map((d) => [d.id, d.label]))
+
 const GEN_STEPS = [
-  'در حال انتخاب سؤال‌های متناسب از بانک مؤسسات…',
-  'در حال تولید سؤال‌های هوش مصنوعی…',
-  'در حال چینش دفترچه و زمان‌بندی آزمون…',
-]
-const SOURCE_OPTIONS = [
-  { id: 'bank', label: 'بانک سؤالات مؤسسات', desc: 'سؤال‌های استاندارد و تأییدشده از بانک‌های معتبر', Icon: Building2 },
-  { id: 'ai', label: 'تولید هوش مصنوعی', desc: 'دفترچهٔ تشخیصی تولیدشده توسط فهم‌یار', Icon: Sparkles },
-  { id: 'hybrid', label: 'ترکیبی', desc: 'ترکیبِ بانک مؤسسات + سؤالات هوش مصنوعی', Icon: Shuffle },
+  'در حال طراحی سؤال‌های چهارگزینه‌ای…',
+  'در حال تنظیم دام‌های حلال هر سؤال…',
+  'در حال چینش دفترچه و کلید پاسخنامه…',
 ]
 
 const DRAFT_KEY = 'fahmyar_exam_drafts'
@@ -68,21 +95,35 @@ const loadDrafts = () => {
     return []
   }
 }
+const loadGrade = () => {
+  try {
+    const raw = String(localStorage.getItem('fahmyar_grade') || '11')
+    return GRADE_LABELS[raw] ? raw : '11'
+  } catch {
+    return '11'
+  }
+}
+const loadField = () => {
+  try {
+    const raw = localStorage.getItem('fahmyar_field') || 'math'
+    return raw === 'tajrobi' ? 'tajrobi' : 'math'
+  } catch {
+    return 'math'
+  }
+}
 
 export default function ExamBuilder({ embedded = false }) {
-  const [selected, setSelected] = useState(['math'])           // درس‌های انتخابی
-  const [counts, setCounts] = useState({ math: 10 })           // تعداد سؤال هر درس
-  const [duration, setDuration] = useState(100)                // دقیقه
-  const [source, setSource] = useState('hybrid')               // bank | ai | hybrid
-  const [bankShare, setBankShare] = useState(60)               // درصد سهم بانک در حالت ترکیبی
-  const [difficulty, setDifficulty] = useState('medium')       // easy | medium | hard | challenging
-  const [generating, setGenerating] = useState(false)          // در حال تولید آزمون واقعی در بک‌اند
-  const [genStep, setGenStep] = useState(0)                    // کپشن‌های در حال چرخش
-  const [drafts, setDrafts] = useState(loadDrafts)
-  const [notice, setNotice] = useState('')
+  // ── فرم مرحلهٔ ۱ ──
+  const [field, setField] = useState(loadField)                // math | tajrobi
+  const [grade, setGradeState] = useState(loadGrade)           // 10 | 11 | 12 | comprehensive
+  const [subject, setSubject] = useState(() => SUBJECTS_BY_FIELD[loadField()][0].id)
+  const [topic, setTopic] = useState('')
+  const [questionType, setQuestionType] = useState('mixed')
+  const [count, setCount] = useState(10)
+  const [customPrompt, setCustomPrompt] = useState('')
+  const [difficulty, setDifficulty] = useState('medium')
+  const [duration, setDuration] = useState(75)
   const [title, setTitle] = useState('')
-  const [pdfUrl, setPdfUrl] = useState(null)                   // آدرس موقت فایل PDF آماده
-  const [pdfMeta, setPdfMeta] = useState(null)                 // { total, ai, bank } از سربرگ‌های پاسخ
   const [schoolName, setSchoolName] = useState(() => {
     try {
       return localStorage.getItem('fahmyar_school_name') || 'مدرسهٔ نمونه'
@@ -90,41 +131,37 @@ export default function ExamBuilder({ embedded = false }) {
       return 'مدرسهٔ نمونه'
     }
   })
-  const [grade, setGrade] = useState(() => {
+
+  // ── گام دوم: پیش‌نمایش و ویرایش ──
+  const [step, setStep] = useState('form')                     // form | preview
+  const [questions, setQuestions] = useState([])
+  const [generating, setGenerating] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [genStep, setGenStep] = useState(0)
+  const [pdfUrl, setPdfUrl] = useState(null)
+  const [notice, setNotice] = useState('')
+  const [drafts, setDrafts] = useState(loadDrafts)             // پیش‌نویس‌های قدیمی (فقط مشاهده/حذف)
+
+  const setGrade = (g) => {
+    setGradeState(g)
     try {
-      return Number(localStorage.getItem('fahmyar_grade')) || 11
+      localStorage.setItem('fahmyar_grade', g)
     } catch {
-      return 11
+      /* فضای ذخیره در دسترس نیست */
     }
-  })
-  const [major, setMajor] = useState(() => {
+  }
+  const setFieldPersist = (f) => {
+    setField(f)
+    setSubject(SUBJECTS_BY_FIELD[f][0].id)
     try {
-      return localStorage.getItem('fahmyar_major') || 'علوم تجربی'
+      localStorage.setItem('fahmyar_field', f)
     } catch {
-      return 'علوم تجربی'
+      /* فضای ذخیره در دسترس نیست */
     }
-  })
+  }
 
-  useEffect(() => {
-    // اگر درسی برداشته شد، تعداد سؤالش هم پاک شود؛ اگر اضافه شد، پیش‌فرض ۱۰
-    setCounts((prev) => {
-      const next = {}
-      for (const id of selected) next[id] = prev[id] ?? 10
-      return next
-    })
-  }, [selected])
-
-  const totalQuestions = useMemo(
-    () => selected.reduce((sum, id) => sum + (Number(counts[id]) || 0), 0),
-    [selected, counts],
-  )
-  const questionsPerMinute = duration > 0 ? (totalQuestions / duration).toFixed(2) : '—'
-
-  const toggleSubject = (id) =>
-    setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
-
-  const bump = (id, delta) =>
-    setCounts((prev) => ({ ...prev, [id]: Math.min(30, Math.max(1, (Number(prev[id]) || 10) + delta)) }))
+  const subjectOptions = SUBJECTS_BY_FIELD[field]
+  const subjectLabel = subjectOptions.find((s) => s.id === subject)?.label ?? ''
 
   useEffect(() => {
     if (!generating) return undefined
@@ -132,86 +169,113 @@ export default function ExamBuilder({ embedded = false }) {
     return () => window.clearInterval(t)
   }, [generating])
 
-  // PDF ساخته‌شده فقط با همین پارامترها معتبر است؛ هر تغییری آن را باطل می‌کند
+  // هر تغییری در لیست سؤال‌ها، PDF قبلی را باطل می‌کند
   useEffect(() => {
     setPdfUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev)
       return null
     })
-    setPdfMeta(null)
-  }, [selected, counts, duration, source, difficulty, title, bankShare, schoolName, grade, major])
+  }, [questions])
 
-  const persist = (list) => {
-    setDrafts(list)
+  const removeDraft = (id) => {
+    const next = drafts.filter((d) => d.id !== id)
+    setDrafts(next)
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(list))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(next))
     } catch {
-      /* فضای ذخیره پر است — فقط در همین نشست نگه می‌داریم */
+      /* فضای ذخیره در دسترس نیست */
     }
   }
 
   const validate = () => {
-    if (selected.length === 0) return 'حداقل یک درس را انتخاب کنید.'
-    if (totalQuestions < 1) return 'تعداد کل سؤالات باید حداقل ۱ باشد.'
+    if (!topic.trim()) return 'مبحث آزمون را بنویسید (مثلاً: مشتق و نقاط اکسترمم).'
     if (!duration || duration < 10) return 'زمان آزمون باید حداقل ۱۰ دقیقه باشد.'
     return ''
   }
 
-  const buildDraft = (status) => ({
-    id: Date.now(),
-    title: title.trim() || `آزمون ${SUBJECTS.filter((s) => selected.includes(s.id)).map((s) => s.label).join(' + ')}`,
-    subjects: selected,
-    counts,
-    duration,
-    source,
-    bankShare: source === 'hybrid' ? bankShare : null,
-    totalQuestions,
-    difficulty,
-    createdAt: new Date().toISOString(),
-    status,
-  })
-
-  const saveDraft = () => {
-    const err = validate()
-    if (err) return setNotice(`⚠️ ${err}`)
-    persist([buildDraft('draft'), ...drafts].slice(0, 12))
-    setNotice('✓ پیش‌نویس آزمون ذخیره شد.')
-  }
-
-  // ── تولید آزمون واقعی — POST /api/teacher/generate-exam-pdf (دو بخش: دفترچه + کلید تشریحی) ──
-  const generateExam = async () => {
+  // ── مرحلهٔ ۱ → تولید پیش‌نمایش (JSON فقط؛ بدون PDF) ──
+  const generatePreview = async () => {
     const err = validate()
     if (err) return setNotice(`⚠️ ${err}`)
     setNotice('')
     setGenStep(0)
     setGenerating(true)
     try {
-      const { data, headers } = await client.post(
+      const { data } = await client.post('/api/teacher/generate-exam-preview', {
+        field,
+        grade,
+        subject,
+        topic: topic.trim(),
+        question_type: questionType,
+        difficulty,
+        count,
+        custom_prompt: customPrompt.trim(),
+      })
+      const list = Array.isArray(data?.questions) ? data.questions : []
+      if (list.length === 0) {
+        setNotice('⚠️ هوش مصنوعی سؤالِ معتبری برنگرداند؛ دوباره تلاش کنید.')
+        return
+      }
+      setQuestions(list)
+      setStep('preview')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (error) {
+      let message = friendlyError(error)
+      try {
+        if (typeof error?.response?.data?.detail === 'string') message = error.response.data.detail
+      } catch {
+        /* همان پیام عمومی نمایش داده می‌شود */
+      }
+      setNotice(`⚠️ ${message}`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  // ── ویرایش لیست سؤال‌ها ──
+  const removeQuestion = (id) => setQuestions((prev) => prev.filter((q) => q.id !== id))
+  const moveQuestion = (index, delta) =>
+    setQuestions((prev) => {
+      const target = index + delta
+      if (target < 0 || target >= prev.length) return prev
+      const next = [...prev]
+      const [item] = next.splice(index, 1)
+      next.splice(target, 0, item)
+      return next
+    })
+
+  // ── مرحلهٔ ۲ → تأیید و دانلود PDF نهایی (تگ منبع در PDF چاپ نمی‌شود) ──
+  const confirmAndDownload = async () => {
+    if (questions.length === 0) return setNotice('⚠️ حداقل یک سؤال باید باقی بماند.')
+    setNotice('')
+    setDownloading(true)
+    try {
+      const { data } = await client.post(
         '/api/teacher/generate-exam-pdf',
         {
           title: title.trim(),
           school_name: schoolName.trim() || 'مدرسهٔ نمونه',
           grade,
-          major: major.trim(),
-          subjects: selected,
-          counts,
+          major: FIELD_PRINT_LABELS[field],
+          subject_label: subjectLabel,
+          topic: topic.trim(),
           duration_minutes: duration,
           difficulty,
-          source,
-          bank_share: bankShare,
+          questions: questions.map((q, i) => ({
+            id: i + 1,
+            text: q.text,
+            options: q.options,
+            correct_answer: q.correct_answer,
+            source_tag: q.source_tag || '',
+            explanation: q.explanation || '',
+          })),
         },
         { responseType: 'blob', timeout: 180000 },
       )
       if (pdfUrl) URL.revokeObjectURL(pdfUrl)
       setPdfUrl(URL.createObjectURL(data))
-      setPdfMeta({
-        total: Number(headers['x-exam-total-questions'] ?? 0),
-        ai: Number(headers['x-exam-ai-used'] ?? 0),
-        bank: Number(headers['x-exam-bank-used'] ?? 0),
-      })
-      persist([buildDraft('generated'), ...drafts].slice(0, 12))
+      setNotice('✓ PDF نهایی ساخته شد؛ تگ منابع در آن چاپ نشده است.')
     } catch (error) {
-      // در پاسخ خطا، بدنه blob است — تلاش می‌کنیم detail فارسی را بخوانیم
       let message = friendlyError(error)
       try {
         const blob = error?.response?.data
@@ -224,423 +288,540 @@ export default function ExamBuilder({ embedded = false }) {
       }
       setNotice(`⚠️ ${message}`)
     } finally {
-      setGenerating(false)
+      setDownloading(false)
     }
   }
 
-  const removeDraft = (id) => persist(drafts.filter((d) => d.id !== id))
-
-  const selectedSubjects = SUBJECTS.filter((s) => selected.includes(s.id))
-  const difficultyLabel = DIFFICULTY_OPTIONS.find((d) => d.id === difficulty)?.label ?? 'متوسط'
+  const difficultyLabel = DIFFICULTY_LABELS[difficulty] ?? 'متوسط'
+  const questionTypeLabel = QUESTION_TYPE_LABELS[questionType] ?? 'ترکیبی'
 
   return (
     <div className="animate-fade-up space-y-6">
-      {/* ── سربرگ صفحه (در حالت نهفته داخل داشبورد کادر مدرسه حذف می‌شود) ── */}
+      {/* ── سربرگ صفحه ── */}
       {!embedded && (
-      <section className="relative overflow-hidden rounded-2xl border border-brand-800/50 bg-gradient-to-bl from-brand-800 via-brand-900 to-brand-950 p-6 text-brand-50 shadow-lift sm:p-7">
-        <div aria-hidden className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-brand-400/20 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -bottom-14 left-1/3 h-48 w-48 rounded-full bg-amber-400/10 blur-3xl" />
-        <div className="relative flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <span className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/15 backdrop-blur">
-              <ClipboardEdit className="h-7 w-7 text-amber-200" />
-            </span>
-            <div>
-              <h1 className="text-xl font-black text-white sm:text-2xl">طراحی آزمون مدرسه</h1>
-              <p className="mt-1 text-[12px] font-medium text-brand-100/85">
-                دفترچهٔ ترکیبی بساز: درس‌ها، تعداد سؤال، زمان و منبع سؤالات را مشخص کن.
-              </p>
+        <section className="relative overflow-hidden rounded-2xl border border-brand-800/50 bg-gradient-to-bl from-brand-800 via-brand-900 to-brand-950 p-6 text-brand-50 shadow-lift sm:p-7">
+          <div aria-hidden className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-brand-400/20 blur-3xl" />
+          <div aria-hidden className="pointer-events-none absolute -bottom-14 left-1/3 h-48 w-48 rounded-full bg-amber-400/10 blur-3xl" />
+          <div className="relative flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <span className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/15 backdrop-blur">
+                <ClipboardEdit className="h-7 w-7 text-amber-200" />
+              </span>
+              <div>
+                <h1 className="text-xl font-black text-white sm:text-2xl">آزمون‌ساز کنکوری</h1>
+                <p className="mt-1 text-[12px] font-medium text-brand-100/85">
+                  سؤال‌های چهارگزینه‌ایِ سطح کنکور بساز، پیش‌نمایش بگیر، ویرایش کن و PDF نهایی را چاپ کن.
+                </p>
+              </div>
+            </div>
+            <div className="rounded-2xl bg-white/10 px-4 py-2.5 text-center ring-1 ring-white/15 backdrop-blur">
+              <p className="text-2xl font-black leading-none text-amber-200">{fmtFa(step === 'preview' ? questions.length : count)}</p>
+              <p className="mt-1 text-[10px] font-bold text-brand-100/80">سؤال چهارگزینه‌ای</p>
             </div>
           </div>
-          <div className="rounded-2xl bg-white/10 px-4 py-2.5 text-center ring-1 ring-white/15 backdrop-blur">
-            <p className="text-2xl font-black leading-none text-amber-200">{fmtFa(totalQuestions)}</p>
-            <p className="mt-1 text-[10px] font-bold text-brand-100/80">سؤال در این آزمون</p>
-          </div>
-        </div>
-      </section>
+        </section>
       )}
 
       <div className="grid gap-6 lg:grid-cols-12">
-        {/* ══════════ ستون فرم ══════════ */}
-        <div className="space-y-6 lg:col-span-8">
-          {/* ── نام آزمون ── */}
-          <section className="card p-5 sm:p-6">
-            <label htmlFor="exam-title" className="label">نام آزمون (اختیاری)</label>
-            <input
-              id="exam-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="مثلاً: آزمون جامع هماهنگ نوبت اول — تجربی"
-              className="input"
-            />
-            <label htmlFor="school-name" className="label mt-4">نام مدرسه/مؤسسه (روی سربرگ PDF)</label>
-            <input
-              id="school-name"
-              value={schoolName}
-              onChange={(e) => {
-                setSchoolName(e.target.value)
-                try {
-                  localStorage.setItem('fahmyar_school_name', e.target.value)
-                } catch {
-                  /* فضای ذخیره در دسترس نیست */
-                }
-              }}
-              placeholder="مثلاً: دبیرستان نمونهٔ اندیشه"
-              className="input"
-            />
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div>
-                <span className="label">پایه (سربرگ PDF)</span>
-                <div className="mt-1.5 grid grid-cols-3 gap-2" role="group" aria-label="پایه">
-                  {[10, 11, 12].map((g) => {
-                    const active = grade === g
+        {/* ════════════════════════ گام ۱ — فرم ════════════════════════ */}
+        {step === 'form' && (
+          <>
+            <div className="space-y-6 lg:col-span-8">
+              {/* ── اطلاعات آزمون ── */}
+              <section className="card p-5 sm:p-6">
+                <label htmlFor="exam-title" className="label">نام آزمون (اختیاری)</label>
+                <input
+                  id="exam-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="مثلاً: آزمون کنکوری مشتق — دوازدهم ریاضی"
+                  className="input"
+                />
+                <label htmlFor="school-name" className="label mt-4">نام مدرسه/مؤسسه (روی سربرگ PDF)</label>
+                <input
+                  id="school-name"
+                  value={schoolName}
+                  onChange={(e) => {
+                    setSchoolName(e.target.value)
+                    try {
+                      localStorage.setItem('fahmyar_school_name', e.target.value)
+                    } catch {
+                      /* فضای ذخیره در دسترس نیست */
+                    }
+                  }}
+                  placeholder="مثلاً: دبیرستان نمونهٔ اندیشه"
+                  className="input"
+                />
+
+                {/* رشته — فقط ریاضی و تجربی */}
+                <span className="label mt-4 block">رشته</span>
+                <div className="mt-1.5 grid grid-cols-2 gap-2.5" role="group" aria-label="رشته">
+                  {FIELDS.map(({ id, label, Icon, grad }) => {
+                    const active = field === id
                     return (
                       <button
-                        key={g}
+                        key={id}
                         type="button"
                         aria-pressed={active}
-                        onClick={() => {
-                          setGrade(g)
-                          try {
-                            localStorage.setItem('fahmyar_grade', String(g))
-                          } catch {
-                            /* فضای ذخیره در دسترس نیست */
-                          }
-                        }}
+                        onClick={() => setFieldPersist(id)}
+                        className={`flex items-center gap-3 rounded-2xl border p-3.5 transition-all duration-200 ${
+                          active
+                            ? 'border-transparent bg-gradient-to-br text-white shadow-lift ring-2 ring-brand-300/60 ' + grad
+                            : 'border-slate-200/80 bg-slate-50/50 text-slate-600 hover:border-brand-200 hover:bg-white'
+                        }`}
+                      >
+                        <Icon className={`h-7 w-7 ${active ? 'text-white' : 'text-brand-700'}`} strokeWidth={1.8} />
+                        <span className="text-[14px] font-black">{label}</span>
+                        {active && <Check className="mr-auto h-5 w-5" />}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* پایه — دهم تا دوازدهم و جامع */}
+                <span className="label mt-4 block">پایه</span>
+                <div className="mt-1.5 grid grid-cols-4 gap-2" role="group" aria-label="پایه">
+                  {GRADES.map((g) => {
+                    const active = grade === g.id
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setGrade(g.id)}
                         className={`rounded-2xl border py-2.5 text-[12px] font-black transition-all duration-200 ${
                           active
                             ? 'border-transparent bg-emerald-600 text-white shadow-soft'
                             : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-emerald-200 hover:text-emerald-700'
                         }`}
                       >
-                        {g === 10 ? 'دهم' : g === 11 ? 'یازدهم' : 'دوازدهم'}
+                        {g.label}
                       </button>
                     )
                   })}
                 </div>
-              </div>
-              <div>
-                <label htmlFor="exam-major" className="label">رشته (سربرگ PDF)</label>
+              </section>
+
+              {/* ── انتخاب درس (دینامیک بر اساس رشته) ── */}
+              <section className="card p-5 sm:p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۱</span>
+                    انتخاب درس
+                  </h2>
+                  <span className="chip bg-brand-50 text-brand-800 ring-1 ring-brand-200">رشتهٔ {FIELD_LABELS[field]}</span>
+                </div>
+                <div className={`mt-4 grid gap-2.5 ${subjectOptions.length > 4 ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'}`}>
+                  {subjectOptions.map(({ id, label, Icon }) => {
+                    const on = subject === id
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setSubject(id)}
+                        className={`flex flex-col items-center gap-2 rounded-2xl border p-3.5 transition-all duration-200 ${
+                          on
+                            ? 'border-transparent bg-gradient-to-br from-brand-600 to-emerald-700 text-white shadow-lift ring-2 ring-brand-300/60'
+                            : 'border-slate-200/80 bg-slate-50/50 text-slate-600 hover:border-brand-200 hover:bg-white'
+                        }`}
+                      >
+                        <Icon className={`h-6 w-6 ${on ? 'text-white' : 'text-brand-700'}`} strokeWidth={1.8} />
+                        <span className="text-[12px] font-black leading-5">{label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+
+              {/* ── مبحث، نوع سؤال، تعداد، دستورالعمل سفارشی ── */}
+              <section className="card p-5 sm:p-6">
+                <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۲</span>
+                  مبحث و سبک سؤال
+                </h2>
+
+                <label htmlFor="exam-topic" className="label mt-4">مبحث آزمون <span className="text-red-500">*</span></label>
                 <input
-                  id="exam-major"
-                  value={major}
-                  onChange={(e) => {
-                    setMajor(e.target.value)
-                    try {
-                      localStorage.setItem('fahmyar_major', e.target.value)
-                    } catch {
-                      /* فضای ذخیره در دسترس نیست */
-                    }
-                  }}
-                  placeholder="مثلاً: علوم تجربی"
+                  id="exam-topic"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="مثلاً: مشتق و نقاط اکسترمم، میدان الکتریکی، گردش خون…"
                   className="input"
+                  maxLength={140}
                 />
-              </div>
-            </div>
-          </section>
 
-          {/* ── ۱) انتخاب درس‌های ترکیبی ── */}
-          <section className="card p-5 sm:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
-                <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۱</span>
-                انتخاب درس‌های ترکیبی
-              </h2>
-              <span className="chip bg-brand-50 text-brand-800 ring-1 ring-brand-200">{fmtFa(selected.length)} درس فعال</span>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-              {SUBJECTS.map(({ id, label, Icon, grad }) => {
-                const on = selected.includes(id)
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => toggleSubject(id)}
-                    aria-pressed={on}
-                    className={`group flex flex-col items-center gap-2 rounded-2xl border p-3.5 transition-all duration-200 ${
-                      on
-                        ? 'border-transparent bg-gradient-to-br text-white shadow-lift ring-2 ring-brand-300/60 ' + grad
-                        : 'border-slate-200/80 bg-slate-50/50 text-slate-600 hover:border-brand-200 hover:bg-white hover:shadow-soft'
-                    }`}
-                  >
-                    <Icon className={`h-7 w-7 ${on ? 'text-white' : 'text-brand-700'}`} strokeWidth={1.8} />
-                    <span className="text-[12px] font-black leading-5">{label}</span>
-                    <span className={`text-[10px] font-bold ${on ? 'text-white/85' : 'text-slate-400'}`}>
-                      {on ? '✓ انتخاب شد' : 'لمس برای انتخاب'}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-
-          {/* ── ۲) تعداد سؤال هر درس ── */}
-          <section className="card p-5 sm:p-6">
-            <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
-              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۲</span>
-              تعداد سؤال هر درس
-            </h2>
-            {selectedSubjects.length === 0 ? (
-              <p className="mt-3 flex items-center gap-2 text-[12px] text-slate-500"><Info className="h-4 w-4" /> اول درس‌های بالا را انتخاب کن.</p>
-            ) : (
-              <ul className="mt-4 divide-y divide-slate-100">
-                {selectedSubjects.map(({ id, label, Icon }) => (
-                  <li key={id} className="flex items-center justify-between gap-3 py-3">
-                    <span className="flex min-w-0 items-center gap-2.5 text-[13px] font-bold text-brand-950">
-                      <span className="rounded-xl bg-brand-50 p-2 text-brand-700"><Icon className="h-4 w-4" /></span>
-                      <span className="truncate">{label}</span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <button type="button" onClick={() => bump(id, -1)} aria-label="کاهش سؤال" className="rounded-xl border border-slate-200 bg-white p-2 text-brand-800 shadow-sm transition hover:border-brand-300 hover:bg-brand-50">
-                        <Minus className="h-4 w-4" />
-                      </button>
-                      <span className="w-10 text-center text-[17px] font-black tabular-nums text-brand-900">{fmtFa(counts[id] ?? 10)}</span>
-                      <button type="button" onClick={() => bump(id, +1)} aria-label="افزایش سؤال" className="rounded-xl border border-slate-200 bg-white p-2 text-brand-800 shadow-sm transition hover:border-brand-300 hover:bg-brand-50">
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {/* ── ۳) زمان آزمون ── */}
-          <section className="card p-5 sm:p-6">
-            <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
-              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۳</span>
-              زمان آزمون
-            </h2>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {TIME_PRESETS.map((t) => {
-                const on = duration === t
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setDuration(t)}
-                    aria-pressed={on}
-                    className={`rounded-2xl border px-4 py-2.5 text-[13px] font-black tabular-nums transition-all ${
-                      on
-                        ? 'border-transparent bg-brand-700 text-white shadow-lift'
-                        : 'border-slate-200 bg-white text-brand-900 shadow-sm hover:border-brand-300 hover:bg-brand-50'
-                    }`}
-                  >
-                    {fmtFa(t)} دقیقه
-                  </button>
-                )
-              })}
-              <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-                <Timer className="h-4 w-4 text-brand-700" />
-                <input
-                  type="number"
-                  min={10}
-                  max={300}
-                  value={duration}
-                  onChange={(e) => setDuration(Math.max(0, Number(e.target.value) || 0))}
-                  className="w-16 bg-transparent text-center text-[14px] font-black tabular-nums text-brand-900 outline-none"
-                  aria-label="زمان دلخواه (دقیقه)"
-                />
-                <span className="text-[11px] font-bold text-slate-400">دقیقه</span>
-              </label>
-            </div>
-          </section>
-
-          {/* ── ۴) تعیین سطح سختی ── */}
-          <section className="card p-6 sm:p-7">
-            <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
-              <Flame className="h-5 w-5 text-brand-700" /> تعیین سطح سختی
-            </h2>
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4" role="radiogroup" aria-label="سطح سختی آزمون">
-              {DIFFICULTY_OPTIONS.map(({ id, label, desc, Icon }) => {
-                const on = difficulty === id
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    onClick={() => setDifficulty(id)}
-                    className={`rounded-2xl border p-4 text-center transition-all duration-200 ${
-                      on
-                        ? 'border-brand-500 bg-brand-50 shadow-lift ring-2 ring-brand-200'
-                        : 'border-slate-200/80 bg-white hover:-translate-y-0.5 hover:border-brand-200'
-                    }`}
-                  >
-                    <Icon className={`mx-auto h-6 w-6 ${on ? 'text-brand-700' : 'text-slate-400'}`} strokeWidth={1.8} />
-                    <span className="mt-2 block text-[13px] font-black text-brand-950">{label}</span>
-                    <span className="mt-1 block text-[9px] font-medium leading-4 text-slate-400">{desc}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-
-          {/* ── ۵) منبع سؤالات ── */}
-          <section className="card p-5 sm:p-6">
-            <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
-              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۴</span>
-              منبع سؤالات
-            </h2>
-            <div role="radiogroup" aria-label="منبع سؤالات" className="mt-4 grid gap-2.5 sm:grid-cols-3">
-              {SOURCE_OPTIONS.map(({ id, label, desc, Icon }) => {
-                const on = source === id
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    onClick={() => setSource(id)}
-                    className={`flex flex-col items-center gap-2 rounded-2xl border p-4 text-center transition-all duration-200 ${
-                      on
-                        ? 'border-brand-500 bg-brand-50/70 shadow-lift ring-2 ring-brand-300/70'
-                        : 'border-slate-200/80 bg-white hover:border-brand-200 hover:shadow-soft'
-                    }`}
-                  >
-                    <span className={`rounded-2xl p-2.5 ${on ? 'bg-brand-700 text-amber-200' : 'bg-brand-50 text-brand-700'}`}>
-                      <Icon className="h-6 w-6" strokeWidth={1.8} />
-                    </span>
-                    <span className="text-[13px] font-black text-brand-950">{label}</span>
-                    <span className="text-[10px] leading-5 text-slate-500">{desc}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {source === 'hybrid' && (
-              <div className="mt-4 rounded-2xl border border-brand-100 bg-brand-50/50 p-4">
-                <div className="flex items-center justify-between gap-3 text-[12px] font-black text-brand-900">
-                  <span>سهم بانک مؤسسات: {fmtFa(bankShare)}٪</span>
-                  <span>سهم هوش مصنوعی: {fmtFa(100 - bankShare)}٪</span>
-                </div>
-                <input
-                  type="range"
-                  min={10}
-                  max={90}
-                  step={10}
-                  value={bankShare}
-                  onChange={(e) => setBankShare(Number(e.target.value))}
-                  className="mt-3 w-full accent-brand-700"
-                  aria-label="سهم بانک سؤالات در حالت ترکیبی"
-                />
-                <div className="mt-1.5 flex justify-between text-[10px] font-bold text-slate-400">
-                  <span>۹۰٪ بانک · ۱۰٪ AI</span>
-                  <span>۵۰ / ۵۰</span>
-                  <span>۱۰٪ بانک · ۹۰٪ AI</span>
-                </div>
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* ══════════ ستون کنار: پیش‌نمایش + پیش‌نویس‌ها ══════════ */}
-        <div className="space-y-6 lg:col-span-4">
-          <section className="card overflow-hidden p-0">
-            <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
-              <h2 className="flex items-center gap-2 text-[14px] font-black text-brand-950"><FileText className="h-4 w-4 text-brand-700" /> پیش‌نمایش آزمون</h2>
-            </div>
-            <dl className="space-y-2.5 px-5 py-4 text-[12px] leading-7">
-              <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                <dt className="text-slate-500">پایه / رشته</dt>
-                <dd className="font-bold text-brand-950">پایهٔ {toFarsiNumber(grade)}{major.trim() ? ` — ${major.trim()}` : ''}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                <dt className="text-slate-500">درس‌ها</dt>
-                <dd className="text-left font-bold text-brand-950">{selectedSubjects.map((s) => s.label).join(' + ') || '—'}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                <dt className="text-slate-500">تعداد سؤال</dt>
-                <dd className="font-black tabular-nums text-brand-950">{fmtFa(totalQuestions)} سؤال</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                <dt className="text-slate-500">زمان</dt>
-                <dd className="font-black tabular-nums text-brand-950">{fmtFa(duration)} دقیقه</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                <dt className="text-slate-500">سطح سختی</dt>
-                <dd className="font-bold text-brand-950">{difficultyLabel}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                <dt className="text-slate-500">سرعت تقریبی</dt>
-                <dd className="font-bold tabular-nums text-brand-950">{questionsPerMinute} سؤال/دقیقه</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">منبع</dt>
-                <dd className="font-bold text-brand-950">
-                  {SOURCE_OPTIONS.find((s) => s.id === source)?.label}
-                  {source === 'hybrid' && ` (${fmtFa(bankShare)}٪ بانک / ${fmtFa(100 - bankShare)}٪ AI)`}
-                </dd>
-              </div>
-            </dl>
-            <div className="border-t border-slate-100 bg-white px-5 py-4">
-              <button onClick={generateExam} disabled={generating} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3.5 text-[14px] font-black text-white shadow-lift transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-80">
-                {generating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
-                {generating ? 'در حال تولید آزمون…' : 'تولید آزمون'}
-              </button>
-              <button onClick={saveDraft} className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-white py-3 text-[13px] font-bold text-brand-800 transition hover:bg-brand-50">
-                <Save className="h-5 w-5" /> ذخیرهٔ پیش‌نویس
-              </button>
-              {pdfUrl && (
-                <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-center">
-                  <p className="text-[11px] font-bold leading-6 text-emerald-900">
-                    فایل آزمون و پاسخنامه آماده شد
-                    {pdfMeta?.total ? ` — ${toFarsiNumber(pdfMeta.total)} سؤال (${toFarsiNumber(pdfMeta.bank)} از بانک · ${toFarsiNumber(pdfMeta.ai)} هوش مصنوعی)` : ''}
-                  </p>
-                  <a
-                    href={pdfUrl}
-                    download="fahmyar-exam.pdf"
-                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 py-3 text-[13px] font-black text-white shadow-lift transition hover:bg-emerald-800"
-                  >
-                    <FileDown className="h-5 w-5" />
-                    دانلود PDF آزمون و پاسخنامه
-                  </a>
-                </div>
-              )}
-              {notice && (
-                <p className={`mt-3 rounded-2xl px-4 py-2.5 text-[11px] font-bold leading-6 ${notice.startsWith('⚠️') ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900'}`} role="status">
-                  {notice}
-                </p>
-              )}
-            </div>
-          </section>
-
-          {/* ── پیش‌نویس‌های ذخیره‌شده ── */}
-          {drafts.length > 0 && (
-            <section className="card p-5">
-              <h2 className="flex items-center justify-between gap-2 text-[13px] font-black text-brand-950">
-                <span className="flex items-center gap-2"><ChevronDown className="h-4 w-4 rotate-[-90deg] text-brand-700" /> پیش‌نویس‌های من ({fmtFa(drafts.length)})</span>
-              </h2>
-              <ul className="mt-3 max-h-72 space-y-2 overflow-auto">
-                {drafts.map((d) => (
-                  <li key={d.id} className="flex items-start justify-between gap-2 rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[12px] font-black text-brand-950">{d.title}</p>
-                      <p className="mt-0.5 text-[10px] leading-5 text-slate-500">
-                        {fmtFa(d.totalQuestions)} سؤال · {fmtFa(d.duration)} دقیقه · {SOURCE_OPTIONS.find((s) => s.id === d.source)?.label}
-                        {d.difficulty && ` · سختی: ${DIFFICULTY_OPTIONS.find((x) => x.id === d.difficulty)?.label ?? ''}`}
-                        {d.status === 'generated' ? ' · ✓ PDF ساخته شد' : d.status === 'published' ? ' · ✓ منتشر شد' : d.status === 'submitted' ? ' · ✓ ثبت‌شده' : ' · پیش‌نویس'}
-                      </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="question-type" className="label">نوع سؤالات</label>
+                    <select
+                      id="question-type"
+                      value={questionType}
+                      onChange={(e) => setQuestionType(e.target.value)}
+                      className="input mt-1.5"
+                    >
+                      {QUESTION_TYPES.map((t) => (
+                        <option key={t.id} value={t.id}>{t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <span className="label">تعداد سؤال</span>
+                    <div className="mt-1.5 grid grid-cols-4 gap-2" role="group" aria-label="تعداد سؤال">
+                      {COUNT_PRESETS.map((n) => {
+                        const on = count === n
+                        return (
+                          <button
+                            key={n}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => setCount(n)}
+                            className={`rounded-2xl border py-2.5 text-[13px] font-black tabular-nums transition-all ${
+                              on
+                                ? 'border-transparent bg-brand-700 text-white shadow-lift'
+                                : 'border-slate-200 bg-white text-brand-900 hover:border-brand-300 hover:bg-brand-50'
+                            }`}
+                          >
+                            {fmtFa(n)}
+                          </button>
+                        )
+                      })}
                     </div>
-                    <button onClick={() => removeDraft(d.id)} aria-label="حذف پیش‌نویس" className="shrink-0 rounded-xl p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
+                  </div>
+                </div>
+
+                <label htmlFor="custom-prompt" className="label mt-4">دستورالعمل سفارشی (اختیاری)</label>
+                <textarea
+                  id="custom-prompt"
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  rows={3}
+                  maxLength={600}
+                  placeholder="مثلاً: از مبحث فلان سخت‌تر باشد و دام‌های تستی آن مبحث را هدف بگیرد…"
+                  className="input mt-1.5"
+                />
+                <p className="mt-1 text-left text-[10px] font-bold tabular-nums text-slate-400">{fmtFa(customPrompt.length)} / ۶۰۰</p>
+              </section>
+
+              {/* ── سطح سختی ── */}
+              <section className="card p-5 sm:p-6">
+                <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
+                  <Flame className="h-5 w-5 text-brand-700" /> سطح سختی
+                </h2>
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4" role="radiogroup" aria-label="سطح سختی آزمون">
+                  {DIFFICULTY_OPTIONS.map(({ id, label, desc, Icon }) => {
+                    const on = difficulty === id
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() => setDifficulty(id)}
+                        className={`rounded-2xl border p-4 text-center transition-all duration-200 ${
+                          on
+                            ? 'border-brand-500 bg-brand-50 shadow-lift ring-2 ring-brand-200'
+                            : 'border-slate-200/80 bg-white hover:-translate-y-0.5 hover:border-brand-200'
+                        }`}
+                      >
+                        <Icon className={`mx-auto h-6 w-6 ${on ? 'text-brand-700' : 'text-slate-400'}`} strokeWidth={1.8} />
+                        <span className="mt-2 block text-[13px] font-black text-brand-950">{label}</span>
+                        <span className="mt-1 block text-[9px] font-medium leading-4 text-slate-400">{desc}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+
+              {/* ── زمان آزمون ── */}
+              <section className="card p-5 sm:p-6">
+                <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
+                  <Timer className="h-5 w-5 text-brand-700" /> زمان آزمون
+                </h2>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {TIME_PRESETS.map((t) => {
+                    const on = duration === t
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setDuration(t)}
+                        aria-pressed={on}
+                        className={`rounded-2xl border px-4 py-2.5 text-[13px] font-black tabular-nums transition-all ${
+                          on
+                            ? 'border-transparent bg-brand-700 text-white shadow-lift'
+                            : 'border-slate-200 bg-white text-brand-900 shadow-sm hover:border-brand-300 hover:bg-brand-50'
+                        }`}
+                      >
+                        {fmtFa(t)} دقیقه
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            </div>
+
+            {/* ── ستون کنار: خلاصه + دکمهٔ تولید پیش‌نمایش ── */}
+            <div className="space-y-6 lg:col-span-4">
+              <section className="card overflow-hidden p-0">
+                <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
+                  <h2 className="flex items-center gap-2 text-[14px] font-black text-brand-950"><FileText className="h-4 w-4 text-brand-700" /> پیش‌نمایش تنظیمات</h2>
+                </div>
+                <dl className="space-y-2.5 px-5 py-4 text-[12px] leading-7">
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">رشته</dt>
+                    <dd className="font-bold text-brand-950">{FIELD_LABELS[field]}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">پایه</dt>
+                    <dd className="font-bold text-brand-950">{grade === 'comprehensive' ? 'جامع (همهٔ پایه‌ها)' : `پایهٔ ${GRADE_LABELS[grade]}`}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">درس</dt>
+                    <dd className="font-bold text-brand-950">{subjectLabel}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">مبحث</dt>
+                    <dd className="max-w-[60%] truncate text-left font-bold text-brand-950" title={topic}>{topic.trim() || '—'}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">نوع سؤالات</dt>
+                    <dd className="font-bold text-brand-950">{questionTypeLabel}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">تعداد سؤال</dt>
+                    <dd className="font-black tabular-nums text-brand-950">{fmtFa(count)} سؤال</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">سطح سختی</dt>
+                    <dd className="font-bold text-brand-950">{difficultyLabel}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-slate-500">زمان</dt>
+                    <dd className="font-black tabular-nums text-brand-950">{fmtFa(duration)} دقیقه</dd>
+                  </div>
+                </dl>
+                <div className="border-t border-slate-100 bg-white px-5 py-4">
+                  <button
+                    onClick={generatePreview}
+                    disabled={generating}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3.5 text-[14px] font-black text-white shadow-lift transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-80"
+                  >
+                    {generating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
+                    {generating ? 'در حال تولید پیش‌نمایش…' : 'تولید پیش‌نمایش آزمون'}
+                  </button>
+                  {notice && (
+                    <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-2.5 text-[11px] font-bold leading-6 text-amber-900" role="status">
+                      {notice}
+                    </p>
+                  )}
+                </div>
+              </section>
+
+              {/* ── پیش‌نویس‌های قدیمی (فقط مشاهده و حذف) ── */}
+              {drafts.length > 0 && (
+                <section className="card p-5">
+                  <h2 className="flex items-center gap-2 text-[13px] font-black text-brand-950">
+                    <ChevronDown className="h-4 w-4 rotate-[-90deg] text-brand-700" /> پیش‌نویس‌های قدیمی ({fmtFa(drafts.length)})
+                  </h2>
+                  <p className="mt-1.5 text-[10px] leading-5 text-slate-500">قالب آزمون‌ساز به کنکوری تغییر کرده است؛ پیش‌نویس‌های قبلی فقط برای مشاهده و حذف نگه داشته شده‌اند.</p>
+                  <ul className="mt-3 max-h-72 space-y-2 overflow-auto">
+                    {drafts.map((d) => (
+                      <li key={d.id} className="flex items-start justify-between gap-2 rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-[12px] font-black text-brand-950">{d.title}</p>
+                          <p className="mt-0.5 text-[10px] leading-5 text-slate-500">
+                            {fmtFa(d.totalQuestions ?? 0)} سؤال · {fmtFa(d.duration ?? 0)} دقیقه
+                          </p>
+                        </div>
+                        <button onClick={() => removeDraft(d.id)} aria-label="حذف پیش‌نویس" className="shrink-0 rounded-xl p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ════════════════════════ گام ۲ — پیش‌نمایش و ویرایش ════════════════════════ */}
+        {step === 'preview' && (
+          <>
+            <div className="space-y-4 lg:col-span-8">
+              <section className="card flex flex-wrap items-center justify-between gap-3 p-5">
+                <div>
+                  <h2 className="flex items-center gap-2 text-[16px] font-black text-brand-950">
+                    <Wand2 className="h-5 w-5 text-brand-700" /> پیش‌نمایش سؤالات
+                  </h2>
+                  <p className="mt-1 text-[11px] font-medium text-slate-500">قبل از چاپ، سؤال‌ها را ویرایش کن: حذف، بالا/پایین بردن.</p>
+                </div>
+                <span className="chip bg-brand-50 text-brand-800 ring-1 ring-brand-200">{fmtFa(questions.length)} سؤال</span>
+              </section>
+
+              {questions.length === 0 ? (
+                <section className="card p-8 text-center">
+                  <Info className="mx-auto h-8 w-8 text-amber-500" />
+                  <p className="mt-3 text-[13px] font-bold text-slate-600">همهٔ سؤال‌ها حذف شدند.</p>
+                  <button onClick={() => setStep('form')} className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-brand-200 bg-white px-5 py-2.5 text-[12px] font-bold text-brand-800 transition hover:bg-brand-50">
+                    <RotateCcw className="h-4 w-4" /> بازگشت به فرم
+                  </button>
+                </section>
+              ) : (
+                <ol className="space-y-4">
+                  {questions.map((q, idx) => (
+                    <li key={q.id ?? idx} className="card p-4 sm:p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">{fmtFa(idx + 1)}</span>
+                          {q.source_tag && (
+                            <span className="chip bg-amber-50 text-amber-800 ring-1 ring-amber-200" title="این تگ فقط در پیش‌نمایش دیده می‌شود و در PDF چاپ نمی‌شود">
+                              {q.source_tag}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => moveQuestion(idx, -1)}
+                            disabled={idx === 0}
+                            aria-label="بالا بردن سؤال"
+                            title="بالا بردن"
+                            className="rounded-xl border border-slate-200 bg-white p-2 text-brand-800 transition hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-35"
+                          >
+                            <ArrowUp className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveQuestion(idx, +1)}
+                            disabled={idx === questions.length - 1}
+                            aria-label="پایین آوردن سؤال"
+                            title="پایین آوردن"
+                            className="rounded-xl border border-slate-200 bg-white p-2 text-brand-800 transition hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-35"
+                          >
+                            <ArrowDown className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeQuestion(q.id ?? idx)}
+                            aria-label="حذف سؤال"
+                            title="حذف"
+                            className="rounded-xl border border-red-100 bg-red-50/60 p-2 text-red-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-[13px] font-bold leading-7 text-brand-950">{q.text}</p>
+                      <ol className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {(q.options || []).map((opt, oi) => {
+                          const correct = oi === Number(q.correct_answer) - 1
+                          return (
+                            <li
+                              key={oi}
+                              className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-[12px] leading-6 ${
+                                correct
+                                  ? 'border-emerald-300 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200'
+                                  : 'border-slate-200 bg-slate-50/60 text-slate-600'
+                              }`}
+                            >
+                              <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${correct ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                {fmtFa(oi + 1)}
+                              </span>
+                              <span className="min-w-0">{opt}</span>
+                              {correct && <Check className="mr-auto h-4 w-4 shrink-0 self-center text-emerald-600" />}
+                            </li>
+                          )
+                        })}
+                      </ol>
+                    </li>
+                  ))}
+                </ol>
+              )}
+
+              <p className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-2.5 text-[10px] font-bold leading-6 text-amber-800">
+                «تگ منبع» (مثلاً کنکور ۱۴۰۱، قلم‌چی یا تألیفی AI) فقط در این پیش‌نمایش نمایش داده می‌شود و در PDF نهایی هرگز چاپ نمی‌شود.
+              </p>
+            </div>
+
+            {/* ── ستون کنار: خلاصهٔ نهایی + تأیید و دانلود ── */}
+            <div className="space-y-6 lg:col-span-4">
+              <section className="card overflow-hidden p-0 lg:sticky lg:top-6">
+                <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
+                  <h2 className="flex items-center gap-2 text-[14px] font-black text-brand-950"><FileText className="h-4 w-4 text-brand-700" /> خلاصهٔ PDF نهایی</h2>
+                </div>
+                <dl className="space-y-2.5 px-5 py-4 text-[12px] leading-7">
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">مدرسه</dt>
+                    <dd className="max-w-[60%] truncate text-left font-bold text-brand-950" title={schoolName}>{schoolName.trim() || 'مدرسهٔ نمونه'}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">رشته / پایه</dt>
+                    <dd className="font-bold text-brand-950">{FIELD_PRINT_LABELS[field]} · {grade === 'comprehensive' ? 'جامع' : `پایهٔ ${GRADE_LABELS[grade]}`}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">درس / مبحث</dt>
+                    <dd className="max-w-[60%] truncate text-left font-bold text-brand-950" title={`${subjectLabel} — ${topic}`}>{subjectLabel} · {topic.trim() || '—'}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">نوع سؤالات</dt>
+                    <dd className="font-bold text-brand-950">{questionTypeLabel}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">تعداد سؤال نهایی</dt>
+                    <dd className="font-black tabular-nums text-brand-950">{fmtFa(questions.length)} سؤال</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-slate-500">زمان / سختی</dt>
+                    <dd className="font-bold text-brand-950">{fmtFa(duration)} دقیقه · {difficultyLabel}</dd>
+                  </div>
+                </dl>
+                <div className="border-t border-slate-100 bg-white px-5 py-4">
+                  <button
+                    onClick={confirmAndDownload}
+                    disabled={downloading || questions.length === 0}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 text-[14px] font-black text-white shadow-lift transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {downloading ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
+                    {downloading ? 'در حال ساخت PDF…' : 'تأیید و دانلود PDF نهایی'}
+                  </button>
+                  <button
+                    onClick={() => setStep('form')}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-white py-3 text-[12px] font-bold text-brand-800 transition hover:bg-brand-50"
+                  >
+                    <RotateCcw className="h-4 w-4" /> بازگشت و تغییر تنظیمات
+                  </button>
+                  {pdfUrl && (
+                    <a
+                      href={pdfUrl}
+                      download="fahmyar-konkur-exam.pdf"
+                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 py-3 text-[13px] font-black text-white shadow-lift transition hover:bg-emerald-800"
+                    >
+                      <FileDown className="h-5 w-5" />
+                      دانلود PDF آزمون و پاسخنامه
+                    </a>
+                  )}
+                  {notice && (
+                    <p className={`mt-3 rounded-2xl px-4 py-2.5 text-[11px] font-bold leading-6 ${notice.startsWith('⚠️') ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900'}`} role="status">
+                      {notice}
+                    </p>
+                  )}
+                </div>
+              </section>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* ── پوشش تمام‌صفحهٔ «در حال تولید آزمون» ── */}
+      {/* ── پوشش تمام‌صفحهٔ «در حال تولید» ── */}
       {generating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" role="alertdialog" aria-modal="true" aria-label="در حال تولید آزمون">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" role="alertdialog" aria-modal="true" aria-label="در حال تولید پیش‌نمایش">
           <div className="w-full max-w-md rounded-3xl border border-emerald-100 bg-white p-8 text-center shadow-lift">
             <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 ring-1 ring-emerald-100">
               <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
             </span>
-            <h3 className="mt-5 text-lg font-black text-slate-800">در حال تولید آزمون…</h3>
+            <h3 className="mt-5 text-lg font-black text-slate-800">در حال تولید پیش‌نمایش…</h3>
             <p className="mt-1.5 min-h-6 text-[12px] font-bold leading-6 text-emerald-700">{GEN_STEPS[genStep]}</p>
             <div className="mt-5 h-2.5 w-full overflow-hidden rounded-full bg-emerald-100">
               <div className="h-full w-1/3 animate-[genbar_1.15s_linear_infinite] rounded-full bg-gradient-to-l from-emerald-500 to-teal-500" />
