@@ -380,7 +380,7 @@ def main() -> int:
     ui.info(f"کاربر تست: {DEMO_USERNAME}")
 
     # تایم‌اوت سخاوتمندانه (۳۰ ثانیه پیش‌فرض) تا پاسخ‌های واقعیِ AI قطع نشوند
-    with httpx.Client(base_url=BASE_URL, timeout=TIMEOUT) as client:
+    with httpx.Client(base_url=BASE_URL, timeout=TIMEOUT, trust_env=False) as client:
         # گام ۱ — بدون سرور سالم ادامه نمی‌دهیم
         if not step_health(client):
             return print_summary()

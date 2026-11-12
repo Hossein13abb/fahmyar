@@ -2,7 +2,7 @@
 
 پروایدرها:
   - GeminiFreeProvider : گوگل جمینی ۲ فلش (پلن رایگان) — نیازمند GEMINI_API_KEY
-  - OpenRouterProvider : مدل‌های OpenRouter با فراخوانی HTTP محض (requests) — نیازمند OPENROUTER_API_KEY
+  - OpenRouterProvider : مدل‌های OpenRouter با فراخوانی HTTP محض (requests) — کشف پویای مدل‌های رایگان + فال‌بک خودکار — نیازمند OPENROUTER_API_KEY
   - MockProvider       : بدون شبکه و کلید؛ پاسخ‌های قالب‌بندی‌شدهٔ قطعی (برای تست)
 
 ModelRouter:
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import threading
 import time
@@ -77,7 +78,7 @@ class GeminiFreeProvider(AIProvider):
                 "یا AI_PROVIDER=mock را در .env قرار دهید."
             )
         try:
-            import google.generativeai as genai  # import تنبل — لازم نیست برای mock نصب باشد
+            import google.generativeai as genai  # import تنبل
         except ImportError as exc:  # pragma: no cover
             raise AIProviderError(
                 "کتابخانهٔ google-generativeai نصب نیست. `pip install google-generativeai` را اجرا کنید."
@@ -90,7 +91,6 @@ class GeminiFreeProvider(AIProvider):
         self._min_interval = max(0.0, settings.GEMINI_MIN_INTERVAL_SECONDS)
 
     async def generate(self, prompt: str, task_type: str, temperature: float = 0.7) -> AIResponse:
-        # محدودیت نرخ پلن رایگان — فاصلهٔ حداقلی بین فراخوانی‌ها
         async with self._lock:
             wait = self._min_interval - (time.monotonic() - self._last_call)
             if wait > 0:
@@ -107,7 +107,6 @@ class GeminiFreeProvider(AIProvider):
 
         text = getattr(response, "text", None)
         if not text:
-            # بعضی پاسخ‌ها به‌دلیل فیلتر ایمنی خالی می‌شوند
             raise AIProviderError("پاسخ خالی از Gemini (ممکن است فیلتر ایمنی فعال شده باشد).")
 
         token_count = 0
@@ -115,20 +114,29 @@ class GeminiFreeProvider(AIProvider):
         if usage is not None:
             token_count = int(getattr(usage, "total_token_count", 0) or 0)
         if not token_count:
-            token_count = max(1, (len(prompt) + len(text)) // 4)  # تخمین
+            token_count = max(1, (len(prompt) + len(text)) // 4)
 
         return AIResponse(
             text=text,
             model_name=self.model_name,
             token_count=token_count,
-            cost_usd=0.0,  # پلن رایگان Gemini
+            cost_usd=0.0,
             task_type=task_type,
         )
 
 
 # ---------------------------------------------------------------------------
 # OpenRouter — کشف پویای مدل‌های رایگان (کش ۱۵ دقیقه‌ای) + اولویت‌بندی + فال‌بک خودکار
+# فراخوانی از طریق requests (همزمان) — بدون نیاز به کتابخانهٔ openai
 # ---------------------------------------------------------------------------
+
+# پیام سیستمی — پاسخ فارسی + خروجی JSON ساخت‌یافته در صورت نیاز
+_OPENROUTER_SYSTEM_MESSAGE = (
+    "You are an educational diagnostic AI for a Persian (Farsi) school system named Fahmyar. "
+    "Respond in Persian unless the prompt explicitly requests otherwise. "
+    "When the user prompt expects a structured output, return ONLY valid JSON without markdown fences. "
+    "Do not add explanations outside the JSON. Follow all constraints in the user prompt strictly."
+)
 
 # گروه‌های اولویت — گروه‌های قبلی اولویت بیشتری دارند؛ داخل هر گروه به ترتیب
 _PREFERENCE_GROUPS: tuple[tuple[str, ...], ...] = (
@@ -180,7 +188,30 @@ def _is_free_model(entry: dict[str, Any]) -> bool:
 
 
 class OpenRouterProvider(AIProvider):
+    """پروایدر OpenRouter — یک API برای ده‌ها مدل (رایگان و پولی).
+
+    پیش‌فرض‌ها:
+      - OPENROUTER_API_KEY      : کلید API از https://openrouter.ai
+      - OPENROUTER_MODEL        : شناسهٔ مدل (مثلاً nvidia/nemotron-3.5-super-vl:free) یا «auto» (کشف پویای مدل‌های رایگان)
+      - OPENROUTER_BASE_URL     : پیش‌فرض https://openrouter.ai/api/v1
+      - OPENROUTER_TIMEOUT_SECONDS          : مهلت پاسخ (پیش‌فرض ۶۰)
+      - OPENROUTER_MIN_INTERVAL_SECONDS     : فاصله‌گذاری ملایم بین فراخوانی‌ها (پیش‌فرض ۱)
+      - OPENROUTER_SITE_URL     : (اختیاری) HTTP-Referer
+      - OPENROUTER_APP_NAME     : (اختیاری) X-Title (پیش‌فرض: Fahmyar App)
+    """
+
     name = "openrouter"
+
+    # هزینهٔ تقریبی مدل‌های پرداختی رایج (USD per 1K tokens) — برای مدل‌های `:free` صفر است
+    _PRICING_PER_1K = {
+        # مدل‌های رایگان
+        "google/gemini-2.0-flash-exp:free": 0.0,
+        "meta-llama/llama-3.3-70b-instruct:free": 0.0,
+        "mistralai/mistral-7b-instruct:free": 0.0,
+        "qwen/qwen-2.5-72b-instruct:free": 0.0,
+        "deepseek/deepseek-chat:free": 0.0,
+        "deepseek/deepseek-r1:free": 0.0,
+    }
 
     def __init__(self, api_key: str | None = None, model_name: str | None = None) -> None:
         # پاکسازی کلید: فاصلهٔ انتهایی/خط جدید (.strip()) علت رایج خطای 401 است
@@ -189,6 +220,11 @@ class OpenRouterProvider(AIProvider):
         self.model_name = (model_name if model_name is not None else settings.OPENROUTER_MODEL).strip() or "auto"
         self.base_url = settings.OPENROUTER_BASE_URL.rstrip("/")
         self.timeout = settings.OPENROUTER_TIMEOUT_SECONDS
+        self.min_interval = float(getattr(settings, "OPENROUTER_MIN_INTERVAL_SECONDS", 0.0) or 0.0)
+        self.site_url = (getattr(settings, "OPENROUTER_SITE_URL", "") or "").strip()
+        self.app_name = (getattr(settings, "OPENROUTER_APP_NAME", "Fahmyar App") or "Fahmyar App").strip() or "Fahmyar App"
+        self._rate_lock = threading.Lock()
+        self._last_call = 0.0
         if not self.api_key:
             raise AIProviderError(
                 "OPENROUTER_API_KEY تنظیم نشده است. کلید را در .env قرار دهید "
@@ -196,19 +232,61 @@ class OpenRouterProvider(AIProvider):
             )
 
     # ------------------------------------------------------------------
-    # هدرهای سفارشی — روی همهٔ درخواست‌ها (کش، فهرست مدل‌ها، فال‌بک) اعمال می‌شود
+    # هدرها — روی همهٔ درخواست‌ها (کش، فهرست مدل‌ها، فال‌بک) اعمال می‌شود
     # ------------------------------------------------------------------
     def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://fahmyar.ir",
-            "X-Title": "Fahmyar App",
+            "HTTP-Referer": self.site_url or "https://fahmyar.ir",
+            "X-Title": self.app_name,
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             ),
         }
+
+    # ------------------------------------------------------------------
+    # فاصله‌گذاری ملایم بین فراخوانی‌ها (برای پلن‌های رایگان مفید است)
+    # ------------------------------------------------------------------
+    def _throttle(self) -> None:
+        if self.min_interval <= 0:
+            return
+        with self._rate_lock:
+            wait = self.min_interval - (time.monotonic() - self._last_call)
+            if wait > 0:
+                time.sleep(wait)
+            self._last_call = time.monotonic()
+
+    # ------------------------------------------------------------------
+    # ابزارهای کمکی خروجی و هزینه
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _strip_markdown_fences(text: str) -> str:
+        """اگر مدل خروجی JSON را داخل ```json ... ``` گذاشته باشد، آن را پاک می‌کنیم."""
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            lines = stripped.splitlines()
+            if len(lines) >= 2:
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip().startswith("```"):
+                    lines = lines[:-1]
+                return "\n".join(lines).strip()
+        return stripped
+
+    def _estimate_cost(self, token_count: int) -> float:
+        """تخمین هزینه. برای مدل‌های `:free` همیشه صفر است."""
+        if (self.model_name or "").endswith(":free"):
+            return 0.0
+        price = self._PRICING_PER_1K.get(self.model_name)
+        if price is None:
+            # مدل ناشناخته — اگر در .env اعلام شده، از آن استفاده کن
+            try:
+                price = float(os.getenv("OPENROUTER_PRICE_PER_1K", "0") or 0.0)
+            except ValueError:
+                price = 0.0
+        return round((token_count / 1000.0) * price, 6)
 
     # ------------------------------------------------------------------
     # کشف مدل‌های رایگان فعال — کش ۱۵ دقیقه‌ای
@@ -263,9 +341,13 @@ class OpenRouterProvider(AIProvider):
     def _post_chat_completion(self, prompt: str, temperature: float, model: str) -> dict[str, Any]:
         import requests
 
+        self._throttle()
         payload = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": _OPENROUTER_SYSTEM_MESSAGE},
+                {"role": "user", "content": prompt},
+            ],
             "temperature": temperature,
         }
         try:
@@ -301,15 +383,24 @@ class OpenRouterProvider(AIProvider):
             text = (data["choices"][0]["message"]["content"] or "").strip()
         except (KeyError, IndexError, TypeError) as exc:
             raise AIProviderError(f"ساختار پاسخ OpenRouter نامعتبر بود (مدل {model}): {exc}", retryable=True) from exc
+        text = self._strip_markdown_fences(text)
         if not text:
             raise AIProviderError(f"پاسخ خالی از OpenRouter (مدل {model}).", retryable=True)
 
         usage = data.get("usage") or {}
-        token_count = int(usage.get("total_tokens") or 0) or max(1, (len(prompt) + len(text)) // 4)
+        try:
+            token_count = int(usage.get("total_tokens") or 0)
+        except (TypeError, ValueError):
+            token_count = 0
+        if token_count <= 0:
+            token_count = max(1, (len(prompt) + len(text)) // 4)
         try:
             cost_usd = float(usage.get("cost") or 0.0)
         except (TypeError, ValueError):
             cost_usd = 0.0
+        if cost_usd == 0.0 and not model.endswith(":free"):
+            # اگر مدل رایگان نباشد و سرور هزینه را صفر/خالی داده باشد، تخمین بزن
+            cost_usd = self._estimate_cost(token_count)
 
         return AIResponse(
             text=text,
@@ -360,8 +451,8 @@ class OpenRouterProvider(AIProvider):
                 # رفرش اجباری فهرست پس از شکست (یعنی مدل پولی/حذف‌شده شده)
                 free = self.fetch_active_free_models(force_refresh=True)
                 # ادغام: مدل‌های تازه‌کشف‌شده اولویت دارند؛ سپس بقیهٔ صف؛ بدون تکرار
-                merged = [m for m in free if m not in attempted] + [m for m in queue if m not in attempted]
-                queue = list(dict.fromkeys(merged))
+                merged_q = [m for m in free if m not in attempted] + [m for m in queue if m not in attempted]
+                queue = list(dict.fromkeys(merged_q))
                 upcoming = queue[0] if queue else None
                 print(f"[OpenRouter Dynamic Fallback] Switched from {current} to {upcoming}")
 
@@ -391,7 +482,6 @@ class MockProvider(AIProvider):
     name = "mock"
 
     async def generate(self, prompt: str, task_type: str, temperature: float = 0.7) -> AIResponse:
-        # شبیه‌سازی تأخیر واقعی شبکه نیست؛ تست‌ها سریع می‌مانند
         if task_type == "generate_question":
             text = self._mock_question(prompt)
         elif task_type == "generate_test_booklet":
@@ -556,6 +646,7 @@ class MockProvider(AIProvider):
             ensure_ascii=False,
         )
 
+    def _mock_question(self, prompt: str) -> str:
         proposition = _extract_marker(prompt, "PROPOSITION") or "گزارهٔ هدفِ نمونه"
         misconception = _extract_marker(prompt, "MISCONCEPTION") or ""
         concept = _extract_marker(prompt, "CONCEPT") or "مفهوم نمونه"
@@ -593,7 +684,6 @@ class MockProvider(AIProvider):
             propositions = ["گزارهٔ هدف"]
 
         text = response.strip()
-        low = text.lower()
         has_reasoning = any(m in text for m in _REASONING_MARKERS)
         uncertain = any(m in text for m in _UNCERTAINTY_MARKERS)
         word_count = len(text.split())
@@ -637,7 +727,8 @@ class MockProvider(AIProvider):
 # ---------------------------------------------------------------------------
 # روتر مدل + ثبت لاگ + کنترل بودجه
 # ---------------------------------------------------------------------------
-_TASK_ROUTE = {
+# مسیر پیش‌فرض برای هر وظیفه؛ اگر AI_PROVIDER در .env تنظیم شده باشد، همهٔ وظایف به آن می‌روند.
+_TASK_ROUTE_DEFAULT = {
     "generate_question": "gemini_free",
     "generate_test_booklet": "gemini_free",
     "analyze_response": "gemini_free",
@@ -679,24 +770,32 @@ def _log_usage(provider: str, response: AIResponse | None, task_type: str,
         finally:
             db.close()
     except Exception:
-        # لاگ نباید مسیر اصلی را بشکند؛ به خروجی استاندارد اکتفا می‌کنیم
         print(f"[AI-LOG] {task_type} success={success} error={error}")
 
 
 class ModelRouter:
     """مسیریابیِ وظایف به پروایدر مناسب + سقف بودجه + لاگ‌گیری."""
 
+    _VALID_PROVIDERS = {"mock", "gemini_free", "openrouter"}
+
     def __init__(self) -> None:
-        self.provider_name = (settings.AI_PROVIDER or "gemini_free").lower()
+        self.provider_name = (settings.AI_PROVIDER or "gemini_free").lower().strip()
+        if self.provider_name not in self._VALID_PROVIDERS:
+            raise AIProviderError(
+                f"AI_PROVIDER نامعتبر: «{self.provider_name}». مقادیر مجاز: {sorted(self._VALID_PROVIDERS)}"
+            )
         self._providers: dict[str, AIProvider] = {}
 
     def get_provider(self, task_type: str) -> AIProvider:
-        if self.provider_name == "mock":
+        # اگر کاربر در .env یک پروایدر مشخص کرده، همهٔ وظایف را به همان می‌فرستیم.
+        # این ساده‌ترین و قابل‌پیش‌بینی‌ترین رفتار برای نسخهٔ MVP است.
+        key = self.provider_name
+        if key == "mock":
             key = "mock"
         elif self.provider_name == "openrouter":
             key = _OPENROUTER_ROUTE.get(task_type, "openrouter")
         else:
-            key = _TASK_ROUTE.get(task_type, "gemini_free")
+            key = _TASK_ROUTE_DEFAULT.get(task_type, "gemini_free")
         if key not in self._providers:
             if key == "mock":
                 self._providers[key] = MockProvider()
