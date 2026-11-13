@@ -3,19 +3,33 @@
 این ماژول:
 ۱. پرامپت سیستم را با قید اکیدِ سرفصل‌های نظام جدید ایران (بدون مباحث حذف‌شده مانند انتگرال در حسابان) می‌سازد.
 ۲. نسبتِ «سؤالات بانک آزمون استاندارد» (`100 - ai_ratio`) به «سؤالات تشخیصی هوش مصنوعی» (`ai_ratio`) را اعمال می‌کند.
-۳. پیش از ارسال پاسخ JSON به فرانت‌اند، تمام ارقام انگلیسی (`0123456789`) را با `to_persian_numbers` به ارقام فارسی (`۰۱۲۳۴۵۶۷۸۹`) تبدیل می‌کند.
+۳. قاعدهٔ اکیدِ Double-Escape برای بک‌اسلش‌های LaTeX درون رشته‌های JSON را در پرامپت سیستم قرار می‌دهد.
+۴. با حلقهٔ تلاش مجدد چندمدلی (`for attempt in range(3):`) و `safe_parse_json` در صورت شکست پارس JSON یا مدل اول، به‌طور خودکار با مدل رایگان بعدی تلاش می‌کند.
+۵. پیش از ارسال پاسخ JSON به فرانت‌اند، تمام ارقام انگلیسی (`0123456789`) را با `to_persian_numbers` به ارقام فارسی (`۰۱۲۳۴۵۶۷۸۹`) تبدیل می‌کند.
 """
 from __future__ import annotations
 
 import json
-from typing import Any
+import logging
+import re
+from typing import Any, Callable, Optional
+
+from ai.json_sanitize import extract_json_array, safe_parse_json
+from ai.model_abstraction import get_router
+
+logger = logging.getLogger(__name__)
+
+# فهرست مدل‌های رایگان جایگزین برای حلقهٔ تلاش مجدد ۳ مرحله‌ای
+FALLBACK_FREE_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "qwen/qwen-2.5-coder-32b-instruct:free",
+    "deepseek/deepseek-r1:free",
+    "mistralai/mistral-7b-instruct:free",
+]
 
 
 def to_persian_numbers(text: Any) -> str:
     return str(text).translate(str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹'))
-
-
-import re
 
 
 def persianize_svg_texts(svg: str) -> str:
@@ -65,16 +79,12 @@ SYSTEM_SYLLABUS_WARNING = (
     "Stick strictly to the provided topics."
 )
 
-
-def build_ratio_instruction(ai_ratio: int) -> str:
-    ai_r = max(0, min(100, int(ai_ratio)))
-    return (
-        f"You have been requested to generate questions where {100-ai_r}% are STANDARD INSTITUTION BANK format "
-        f"(standard Konkur-style, calculation-heavy, typical patterns) and {ai_r}% are AI DIAGNOSTIC format "
-        f"(creative, conceptual, trap-based). You must distinctively adopt these styles based on the required ratio."
-    )
-
-
+JSON_LATEX_ESCAPING_RULE = (
+    r"CRITICAL JSON ESCAPING RULE: When writing LaTeX formulas in JSON text fields, "
+    r"you MUST escape every backslash with a double backslash. For example, write "
+    r"\\begin{bmatrix} instead of \begin{bmatrix}, write \\frac{a}{b} instead of \frac{a}{b}, "
+    r"and write \\cdot instead of \cdot. Failure to do this breaks JSON syntax."
+)
 
 LATEX_MATH_INSTRUCTION = (
     "You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. "
@@ -91,9 +101,20 @@ SVG_DIAGRAM_INSTRUCTION = (
     "MUST be Persian digits. Do not use complex paths if simple rect/circle/line will do."
 )
 
+
+def build_ratio_instruction(ai_ratio: int) -> str:
+    ai_r = max(0, min(100, int(ai_ratio)))
+    return (
+        f"You have been requested to generate questions where {100-ai_r}% are STANDARD INSTITUTION BANK format "
+        f"(standard Konkur-style, calculation-heavy, typical patterns) and {ai_r}% are AI DIAGNOSTIC format "
+        f"(creative, conceptual, trap-based). You must distinctively adopt these styles based on the required ratio."
+    )
+
+
 KONKUR_EXAM_SYSTEM_PROMPT = """{syllabus_warning}
 {ratio_instruction}
 {latex_instruction}
+{json_escaping_rule}
 {svg_instruction}
 
 شما «مؤلف ارشد سؤالات کنکوری» در سامانهٔ فهم‌یار هستید.
@@ -111,7 +132,7 @@ KONKUR_EXAM_SYSTEM_PROMPT = """{syllabus_warning}
    - {ai_ratio}٪ سؤالات به سبک «تشخیصی هوش مصنوعی» (مفهومی، خلاقانه و دام‌محور برای کشف بدفهمی) با `source_tag` برابر «تألیفی AI».
 ۴. هر سؤال دقیقاً ۴ گزینه دارد و فقط یک گزینه درست است.
 ۵. خروجی را فقط و فقط به صورت یک آرایهٔ JSON خالص برگردان؛ هیچ توضیح، مقدمه یا Markdown اضافه ننویس:
-   [{{"id": 1, "text": "متن سؤال با فرمول LaTeX و ارقام فارسی", "options": ["گزینهٔ ۱", "گزینهٔ ۲", "گزینهٔ ۳", "گزینهٔ ۴"], "correct_answer": 2, "subject": "فیزیک", "difficulty": "کنکوری", "source_tag": "تألیفی AI", "diagram_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 300\" width=\"100%\" height=\"100%\">...</svg> یا null", "explanation": "یک خط استدلال کوتاه با ارقام فارسی"}}]
+   [{{"id": 1, "text": "متن سؤال با فرمول LaTeX و ارقام فارسی", "options": ["گزینهٔ ۱", "گزینهٔ ۲", "گزینهٔ ۳", "گزینهٔ ۴"], "correct_answer": 2, "subject": "فیزیک", "difficulty": "کنکوری", "source_tag": "تألیفی AI", "diagram_svg": "<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 400 300\\" width=\\"100%\\" height=\\"100%\\">...</svg> یا null", "explanation": "یک خط استدلال کوتاه با ارقام فارسی"}}]
 
 <<<FIELD>>>{field_label}<<<END>>>
 <<<SUBJECTS>>>{subjects_slugs}<<<END>>>
@@ -150,6 +171,7 @@ def build_exam_preview_prompt(
         syllabus_warning=SYSTEM_SYLLABUS_WARNING,
         ratio_instruction=build_ratio_instruction(ai_r),
         latex_instruction=LATEX_MATH_INSTRUCTION,
+        json_escaping_rule=JSON_LATEX_ESCAPING_RULE,
         svg_instruction=SVG_DIAGRAM_INSTRUCTION,
         count=count,
         field_label=field_label,
@@ -165,3 +187,70 @@ def build_exam_preview_prompt(
         difficulty_label=difficulty_label,
         custom_prompt=custom_prompt or "—",
     )
+
+
+async def generate_exam_questions(
+    prompt: str,
+    validator_fn: Optional[Callable[[Any], list[dict[str, Any]]]] = None,
+    temperature: float = 0.8,
+) -> tuple[list[dict[str, Any]], Optional[Exception]]:
+    """حلقهٔ تلاش مجدد ۳ مرحله‌ای بین مدل‌های رایگان با پارس مقاوم JSON (safe_parse_json).
+
+    خروجی: `(questions, last_provider_exc)`
+    - اگر در هر یک از ۳ تلاش، آرایهٔ معتبر سؤال‌ها استخراج شود، بلافاصله برمی‌گرداند.
+    - اگر تلاش اول با خطای پارس JSON یا خطای مدل مواجه شود، هشدار لاگ شده و بلافاصله با مدل بعدی در `FALLBACK_FREE_MODELS` تکرار می‌شود.
+    """
+    router = get_router()
+    last_provider_exc: Optional[Exception] = None
+    received_any_response = False
+
+    for attempt in range(3):
+        candidate_model = FALLBACK_FREE_MODELS[attempt % len(FALLBACK_FREE_MODELS)] if attempt > 0 else None
+        try:
+            try:
+                response = await router.generate(
+                    prompt,
+                    "generate_konkur_preview",
+                    temperature=temperature,
+                    model_override=candidate_model,
+                )
+            except TypeError:
+                response = await router.generate(
+                    prompt,
+                    "generate_konkur_preview",
+                    temperature=temperature,
+                )
+            received_any_response = True
+        except Exception as exc:
+            last_provider_exc = exc
+            logger.warning(
+                "[ExamGenerator] Attempt %d/3 model call failed (model=%s): %s",
+                attempt + 1,
+                candidate_model or "default",
+                exc,
+            )
+            print(f"[ExamGenerator] Attempt {attempt + 1}/3 model call failed (model={candidate_model or 'default'}): {exc}")
+            continue
+
+        try:
+            raw_questions = extract_json_array(response.text or "")
+            questions = validator_fn(raw_questions) if validator_fn else raw_questions
+            if questions:
+                return questions, None
+            logger.warning(
+                "[ExamGenerator] Attempt %d/3 returned empty validated questions (model=%s); retrying...",
+                attempt + 1,
+                getattr(response, "model_name", candidate_model or "default"),
+            )
+        except Exception as parse_exc:
+            logger.warning(
+                "[ExamGenerator] Attempt %d/3 JSON parse failed (model=%s): %s; retrying with next model...",
+                attempt + 1,
+                getattr(response, "model_name", candidate_model or "default"),
+                parse_exc,
+            )
+            print(f"[ExamGenerator] Attempt {attempt + 1}/3 JSON parse failed: {parse_exc}")
+
+    if not received_any_response and last_provider_exc is not None:
+        return [], last_provider_exc
+    return [], None

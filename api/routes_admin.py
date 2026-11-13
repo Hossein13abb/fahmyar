@@ -32,11 +32,14 @@ from reports.session_status import (
 )
 from ai.exam_generator import (
     DIFFICULTY_MAP_FA,
+    FALLBACK_FREE_MODELS,
     build_exam_preview_prompt,
+    generate_exam_questions,
     persianize_json_values,
     persianize_svg_texts,
     to_persian_numbers,
 )
+from ai.json_sanitize import extract_json_array, safe_parse_json
 from ai.model_abstraction import get_router
 
 router = APIRouter(prefix="/api/teacher", tags=["teacher"])
@@ -377,12 +380,7 @@ class GenerateExamPreviewRequest(BaseModel):
 
 
 def _extract_json_array(raw: str):
-    text = (raw or "").strip()
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S).strip()
-    match = re.search(r"\[.*\]", text, flags=re.S)
-    if match:
-        text = match.group(0)
-    return json.loads(text)
+    return extract_json_array(raw or "")
 
 
 _LETTER_TO_INDEX = {"A": 1, "B": 2, "C": 3, "D": 4, "الف": 1, "ب": 2, "ج": 3, "د": 4}
@@ -506,16 +504,16 @@ async def generate_exam_preview(
         custom_prompt=(payload.custom_prompt or "").strip() or "—",
     )
 
-    try:
-        response = await get_router().generate(prompt, "generate_konkur_preview", temperature=0.8)
-    except Exception as exc:  # خطای مدل/شبکه — هیچ سؤال جعلی‌ای ساخته نمی‌شود
-        raise HTTPException(status_code=502, detail=f"ارتباط با مدل هوش مصنوعی برقرار نشد: {exc.__class__.__name__}")
-
-    try:
-        raw_questions = _extract_json_array(response.text or "")
-        questions = _validate_preview_questions(raw_questions)
-    except (json.JSONDecodeError, ValueError, re.error):
-        questions = []
+    questions, provider_exc = await generate_exam_questions(
+        prompt,
+        validator_fn=_validate_preview_questions,
+        temperature=0.8,
+    )
+    if provider_exc is not None and not questions:
+        raise HTTPException(
+            status_code=502,
+            detail=f"ارتباط با مدل هوش مصنوعی برقرار نشد: {provider_exc.__class__.__name__}",
+        )
 
     if not questions:
         raise HTTPException(

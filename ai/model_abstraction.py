@@ -414,21 +414,44 @@ class OpenRouterProvider(AIProvider):
     # ------------------------------------------------------------------
     # تولید با فال‌بک خودکار بین مدل‌های رایگان فعال
     # ------------------------------------------------------------------
-    async def generate(self, prompt: str, task_type: str, temperature: float = 0.7) -> AIResponse:
+    async def generate(
+        self,
+        prompt: str,
+        task_type: str,
+        temperature: float = 0.7,
+        model_override: str | None = None,
+    ) -> AIResponse:
         # requests همزمان است؛ در thread اجرا می‌شود تا event loop قفل نشود
-        return await asyncio.to_thread(self._generate_with_fallback, prompt, task_type, temperature)
+        return await asyncio.to_thread(
+            self._generate_with_fallback, prompt, task_type, temperature, model_override
+        )
 
-    def _initial_candidates(self) -> list[str]:
+    def _initial_candidates(self, model_override: str | None = None) -> list[str]:
+        if model_override and model_override.strip():
+            base = [model_override.strip()]
+            if self.model_name.lower() == "auto":
+                for m in self.fetch_active_free_models():
+                    if m not in base:
+                        base.append(m)
+            elif self.model_name not in base:
+                base.append(self.model_name)
+            return base
         if self.model_name.lower() == "auto":
             return self.fetch_active_free_models()
         return [self.model_name]
 
-    def _generate_with_fallback(self, prompt: str, task_type: str, temperature: float) -> AIResponse:
+    def _generate_with_fallback(
+        self,
+        prompt: str,
+        task_type: str,
+        temperature: float,
+        model_override: str | None = None,
+    ) -> AIResponse:
         attempted: set[str] = set()
         last_error: str | None = None
         current: str | None = None
 
-        initial = self._initial_candidates()
+        initial = self._initial_candidates(model_override=model_override)
         if not initial:
             raise AIProviderError("هیچ مدل رایگان فعالی در OpenRouter یافت نشد.", retryable=False)
         queue = list(initial)
@@ -1084,7 +1107,13 @@ class ModelRouter:
     def budget_remaining(self) -> float:
         return max(0.0, settings.BUDGET_LIMIT_USD - self.total_cost_usd())
 
-    async def generate(self, prompt: str, task_type: str, temperature: float = 0.7) -> AIResponse:
+    async def generate(
+        self,
+        prompt: str,
+        task_type: str,
+        temperature: float = 0.7,
+        model_override: str | None = None,
+    ) -> AIResponse:
         if self.total_cost_usd() >= settings.BUDGET_LIMIT_USD:
             _log_usage(self.provider_name, None, task_type, success=False, error="budget_exceeded")
             raise BudgetExceededError(
@@ -1092,7 +1121,12 @@ class ModelRouter:
             )
         provider = self.get_provider(task_type)
         try:
-            response = await provider.generate(prompt, task_type, temperature)
+            try:
+                response = await provider.generate(
+                    prompt, task_type, temperature, model_override=model_override
+                )
+            except TypeError:
+                response = await provider.generate(prompt, task_type, temperature)
             _log_usage(provider.name, response, task_type, success=True)
             return response
         except BudgetExceededError:

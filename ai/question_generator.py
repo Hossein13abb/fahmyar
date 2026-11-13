@@ -21,7 +21,8 @@ from config import settings
 from models.concept import Concept
 from models.question import Question, QUESTION_TYPES
 from ai.model_abstraction import get_router, AIProviderError
-from ai.json_sanitize import extract_json_object
+from ai.json_sanitize import extract_json_object, safe_parse_json
+from ai.exam_generator import FALLBACK_FREE_MODELS, JSON_LATEX_ESCAPING_RULE
 
 
 class QuestionGenerationError(Exception):
@@ -73,6 +74,7 @@ _SYSTEM = r"""شما یک طراح سؤال تشخیصیِ خبره برای س�
 
 You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
+CRITICAL JSON ESCAPING RULE: When writing LaTeX formulas in JSON text fields, you MUST escape every backslash with a double backslash. For example, write \\begin{bmatrix} instead of \begin{bmatrix}, write \\frac{a}{b} instead of \frac{a}{b}, and write \\cdot instead of \cdot. Failure to do this breaks JSON syntax.
 CRITICAL: If the subject is Physics (فیزیک) or Geometry (هندسه), or involves kinematics, circuits, or geometric shapes, you MUST provide a valid, clean SVG diagram in the diagram_svg field. The SVG must use font-family='Vazirmatn, Arial' for texts, and all numbers inside <text> tags MUST be Persian digits. Do not use complex paths if simple rect/circle/line will do.
 """
 
@@ -136,6 +138,7 @@ def _stringify_item(item) -> str:
 
 _BOOKLET_PROMPT = r"""You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
+CRITICAL JSON ESCAPING RULE: When writing LaTeX formulas in JSON text fields, you MUST escape every backslash with a double backslash. For example, write \\begin{bmatrix} instead of \begin{bmatrix}, write \\frac{a}{b} instead of \frac{a}{b}, and write \\cdot instead of \cdot. Failure to do this breaks JSON syntax.
 CRITICAL: If the subject is Physics (فیزیک) or Geometry (هندسه), or involves kinematics, circuits, or geometric shapes, you MUST provide a valid, clean SVG diagram in the diagram_svg field. The SVG must use font-family='Vazirmatn, Arial' for texts, and all numbers inside <text> tags MUST be Persian digits. Do not use complex paths if simple rect/circle/line will do.
 
 شما «متخصص ارشد طراحی آزمون تشخیصی عمیق (Deep Diagnostic)» برای سیستم فهم‌یار هستید. برای مفهوم «{concept}» ({subject} — پایهٔ {grade}) یک دفترچهٔ آزمون تشخیصی ۹ سؤالی بسازید.
@@ -517,15 +520,25 @@ async def generate_test_booklet(concept, wrong_answer: dict | None = None) -> tu
     router = get_router()
     data = None
     model_name, cost = "", 0.0
-    try:
-        resp = await router.generate(prompt, "generate_test_booklet", temperature=0.7)
-        model_name, cost = resp.model_name, resp.cost_usd
-        data = extract_json_object(resp.text)
-    except Exception as exc:
-        print(f"[Booklet] model call failed: {exc}")
-
-    items = (data or {}).get("questions") if isinstance(data, dict) else None
-    questions = _booklet_items_to_questions(concept, items or [], model_name, cost) if items else []
+    questions: list[Question] = []
+    for attempt in range(3):
+        candidate_model = FALLBACK_FREE_MODELS[attempt % len(FALLBACK_FREE_MODELS)] if attempt > 0 else None
+        try:
+            try:
+                resp = await router.generate(
+                    prompt, "generate_test_booklet", temperature=0.7, model_override=candidate_model
+                )
+            except TypeError:
+                resp = await router.generate(prompt, "generate_test_booklet", temperature=0.7)
+            model_name, cost = resp.model_name, resp.cost_usd
+            data = extract_json_object(resp.text)
+            items = (data or {}).get("questions") if isinstance(data, dict) else None
+            questions = _booklet_items_to_questions(concept, items or [], model_name, cost) if items else []
+            if questions:
+                break
+            print(f"[Booklet] Attempt {attempt + 1}/3 yielded no valid questions; retrying with next model...")
+        except Exception as exc:
+            print(f"[Booklet] Attempt {attempt + 1}/3 model call failed (model={candidate_model or 'default'}): {exc}")
 
     if len(questions) < 8:
         # دفترچهٔ اضطراریِ حداقلی — شش پوششِ اساسی به‌ترتیب
@@ -633,16 +646,26 @@ async def generate_diagnostic_question(
     model_name, cost = "", 0.0
     last_error: str | None = None
 
-    for attempt, (temp, extra) in enumerate([(0.8, ""), (0.2, "\n\nخروجی قبلی نامعتبر بود. فقط و فقط JSON خالص بده.")]):
+    for attempt in range(3):
+        temp = 0.8 if attempt == 0 else 0.3
+        extra = "" if attempt == 0 else "\n\nخروجی قبلی نامعتبر بود. فقط و فقط JSON خالص با بک‌اسلش‌های دوتایی (\\\\) برای LaTeX بده."
+        candidate_model = FALLBACK_FREE_MODELS[attempt % len(FALLBACK_FREE_MODELS)] if attempt > 0 else None
         try:
-            resp = await router.generate(prompt + extra, "generate_question", temperature=temp)
+            try:
+                resp = await router.generate(
+                    prompt + extra, "generate_question", temperature=temp, model_override=candidate_model
+                )
+            except TypeError:
+                resp = await router.generate(prompt + extra, "generate_question", temperature=temp)
             model_name, cost = resp.model_name, resp.cost_usd
             data = _extract_json(resp.text)
             if data is not None:
                 break
             last_error = "JSON استخراج نشد"
+            print(f"[DiagnosticQuestion] Attempt {attempt + 1}/3 invalid JSON; retrying with next model...")
         except AIProviderError as exc:
             last_error = str(exc)
+            print(f"[DiagnosticQuestion] Attempt {attempt + 1}/3 provider error: {exc}; retrying...")
         except Exception as exc:  # بودجه و غیره
             last_error = str(exc)
             break

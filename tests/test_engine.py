@@ -279,3 +279,74 @@ def test_wrong_answer_path_builds_hypotheses(seeded):
     assert data["hypotheses"], "مسیر پاسخ غلط باید فرضیه بسازد"
     cross = [h for h in data["hypotheses"] if h.get("cross_subject")]
     assert cross, "باید حداقل یک فرضیهٔ بین‌درسی ساخته شود (توان ریاضی → کولن)"
+
+
+
+def test_safe_parse_json_latex_backslashes():
+    from ai.json_sanitize import extract_json_array, safe_parse_json
+
+    raw = r"""```json
+[
+  {
+    "id": 1,
+    "text": "دترمینان ماتریس $$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$$ و مقدار $\frac{۱}{۲} \cdot \sqrt{x} \times \alpha$ برابر چیست؟",
+    "options": ["$\frac{۱}{۲}$", "$-۲$", "$\left(x\right)$", "$\tan(\theta) \neq ۰$"],
+    "correct_answer": 2,
+    "subject": "هندسه ۳",
+    "difficulty": "کنکوری",
+    "source_tag": "تألیفی AI",
+    "explanation": "با استفاده از $\det(A) = ad - bc$ مقدار $-۲$ به‌دست می‌آید."
+  }
+]
+```"""
+    parsed = safe_parse_json(raw)
+    assert isinstance(parsed, list) and len(parsed) == 1
+    assert r"\begin{bmatrix}" in parsed[0]["text"]
+    assert r"\frac{۱}{۲}" in parsed[0]["text"]
+    assert r"\cdot" in parsed[0]["text"]
+    assert r"\sqrt{x}" in parsed[0]["text"]
+    assert extract_json_array(raw) == parsed
+
+
+def test_exam_preview_multi_model_retry_fallback(seeded):
+    from main import app
+    from ai.model_abstraction import AIResponse, get_router
+
+    client = TestClient(app)
+    r = client.post("/api/auth/login", json={"username": "teacher1", "password": "teacher123"})
+    token = r.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    router = get_router()
+    orig_gen = router.generate
+    attempts = []
+
+    async def flaky_generate(prompt, task_type, temperature=0.8, model_override=None):
+        attempts.append(model_override)
+        if len(attempts) == 1:
+            return AIResponse(text="NOT VALID JSON", model_name="meta-llama/llama-3.3-70b-instruct:free", token_count=5)
+        raw_latex = r'[{"id": 1, "text": "مقدار $\frac{۱}{۲} \cdot \begin{bmatrix} ۱ \end{bmatrix}$ چیست؟", "options": ["۱", "۲", "۳", "۴"], "correct_answer": 1, "subject": "هندسه", "difficulty": "کنکوری", "source_tag": "تألیفی AI", "explanation": "پاسخ ۱"}]'
+        return AIResponse(text=raw_latex, model_name=model_override or "qwen/qwen-2.5-coder-32b-instruct:free", token_count=30)
+
+    router.generate = flaky_generate
+    try:
+        res = client.post(
+            "/api/teacher/generate-exam-preview",
+            json={
+                "field": "math",
+                "grade": "12",
+                "subjects": ["geometry"],
+                "subject_configs": [{"subject": "geometry", "count": 1, "difficulty": "کنکوری", "subTopics": []}],
+                "count": 1,
+                "ai_ratio": 60,
+                "difficulty": "کنکوری",
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert len(body["questions"]) == 1
+        assert len(attempts) == 2
+        assert attempts[1] == "qwen/qwen-2.5-coder-32b-instruct:free"
+    finally:
+        router.generate = orig_gen
