@@ -289,7 +289,15 @@ SUBJECT_SLUGS = {
         "10": {"math": "ریاضی", "geometry": "هندسه", "physics": "فیزیک", "chemistry": "شیمی"},
         "11": {"calculus": "حسابان", "geometry": "هندسه", "statistics": "آمار و احتمال", "physics": "فیزیک", "chemistry": "شیمی"},
         "12": {"calculus": "حسابان", "geometry": "هندسه", "discrete": "گسسته", "physics": "فیزیک", "chemistry": "شیمی"},
-        "comprehensive": {"calculus": "حسابان", "geometry": "هندسه", "discrete": "گسسته", "physics": "فیزیک", "chemistry": "شیمی"},
+        "comprehensive": {
+            "math": "ریاضی",
+            "calculus": "حسابان",
+            "geometry": "هندسه",
+            "statistics": "آمار و احتمال",
+            "discrete": "گسسته",
+            "physics": "فیزیک",
+            "chemistry": "شیمی",
+        },
     },
     "tajrobi": {grade: dict(_EXPERIMENTAL_SUBJECTS) for grade in ("10", "11", "12", "comprehensive")},
 }
@@ -327,6 +335,8 @@ KONKUR_PREVIEW_PROMPT = """شما «مؤلف ارشد سؤالات کنکوری�
 <<<FIELD>>>{field_label}<<<END>>>
 <<<SUBJECTS>>>{subjects_slugs}<<<END>>>
 <<<SUBJECT_LABELS>>>{subjects_labels}<<<END>>>
+<<<SUBJECT_CONFIGS>>>{subject_configs_json}<<<END>>>
+<<<AI_PERCENTAGE>>>{ai_percentage}<<<END>>>
 <<<GRADE>>>{grade_label}<<<END>>>
 <<<TOPIC>>>{topic}<<<END>>>
 <<<QUESTION_TYPE>>>{question_type_label}<<<END>>>
@@ -336,14 +346,22 @@ KONKUR_PREVIEW_PROMPT = """شما «مؤلف ارشد سؤالات کنکوری�
 """
 
 
+class SubjectConfigItem(BaseModel):
+    subject: str = Field(min_length=1, max_length=40)
+    count: int = Field(default=2, ge=1, le=20)
+    topics: list[str] = Field(default_factory=list, max_length=30)
+
+
 class GenerateExamPreviewRequest(BaseModel):
     field: str = Field(pattern="^(math|tajrobi)$")
     grade: str = Field(pattern="^(10|11|12|comprehensive)$")
-    subjects: list[str] = Field(min_length=1, max_length=8)
-    topic: Optional[str] = Field(default=None, max_length=140)
-    question_type: str = Field(pattern="^(conceptual|recall|computational|problem|mixed)$")
-    difficulty: str = Field(pattern="^(easy|medium|hard|challenging)$")
-    count: int = Field(default=10, ge=1, le=20)
+    subjects: list[str] = Field(default_factory=list, max_length=10)
+    subject_configs: Optional[list[SubjectConfigItem]] = Field(default=None)
+    ai_percentage: int = Field(default=100, ge=0, le=100)
+    topic: Optional[str] = Field(default=None, max_length=300)
+    question_type: str = Field(default="mixed", pattern="^(conceptual|recall|computational|problem|mixed)$")
+    difficulty: str = Field(default="medium", pattern="^(easy|medium|hard|challenging)$")
+    count: int = Field(default=10, ge=1, le=60)
     custom_prompt: str = Field(default="", max_length=600)
 
 
@@ -400,25 +418,59 @@ async def generate_exam_preview(
     user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     slug_map = SUBJECT_SLUGS[payload.field][payload.grade]
+    raw_subjects = list(payload.subjects or [])
+    if payload.subject_configs:
+        for cfg in payload.subject_configs:
+            if cfg.subject not in raw_subjects:
+                raw_subjects.append(cfg.subject)
     # حذف تکراری‌ها با حفظ ترتیب
-    requested = list(dict.fromkeys(payload.subjects))
+    requested = list(dict.fromkeys(raw_subjects))
+    if not requested:
+        raise HTTPException(status_code=422, detail="حداقل یک درس را انتخاب کنید.")
     invalid = [s_ for s_ in requested if s_ not in slug_map]
     if invalid:
         raise HTTPException(status_code=422, detail="درس انتخابی برای این رشته و پایه معتبر نیست.")
+
+    configs_normalized: list[dict] = []
+    if payload.subject_configs:
+        for cfg in payload.subject_configs:
+            if cfg.subject not in slug_map:
+                raise HTTPException(status_code=422, detail="درس انتخابی برای این رشته و پایه معتبر نیست.")
+            clean_topics = [str(t).strip() for t in (cfg.topics or []) if str(t).strip()]
+            configs_normalized.append(
+                {
+                    "subject": cfg.subject,
+                    "label": slug_map[cfg.subject],
+                    "count": int(cfg.count),
+                    "topics": clean_topics,
+                }
+            )
+    effective_count = sum(c["count"] for c in configs_normalized) if configs_normalized else payload.count
+
     subject_labels = [slug_map[s_] for s_ in requested]
     subjects_labels = "، ".join(subject_labels)
     subject_label = subjects_labels  # برای سازگاری با خروجی‌های قبلی
     subjects_slugs = "، ".join(requested)
     topic_text = (payload.topic or "").strip()
+    if not topic_text and configs_normalized:
+        per_subj_topics = [
+            f"{c['label']}: {'، '.join(c['topics'])}"
+            for c in configs_normalized
+            if c.get("topics")
+        ]
+        if per_subj_topics:
+            topic_text = " | ".join(per_subj_topics)[:300]
     grade_fa = GRADE_LABELS[payload.grade]
     difficulty_label = DIFFICULTY_LABELS.get(payload.difficulty, payload.difficulty)
     qtype_label = QUESTION_TYPE_LABELS[payload.question_type]
 
     prompt = KONKUR_PREVIEW_PROMPT.format(
-        count=payload.count,
+        count=effective_count,
         field_label=FIELD_LABELS[payload.field],
         subjects_slugs=subjects_slugs,
         subjects_labels=subjects_labels,
+        subject_configs_json=json.dumps(configs_normalized, ensure_ascii=False),
+        ai_percentage=payload.ai_percentage,
         grade_label=grade_fa,
         topic=topic_text or "—",
         question_type_label=qtype_label,
@@ -458,7 +510,9 @@ async def generate_exam_preview(
             "question_type_label": qtype_label,
             "difficulty": payload.difficulty,
             "difficulty_label": difficulty_label,
-            "count_requested": payload.count,
+            "subject_configs": configs_normalized,
+            "ai_percentage": payload.ai_percentage,
+            "count_requested": effective_count,
             "count_returned": len(questions),
         },
     }

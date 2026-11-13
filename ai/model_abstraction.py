@@ -668,29 +668,65 @@ class MockProvider(AIProvider):
         subjects = [part.strip() for part in re.split(r"[،,]", subjects_raw) if part.strip()] or ["physics"]
         topic = (_extract_marker(prompt, "TOPIC") or "").strip()
         try:
-            count = max(1, min(20, int(_extract_marker(prompt, "COUNT") or "5")))
+            count = max(1, min(60, int(_extract_marker(prompt, "COUNT") or "5")))
         except ValueError:
             count = 5
-        difficulty = _extract_marker(prompt, "DIFFICULTY") or "متوسط"
         custom = _extract_marker(prompt, "CUSTOM")
-        tags = ["کنکور ۱۴۰۲", "قلم‌چی", "تألیفی AI"]
+
+        configs_raw = _extract_marker(prompt, "SUBJECT_CONFIGS")
+        subject_configs: list[dict] = []
+        if configs_raw:
+            try:
+                parsed_cfg = json.loads(configs_raw)
+                if isinstance(parsed_cfg, list):
+                    subject_configs = [c for c in parsed_cfg if isinstance(c, dict) and c.get("subject")]
+            except Exception:
+                subject_configs = []
+
+        ai_pct_raw = _extract_marker(prompt, "AI_PERCENTAGE")
+        try:
+            ai_pct = max(0, min(100, int(ai_pct_raw))) if ai_pct_raw != "" else None
+        except ValueError:
+            ai_pct = None
+
+        bank_tags = ["کنکور ۱۴۰۲", "قلم‌چی", "گاج"]
+        legacy_tags = ["کنکور ۱۴۰۲", "قلم‌چی", "تألیفی AI"]
+
+        # لیستِ جفت‌های (slug درس، اندیس سؤال در آن درس)
+        plan: list[tuple[str, int]] = []
+        if subject_configs:
+            for cfg in subject_configs:
+                slug = str(cfg.get("subject") or "physics").strip()
+                c_count = max(1, min(20, int(cfg.get("count") or 1)))
+                for idx in range(c_count):
+                    plan.append((slug, idx))
+        else:
+            for i in range(count):
+                slug = subjects[i % len(subjects)]
+                plan.append((slug, i // len(subjects)))
+
+        total = len(plan)
+        ai_quota = round(total * (ai_pct / 100.0)) if ai_pct is not None else None
+
         items = []
-        for i in range(count):
-            # تقسیم متوازن سؤالات بین دروس انتخابی (round-robin)
-            slug = subjects[i % len(subjects)]
+        for i, (slug, local_idx) in enumerate(plan):
             bank = self._KONKUR_BANK.get(slug) or self._KONKUR_BANK["physics"]
-            base = bank[(i // len(subjects)) % len(bank)]
+            base = bank[local_idx % len(bank)]
             text = base["text"]
             if topic and topic != "—":
                 text = f"{text}"
             if custom:
                 text = f"{text}"
+            if ai_quota is not None:
+                source_tag = "تألیفی AI" if i < ai_quota else bank_tags[(i - ai_quota) % len(bank_tags)]
+            else:
+                source_tag = legacy_tags[i % len(legacy_tags)]
             items.append({
                 "id": i + 1,
                 "text": text,
                 "options": list(base["options"]),
                 "correct_answer": int(base["correct_answer"]),
-                "source_tag": tags[i % len(tags)],
+                "source_tag": source_tag,
                 "explanation": base["explanation"],
                 "subject": _subject_label(slug),
             })

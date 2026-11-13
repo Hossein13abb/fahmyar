@@ -1,6 +1,16 @@
+import { useEffect } from 'react'
 import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
+
+/** با هر تغییر مسیر (route change)، صفحه را به ابتدای صفحه (۰، ۰) بازمی‌گرداند */
+export function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
+  return null
+}
 import LandingPage from './pages/LandingPage'
 import StudentDashboard from './pages/StudentDashboard'
 import ExamRoom from './pages/ExamRoom'
@@ -55,6 +65,7 @@ export default function App() {
   const isLanding = location.pathname === '/'
   return (
     <div className="flex min-h-full flex-col">
+      <ScrollToTop />
       <Navbar />
       <main className={isLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8'}>
         <Routes>

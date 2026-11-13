@@ -37,6 +37,20 @@ const SUBJECTS = [
 ]
 const GRADES = [10, 11, 12]
 
+// برچسب‌های فارسی برای تگ‌های رفتاری/شناختیِ مفاهیم (هیچ انگلیسی‌ای در UI دیده نمی‌شود)
+const tagMap = {
+  identify_error: 'شناسایی خطا',
+  predict: 'پیش‌بینی',
+  explain: 'توضیح مفهومی',
+  calculate: 'محاسبه',
+  compare: 'مقایسه',
+  formulate: 'فرمول‌بندی',
+  evaluate: 'ارزیابی',
+  recall: 'یادآوری',
+  solve: 'حل مسئله',
+  convert_representation: 'تبدیل بازنمایی',
+}
+
 const HISTORY_CHIP = {
   stable: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
   growing: 'bg-amber-50 text-amber-800 ring-amber-200',
@@ -363,8 +377,8 @@ export default function StudentDashboard() {
                 <p className="font-black">{selectedConcept.name}</p>
                 <p className="mt-1 text-brand-800/80">{selectedConcept.chapter}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {(selectedConcept.target_behaviors ?? []).map((b) => (
-                    <span key={b} className="chip bg-white text-brand-800 ring-1 ring-brand-200">{b}</span>
+                  {(selectedConcept.target_behaviors ?? []).map((tag) => (
+                    <span key={tag} className="chip bg-white text-brand-800 ring-1 ring-brand-200">{tagMap[tag] || tag}</span>
                   ))}
                 </div>
               </div>

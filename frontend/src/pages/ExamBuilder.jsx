@@ -61,13 +61,130 @@ const EXPERIMENTAL_SUBJECTS = [ // تجربی — همهٔ پایه‌ها
   { id: 'physics', label: 'فیزیک', Icon: Atom },
   { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
 ]
+// «جامع» = اجتماعِ همهٔ دروس دهم، یازدهم و دوازدهمِ همان رشته — بدون تکراری
+const COMPREHENSIVE_MATH = [
+  { id: 'math', label: 'ریاضی', Icon: Sigma },
+  { id: 'calculus', label: 'حسابان', Icon: Sigma },
+  { id: 'geometry', label: 'هندسه', Icon: Shapes },
+  { id: 'statistics', label: 'آمار و احتمال', Icon: Percent },
+  { id: 'discrete', label: 'گسسته', Icon: Binary },
+  { id: 'physics', label: 'فیزیک', Icon: Atom },
+  { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
+]
+const dedupeById = (list) => list.filter((item, i) => list.findIndex((x) => x.id === item.id) === i)
 const subjectsFor = (field, grade) => {
-  if (field === 'math') {
-    if (grade === '10') return MATH_SUBJECTS_10
-    if (grade === '11') return MATH_SUBJECTS_11
+  const isComprehensive = grade === 'comprehensive' || grade === 'جامع'
+  if (field === 'math' || field === 'ریاضی') {
+    if (isComprehensive) {
+      return dedupeById([...MATH_SUBJECTS_10, ...MATH_SUBJECTS_11, ...MATH_SUBJECTS_12])
+    }
+    if (grade === '10' || grade === 'دهم') return MATH_SUBJECTS_10
+    if (grade === '11' || grade === 'یازدهم') return MATH_SUBJECTS_11
     return MATH_SUBJECTS_12
   }
-  return EXPERIMENTAL_SUBJECTS
+  return dedupeById([...EXPERIMENTAL_SUBJECTS, ...EXPERIMENTAL_SUBJECTS, ...EXPERIMENTAL_SUBJECTS])
+}
+
+// درخت سرفصل‌های ایران (Mock) — برای پیکربندی per-درس سؤال‌ها (پشتیبانی از نام فارسی و slug)
+const _MATH_CHAPTERS = [
+  'فصل ۱: مجموعه، الگو و دنباله',
+  'فصل ۲: مثلثات',
+  'فصل ۳: توان‌های گویا و عبارت‌های جبری',
+  'فصل ۴: معادلهٔ درجهٔ دوم و کاربردها',
+  'فصل ۵: تابع و معادلهٔ درجهٔ دوم (پیشرفته)',
+  'فصل ۶: حد و پیوستگی',
+]
+const _CALCULUS_CHAPTERS = [
+  'فصل ۱: دنباله و سری‌های حسابی و هندسی',
+  'فصل ۲: تابع و انواع آن',
+  'فصل ۳: حد، پیوستگی و مجانب',
+  'فصل ۴: مشتق و قواعد مشتق‌گیری',
+  'فصل ۵: کاربردهای مشتق',
+  'فصل ۶: انتگرال و کاربردهای آن',
+]
+const _GEOMETRY_CHAPTERS = [
+  'فصل ۱: خطوط و زوایا',
+  'فصل ۲: چندضلعی‌ها و مساحت',
+  'فصل ۳: قضیهٔ تالس و تشابه',
+  'فصل ۴: مثلث و دایره',
+  'فصل ۵: دایره و خط',
+  'فصل ۶: تبدیل‌های هندسی و بردار',
+]
+const _DISCRETE_CHAPTERS = [
+  'فصل ۱: مبانی شمارش',
+  'فصل ۲: آشنایی با نظریهٔ اعداد',
+  'فصل ۳: الگوریتم‌ها و فلوچارت',
+  'فصل ۴: گراف و مدل‌سازی',
+  'فصل ۵: ترکیب و جایگشت',
+]
+const _STATISTICS_CHAPTERS = [
+  'فصل ۱: آمار توصیفی و نمایش داده‌ها',
+  'فصل ۲: احتمال در یک مرحلهٔ ساده',
+  'فصل ۳: متغیر تصادفی و توزیع‌های آن',
+  'فصل ۴: توزیع نرمال و کاربردها',
+  'فصل ۵: برآورد و استنباط آماری',
+]
+const _PHYSICS_CHAPTERS = [
+  'فصل ۱: فیزیک و اندازه‌گیری',
+  'فصل ۲: کار، انرژی و توان',
+  'فصل ۳: فشار و ویژگی‌های مواد',
+  'فصل ۴: دما و گرما',
+  'فصل ۵: الکتریسیتهٔ ساکن و جریان الکتریکی',
+  'فصل ۶: مغناطیس و القای الکترومغناطیسی',
+]
+const _CHEMISTRY_CHAPTERS = [
+  'فصل ۱: کیهان زادگاه الفبای هستی',
+  'فصل ۲: ردپای گازها در زندگی',
+  'فصل ۳: آب؛ آهنگِ زندگی',
+  'فصل ۴: قدرِ هدایای زمینی را بدانیم',
+  'فصل ۵: در پیِ غذای سالم',
+  'فصل ۶: شیمی آلی و پلیمرها',
+]
+const _BIOLOGY_CHAPTERS = [
+  'فصل ۱: مولکول‌های زیستی',
+  'فصل ۲: تنظیم عصبی و حواس',
+  'فصل ۳: تنظیم هورمونی و تولیدمثل',
+  'فصل ۴: ژنتیک و وراثت',
+  'فصل ۵: گیاهان و فتوسنتز',
+  'فصل ۶: زیست‌فناوری و کاربردهای آن',
+]
+
+const CURRICULUM_TREE = {
+  'ریاضی ۱': _MATH_CHAPTERS,
+  'ریاضی ۲': _MATH_CHAPTERS,
+  'ریاضی ۳': _MATH_CHAPTERS,
+  'ریاضی': _MATH_CHAPTERS,
+  'ریاضیات': _MATH_CHAPTERS,
+  'حسابان ۱': _CALCULUS_CHAPTERS,
+  'حسابان ۲': _CALCULUS_CHAPTERS,
+  'حسابان': _CALCULUS_CHAPTERS,
+  'هندسه ۱': _GEOMETRY_CHAPTERS,
+  'هندسه ۲': _GEOMETRY_CHAPTERS,
+  'هندسه ۳': _GEOMETRY_CHAPTERS,
+  'هندسه': _GEOMETRY_CHAPTERS,
+  'ریاضیات گسسته': _DISCRETE_CHAPTERS,
+  'گسسته': _DISCRETE_CHAPTERS,
+  'آمار و احتمال': _STATISTICS_CHAPTERS,
+  'فیزیک ۱': _PHYSICS_CHAPTERS,
+  'فیزیک ۲': _PHYSICS_CHAPTERS,
+  'فیزیک ۳': _PHYSICS_CHAPTERS,
+  'فیزیک': _PHYSICS_CHAPTERS,
+  'شیمی ۱': _CHEMISTRY_CHAPTERS,
+  'شیمی ۲': _CHEMISTRY_CHAPTERS,
+  'شیمی ۳': _CHEMISTRY_CHAPTERS,
+  'شیمی': _CHEMISTRY_CHAPTERS,
+  'زیست‌شناسی ۱': _BIOLOGY_CHAPTERS,
+  'زیست‌شناسی ۲': _BIOLOGY_CHAPTERS,
+  'زیست‌شناسی ۳': _BIOLOGY_CHAPTERS,
+  'زیست‌شناسی': _BIOLOGY_CHAPTERS,
+  math: _MATH_CHAPTERS,
+  calculus: _CALCULUS_CHAPTERS,
+  geometry: _GEOMETRY_CHAPTERS,
+  discrete: _DISCRETE_CHAPTERS,
+  statistics: _STATISTICS_CHAPTERS,
+  physics: _PHYSICS_CHAPTERS,
+  chemistry: _CHEMISTRY_CHAPTERS,
+  biology: _BIOLOGY_CHAPTERS,
 }
 
 const FIELD_LABELS = { math: 'ریاضی', tajrobi: 'تجربی' }
@@ -90,7 +207,6 @@ const QUESTION_TYPES = [
 ]
 const QUESTION_TYPE_LABELS = Object.fromEntries(QUESTION_TYPES.map((t) => [t.id, t.label]))
 
-const COUNT_PRESETS = [5, 10, 15, 20]
 const TIME_PRESETS = [45, 60, 75, 100, 120]
 const DIFFICULTY_OPTIONS = [
   { id: 'easy', label: 'آسان', desc: 'سؤال‌های مستقیم و پایه‌ای', Icon: Smile },
@@ -138,9 +254,16 @@ export default function ExamBuilder({ embedded = false }) {
   const [field, setField] = useState(loadField)                // math | tajrobi
   const [grade, setGradeState] = useState(loadGrade)           // 10 | 11 | 12 | comprehensive
   const [selectedSubjects, setSelectedSubjects] = useState(() => subjectsFor(loadField(), loadGrade()).map((x) => x.id))
-  const [topic, setTopic] = useState('')
+  // پیکربندیِ هر درس: تعداد سؤال + فصل‌های هدف (از درخت سرفصل‌ها)
+  const [subjectConfigs, setSubjectConfigs] = useState(() => {
+    const init = {}
+    subjectsFor(loadField(), loadGrade()).forEach((o) => {
+      init[o.id] = { count: 2, topics: [] }
+    })
+    return init
+  })
+  const [aiPercentage, setAiPercentage] = useState(100) // درصد سؤالات تولیدی هوش مصنوعی؛ بقیه = بانک آزمون
   const [questionType, setQuestionType] = useState('mixed')
-  const [count, setCount] = useState(10)
   const [customPrompt, setCustomPrompt] = useState('')
   const [difficulty, setDifficulty] = useState('medium')
   const [duration, setDuration] = useState(75)
@@ -163,9 +286,20 @@ export default function ExamBuilder({ embedded = false }) {
   const [notice, setNotice] = useState('')
   const [drafts, setDrafts] = useState(loadDrafts)             // پیش‌نویس‌های قدیمی (فقط مشاهده/حذف)
 
+  const syncConfigs = (ids) =>
+    setSubjectConfigs((prev) => {
+      const next = {}
+      ids.forEach((id) => {
+        next[id] = prev[id] ?? { count: 2, topics: [] }
+      })
+      return next
+    })
+
   const setGrade = (g) => {
     setGradeState(g)
-    setSelectedSubjects(subjectsFor(field, g).map((x) => x.id))
+    const ids = subjectsFor(field, g).map((x) => x.id)
+    setSelectedSubjects(ids)
+    syncConfigs(ids)
     try {
       localStorage.setItem('fahmyar_grade', g)
     } catch {
@@ -174,7 +308,9 @@ export default function ExamBuilder({ embedded = false }) {
   }
   const setFieldPersist = (f) => {
     setField(f)
-    setSelectedSubjects(subjectsFor(f, grade).map((x) => x.id))
+    const ids = subjectsFor(f, grade).map((x) => x.id)
+    setSelectedSubjects(ids)
+    syncConfigs(ids)
     try {
       localStorage.setItem('fahmyar_field', f)
     } catch {
@@ -182,10 +318,33 @@ export default function ExamBuilder({ embedded = false }) {
     }
   }
 
-  const subjectOptions = subjectsFor(field, grade)
-  const subjectsLabel = subjectOptions.filter((s) => selectedSubjects.includes(s.id)).map((s) => s.label).join('، ')
-  const toggleSubject = (id) =>
-    setSelectedSubjects((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  const availableSubjects = useMemo(() => subjectsFor(field, grade), [field, grade])
+  const subjectOptions = availableSubjects
+  const selectedOptions = availableSubjects.filter((s) => selectedSubjects.includes(s.id))
+  const subjectsLabel = selectedOptions.map((s) => s.label).join('، ')
+  const toggleSubject = (id) => {
+    const next = selectedSubjects.includes(id) ? selectedSubjects.filter((x) => x !== id) : [...selectedSubjects, id]
+    setSelectedSubjects(next)
+    syncConfigs(next)
+  }
+  const updateSubjectCount = (id, raw) =>
+    setSubjectConfigs((prev) => {
+      const n = Math.max(1, Math.min(20, Number.parseInt(raw, 10) || 1))
+      return { ...prev, [id]: { count: n, topics: prev[id]?.topics ?? [] } }
+    })
+  const toggleSubjectTopic = (id, chapter) =>
+    setSubjectConfigs((prev) => {
+      const cur = prev[id] ?? { count: 2, topics: [] }
+      const topics = cur.topics.includes(chapter) ? cur.topics.filter((t) => t !== chapter) : [...cur.topics, chapter]
+      return { ...prev, [id]: { count: cur.count, topics } }
+    })
+  // مجموع سؤالات از پیکربندیِ هر درس
+  const subjectConfigsPayload = selectedOptions.map((o) => ({
+    subject: o.id,
+    count: Math.max(1, Math.min(20, Number(subjectConfigs[o.id]?.count) || 2)),
+    topics: subjectConfigs[o.id]?.topics ?? [],
+  }))
+  const totalCount = subjectConfigsPayload.reduce((sum, c) => sum + c.count, 0)
 
   useEffect(() => {
     if (!generating) return undefined
@@ -213,6 +372,8 @@ export default function ExamBuilder({ embedded = false }) {
 
   const validate = () => {
     if (selectedSubjects.length === 0) return 'حداقل یک درس را انتخاب کنید.'
+    if (totalCount > 60) return 'مجموع سؤالات نباید بیشتر از ۶۰ سؤال باشد.'
+    if (totalCount < 1) return 'تعداد سؤالات هر درس حداقل ۱ سؤال است.'
     if (!duration || duration < 10) return 'زمان آزمون باید حداقل ۱۰ دقیقه باشد.'
     return ''
   }
@@ -229,10 +390,12 @@ export default function ExamBuilder({ embedded = false }) {
         field,
         grade,
         subjects: selectedSubjects,
-        topic: topic.trim() || null,
+        subject_configs: subjectConfigsPayload,
+        ai_percentage: aiPercentage,
+        topic: null,
         question_type: questionType,
         difficulty,
-        count,
+        count: totalCount,
         custom_prompt: customPrompt.trim(),
       })
       const list = Array.isArray(data?.questions) ? data.questions : []
@@ -282,7 +445,7 @@ export default function ExamBuilder({ embedded = false }) {
           grade,
           major: FIELD_PRINT_LABELS[field],
           subject_label: subjectsLabel,
-          topic: topic.trim(),
+          topic: '',
           duration_minutes: duration,
           difficulty,
           questions: questions.map((q, i) => ({
@@ -339,7 +502,7 @@ export default function ExamBuilder({ embedded = false }) {
               </div>
             </div>
             <div className="rounded-2xl bg-white/10 px-4 py-2.5 text-center ring-1 ring-white/15 backdrop-blur">
-              <p className="text-2xl font-black leading-none text-amber-200">{fmtFa(step === 'preview' ? questions.length : count)}</p>
+              <p className="text-2xl font-black leading-none text-amber-200">{fmtFa(step === 'preview' ? questions.length : totalCount)}</p>
               <p className="mt-1 text-[10px] font-bold text-brand-100/80">سؤال چهارگزینه‌ای</p>
             </div>
           </div>
@@ -469,60 +632,140 @@ export default function ExamBuilder({ embedded = false }) {
                 </div>
               </section>
 
-              {/* ── مبحث، نوع سؤال، تعداد، دستورالعمل سفارشی ── */}
+              {/* ── تنظیماتِ هر درس: تعداد سؤال + فصل‌های هدف ── */}
               <section className="card p-5 sm:p-6">
                 <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
                   <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۲</span>
-                  مبحث و سبک سؤال
+                  تنظیمات سؤالات هر درس
+                </h2>
+                <p className="mt-1.5 text-[11px] font-medium leading-6 text-slate-500">
+                  برای هر درسی که انتخاب کرده‌اید، تعداد سؤال و فصل‌های هدف را مشخص کنید؛ فصل انتخاب‌نشده یعنی پوششِ همهٔ فصول.
+                </p>
+
+                <div className="mt-4 space-y-3">
+                  {selectedOptions.length === 0 && (
+                    <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-6 text-center text-[12px] font-bold text-slate-400">
+                      ابتدا حداقل یک درس را در بخش ۱ انتخاب کنید.
+                    </p>
+                  )}
+                  {selectedOptions.map(({ id, label, Icon }) => {
+                    const cfg = subjectConfigs[id] ?? { count: 2, topics: [] }
+                    const chapters = CURRICULUM_TREE[label] ?? CURRICULUM_TREE[id] ?? []
+                    return (
+                      <fieldset key={id} className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <legend className="sr-only">{label}</legend>
+                          <p className="flex items-center gap-2 text-[13px] font-black text-brand-950">
+                            <Icon className="h-5 w-5 text-brand-700" strokeWidth={1.8} />
+                            {label}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <label htmlFor={`count-${id}`} className="text-[10px] font-bold text-slate-500">تعداد سوال این درس</label>
+                            <input
+                              id={`count-${id}`}
+                              type="number"
+                              min={1}
+                              max={20}
+                              step={1}
+                              value={cfg.count}
+                              onChange={(e) => updateSubjectCount(id, e.target.value)}
+                              className="input w-20 px-3 py-2 text-center text-[13px] font-black tabular-nums"
+                              inputMode="numeric"
+                            />
+                          </div>
+                        </div>
+                        {chapters.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-[10px] font-bold text-slate-500">فصل‌ها / مباحث هدف این درس</p>
+                            <div className="mt-1.5 max-h-36 space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+                              {chapters.map((chapter) => {
+                                const on = cfg.topics.includes(chapter)
+                                return (
+                                  <label
+                                    key={chapter}
+                                    className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] leading-6 transition ${
+                                      on ? 'bg-brand-50 text-brand-900' : 'text-slate-600 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={on}
+                                      onChange={() => toggleSubjectTopic(id, chapter)}
+                                      className="h-4 w-4 shrink-0 accent-emerald-600"
+                                    />
+                                    <span>{chapter}</span>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                            {cfg.topics.length > 0 && (
+                              <p className="mt-1.5 text-[10px] font-bold text-brand-700">{toFarsiNumber(cfg.topics.length)} فصل انتخاب شد</p>
+                            )}
+                          </div>
+                        )}
+                      </fieldset>
+                    )
+                  })}
+                </div>
+
+                {/* مجموع سؤالات */}
+                <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-brand-100 bg-brand-50/60 px-4 py-2.5">
+                  <span className="text-[12px] font-black text-brand-900">مجموع سؤالات آزمون</span>
+                  <span className={`text-[13px] font-black tabular-nums ${totalCount > 60 ? 'text-rose-600' : 'text-brand-950'}`}>
+                    {toFarsiNumber(totalCount)} سؤال
+                  </span>
+                </div>
+              </section>
+
+              {/* ── توزیع منبع سؤالات: هوش مصنوعی در برابر بانک آزمون ── */}
+              <section className="card p-5 sm:p-6">
+                <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۳</span>
+                  درصد سوالات تولیدی هوش مصنوعی
+                </h2>
+                <p className="mt-1.5 text-[11px] font-medium leading-6 text-slate-500">
+                  نسبت «درصد سوالات تولیدی هوش مصنوعی» به «سوالات بانک آزمون» (کنکور / قلم‌چی / گاج) را مشخص کنید.
+                </p>
+                <div className="mt-4 flex items-center gap-3 text-[10px] font-black text-slate-400">
+                  <span className="shrink-0">۰٪</span>
+                  <input
+                    id="ai-percentage"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={aiPercentage}
+                    onChange={(e) => setAiPercentage(Number(e.target.value))}
+                    className="w-full accent-emerald-600"
+                    aria-label="درصد سوالات تولیدی هوش مصنوعی"
+                  />
+                  <span className="shrink-0">۱۰۰٪</span>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-slate-50 px-4 py-2.5 text-[12px] font-black">
+                  <span className="text-emerald-700">درصد سوالات تولیدی هوش مصنوعی: {toFarsiNumber(aiPercentage)}٪</span>
+                  <span className="text-slate-600">سوالات بانک آزمون: {toFarsiNumber(100 - aiPercentage)}٪</span>
+                </div>
+              </section>
+
+              {/* ── سبک سؤال ── */}
+              <section className="card p-5 sm:p-6">
+                <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۴</span>
+                  سبک سؤال
                 </h2>
 
-                <label htmlFor="exam-topic" className="label mt-4">مبحث آزمون <span className="font-medium text-slate-400">(اختیاری)</span></label>
-                <input
-                  id="exam-topic"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  placeholder="اختیاری — مثلاً: مشتق و نقاط اکسترمم، میدان الکتریکی، گردش خون… (خالی بگذارید تا ترکیبی پوشش داده شود)"
-                  className="input"
-                  maxLength={140}
-                />
-
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="question-type" className="label">نوع سؤالات</label>
-                    <select
-                      id="question-type"
-                      value={questionType}
-                      onChange={(e) => setQuestionType(e.target.value)}
-                      className="input mt-1.5"
-                    >
-                      {QUESTION_TYPES.map((t) => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <span className="label">تعداد سؤال</span>
-                    <div className="mt-1.5 grid grid-cols-4 gap-2" role="group" aria-label="تعداد سؤال">
-                      {COUNT_PRESETS.map((n) => {
-                        const on = count === n
-                        return (
-                          <button
-                            key={n}
-                            type="button"
-                            aria-pressed={on}
-                            onClick={() => setCount(n)}
-                            className={`rounded-2xl border py-2.5 text-[13px] font-black tabular-nums transition-all ${
-                              on
-                                ? 'border-transparent bg-brand-700 text-white shadow-lift'
-                                : 'border-slate-200 bg-white text-brand-900 hover:border-brand-300 hover:bg-brand-50'
-                            }`}
-                          >
-                            {fmtFa(n)}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
+                <div className="mt-4">
+                  <label htmlFor="question-type" className="label">نوع سؤالات</label>
+                  <select
+                    id="question-type"
+                    value={questionType}
+                    onChange={(e) => setQuestionType(e.target.value)}
+                    className="input mt-1.5"
+                  >
+                    {QUESTION_TYPES.map((t) => (
+                      <option key={t.id} value={t.id}>{t.label}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <label htmlFor="custom-prompt" className="label mt-4">دستورالعمل سفارشی (اختیاری)</label>
@@ -616,16 +859,16 @@ export default function ExamBuilder({ embedded = false }) {
                     <dd className="max-w-[62%] truncate text-left font-bold text-brand-950" title={subjectsLabel}>{subjectsLabel || '—'}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                    <dt className="text-slate-500">مبحث</dt>
-                    <dd className="max-w-[60%] truncate text-left font-bold text-brand-950" title={topic}>{topic.trim() || 'نامشخص (ترکیبی)'}</dd>
+                    <dt className="text-slate-500">تعداد کل سؤالات</dt>
+                    <dd className="font-black tabular-nums text-brand-950">{fmtFa(totalCount)} سؤال</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
+                    <dt className="text-slate-500">منبع سؤالات</dt>
+                    <dd className="font-bold text-brand-950">{toFarsiNumber(aiPercentage)}٪ AI · {toFarsiNumber(100 - aiPercentage)}٪ بانک</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                     <dt className="text-slate-500">نوع سؤالات</dt>
                     <dd className="font-bold text-brand-950">{questionTypeLabel}</dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                    <dt className="text-slate-500">تعداد سؤال</dt>
-                    <dd className="font-black tabular-nums text-brand-950">{fmtFa(count)} سؤال</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                     <dt className="text-slate-500">سطح سختی</dt>
@@ -799,8 +1042,8 @@ export default function ExamBuilder({ embedded = false }) {
                     <dd className="font-bold text-brand-950">{FIELD_PRINT_LABELS[field]} · {grade === 'comprehensive' ? 'جامع' : `پایهٔ ${GRADE_LABELS[grade]}`}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                    <dt className="text-slate-500">درس‌ها / مبحث</dt>
-                    <dd className="max-w-[62%] truncate text-left font-bold text-brand-950" title={`${subjectsLabel} — ${topic}`}>{subjectsLabel || '—'} · {topic.trim() || 'نامشخص'}</dd>
+                    <dt className="text-slate-500">درس‌ها / تعداد</dt>
+                    <dd className="max-w-[62%] truncate text-left font-bold text-brand-950" title={subjectsLabel}>{subjectsLabel || '—'} · {fmtFa(totalCount)} سؤال</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                     <dt className="text-slate-500">نوع سؤالات</dt>
