@@ -1,15 +1,9 @@
 """استخراج و پارسِ مقاومِ JSON از خروجی مدل‌های هوش مصنوعی (با پشتیبانی کامل از بک‌اسلش‌های LaTeX).
 
-مدل‌ها گاهی:
-  - خروجی را در بلوک مارک‌داون (```json … ```) می‌پیچانند
-  - متن توضیحی قبل یا بعد از JSON اضافه می‌کنند
-  - درون رشته‌های JSON فرمول‌های LaTeX را با یک بک‌اسلش می‌نویسند (مانند `\\begin{bmatrix}`،
-    `\\frac{a}{b}`، `\\sqrt{x}`، `\\times`، `\\cdot`) که در `json.loads` استاندارد پایتون
-    باعث خطای `Invalid \\escape` یا تبدیل `\\b`/`\\f`/`\\t`/`\\r`/`\\n` به کاراکترهای کنترلی می‌شود،
-    یا بک‌اسلش را بلعیده و در UI به‌صورت `begin{bmatrix}` نمایش داده می‌شود.
-
-این ماژول با `preprocess_latex_json`، `sanitize_json_string`، `restore_latex_commands` و `safe_parse_json`
-تمام این موارد را قبل و بعد از `json.loads` به شکل امن اصلاح و پارس می‌کند.
+در پایتون، کاراکترهایی مانند `\\f` (در `\\frac`)، `\\t` (در `\\theta`) و `\\b` (در `\\begin`)
+در صورتی که تک‌بک‌اسلشی باشند توسط `json.loads()` بلعیده می‌شوند.
+همچنین گاهی مدل‌ها علامت دلار را به‌صورت `$\\$` یا `\\$` می‌نویسند که رندر KaTeX را مختل می‌کند.
+این ماژول تمام این موارد را پیش از `json.loads` به‌صورت قطعی اصلاح می‌کند.
 """
 from __future__ import annotations
 
@@ -24,95 +18,74 @@ _TRAILING_COMMA_RE = re.compile(r",\s*([}\]])")
 _GREEDY_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
 _GREEDY_ARR_RE = re.compile(r"\[.*\]", re.DOTALL)
 
-# دستورات LaTeX که با حروف معتبر escape در JSON (b, f, n, r, t) شروع می‌شوند
-# و اگر با یک بک‌اسلش نوشته شوند، json.loads آن‌ها را به کاراکتر کنترلی (\x08, \x0c, \n, \r, \t) تبدیل می‌کند.
-_LATEX_BFNRT_CMDS = re.compile(
-    r"(?<!\\)\\("
-    r"begin|beta|binom|bar|textbf|bigcup|bigcap|bigoplus|bigotimes|bot|bullet|boxed|"
-    r"frac|forall|flat|frown|"
-    r"neq|nabla|nu|not|natural|neg|ni|nmid|nparallel|nsubseteq|ngeq|nleq|"
-    r"right|rightarrow|Rightarrow|rho|rangle|rceil|rfloor|rhd|rtimes|"
-    r"times|tan|tanh|theta|tau|text|textbf|textit|textrm|top|triangle|to|tilde|tfrac"
-    r")(?![a-zA-Z])"
+# دستورات LaTeX که اگر بدون بک‌اسلش تولید شده باشند (مثلاً sqrt{7} یا vec{a} یا begin{bmatrix}) باید بک‌اسلش بگیرند
+_BARE_LATEX_CMD_RE = re.compile(
+    r"(?<![\\a-zA-Z])(sqrt|vec|frac|dfrac|tfrac|theta|alpha|beta|pi|cos|sin|tan|deg|circ)\b"
 )
-
-# دستورات محیطی یا ریاضی که ممکن است بک‌اسلش آن‌ها بلعیده شده باشد (مثلاً begin{bmatrix})
 _BARE_ENV_RE = re.compile(
     r"(?<![\\a-zA-Z])(begin|end)\s*\{([a-zA-Z]*matrix|array|aligned|cases)\}"
 )
-_BARE_CMD_WITH_BRACE_RE = re.compile(
-    r"(?<![\\a-zA-Z])(frac|dfrac|tfrac|sqrt|binom|overbrace|underbrace|overline|underline|overrightarrow)\s*\{"
-)
-
-# درون محیط‌های ماتریسی (\begin{...} ... \end{...})، جداکنندهٔ سطر در LaTeX باید دو بک‌اسلش (\\) در رشتهٔ نهایی باشد
-# یعنی در متن خام JSON باید چهار بک‌اسلش (\\\\) باشد.
-_MATRIX_ENV_RE = re.compile(
-    r"(\\\\begin\{(?:[a-zA-Z]*matrix|array|aligned|cases)\})([\s\S]*?)(\\\\end\{(?:[a-zA-Z]*matrix|array|aligned|cases)\})"
-)
 
 
-def _fix_matrix_row_breaks(match: re.Match) -> str:
-    open_tag, body, close_tag = match.group(1), match.group(2), match.group(3)
-    # اگر جداکنندهٔ سطر با دو بک‌اسلش نوشته شده (و نه چهار بک‌اسلش) و بعدش دستور LaTeX نیست، چهار بک‌اسلش کن
-    fixed_body = re.sub(r"(?<!\\)\\\\(?![\\a-zA-Z\"])", r"\\\\\\\\", body)
-    return f"{open_tag}{fixed_body}{close_tag}"
+def _extract_json_span(raw_text: str) -> str:
+    text = str(raw_text or "").strip().lstrip("\ufeff")
+    fence = _FENCE_RE.search(text)
+    if fence:
+        text = fence.group(1).strip()
+    text = _LEADING_FENCE_RE.sub("", text)
+    text = _TRAILING_FENCE_RE.sub("", text)
+
+    first_arr = text.find("[")
+    first_obj = text.find("{")
+    if first_arr != -1 and (first_obj == -1 or first_arr < first_obj):
+        m = re.search(r"\[.*\]", text, re.DOTALL)
+        if m:
+            return m.group(0)
+    elif first_obj != -1:
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if m:
+            return m.group(0)
+    return text
 
 
-def preprocess_latex_json(raw_text: str) -> str:
-    """پیش‌پردازندهٔ اختصاصی پیش از `json.loads` برای حفظ حداقل یک بک‌اسلش در تمام دستورات LaTeX."""
-    if not raw_text:
-        return ""
-    t = raw_text
-
-    # ۰) احیای کاراکترهای کنترلی احتمالی که از \b، \f، \t، \r ناشی شده‌اند
-    t = t.replace("\x08", r"\\b").replace("\x0c", r"\\f")
-    t = re.sub(r"\t(?=(?:imes|an|anh|heta|au|ext|op|riangle|o|ilde|frac)\b)", r"\\t", t)
-    t = re.sub(r"\r(?=(?:ight|ho|angle|ceil|floor)\b)", r"\\r", t)
-
-    # ۱) احیای دستورات بدون بک‌اسلش مانند begin{bmatrix}، end{bmatrix}، frac{، sqrt{
-    t = _BARE_ENV_RE.sub(r"\\\\\1{\2}", t)
-    t = _BARE_CMD_WITH_BRACE_RE.sub(r"\\\\\1{", t)
-
-    # ۲) دستورات LaTeX که با b/f/n/r/t شروع می‌شوند (مانند \begin, \frac, \right, \times, \tan, \neq, \to)
-    t = _LATEX_BFNRT_CMDS.sub(r"\\\\\1", t)
-
-    # ۳) هر بک‌اسلش تکی که دنبالهٔ آن یک escape معتبر JSON نیست (\sqrt, \cdot, \end, \left, \alpha, \$ و ...)
-    t = re.sub(r'(?<!\\)\\(?![\\"/bfnrtu]|u[0-9a-fA-F]{4})', r"\\\\", t)
-
-    # ۴) اصلاح جداکنندهٔ سطر (\\) در محیط‌های ماتریسی LaTeX
-    t = _MATRIX_ENV_RE.sub(_fix_matrix_row_breaks, t)
-    return t
+def _clean_dollar_noise(text: str) -> str:
+    """اصلاح علامت‌های دلار تکراری یا اسکیپ‌شده مانند `$\\$`، `\\$` و `$$$` به `$`."""
+    s = re.sub(r"\$\\+\$|\$\\\$|\$\$\$", "$", text)
+    s = re.sub(r"\\+\$", "$", s)
+    return s
 
 
 def restore_latex_commands(obj: Any) -> Any:
-    """پس‌پردازندهٔ امن پس از `json.loads` برای تضمین وجود بک‌اسلش و `$` در دستورات LaTeX خروجی."""
+    """پس‌پردازندهٔ امن پس از `json.loads` برای تضمین سلامت دستورات LaTeX و علامت‌های `$`."""
     if isinstance(obj, str):
         if "<svg" in obj.lower():
             return obj
         s = obj
-        # اصلاح کاراکترهای کنترلی اگر از مسیر دیگری وارد شده باشند
+        # احیای کاراکترهای کنترلی احتمالی
         s = s.replace("\x08", "\\b").replace("\x0c", "\\f")
         s = re.sub(r"\t(?=(?:imes|an|anh|heta|au|ext|op|riangle|o|ilde|frac)\b)", r"\\t", s)
         s = re.sub(r"\r(?=(?:ight|ho|angle|ceil|floor)\b)", r"\\r", s)
-        # تضمین وجود بک‌اسلش قبل از begin{...matrix} و end{...matrix}
+
+        # پاک‌سازی نویز دلار ($\$ یا \$)
+        s = _clean_dollar_noise(s)
+
+        # احیای بک‌اسلش برای دستورات ریاضی که بک‌اسلش آن‌ها افتاده است
+        s = _BARE_ENV_RE.sub(r"\\\1{\2}", s)
+        s = _BARE_LATEX_CMD_RE.sub(r"\\\1", s)
+
+        # درون محیط‌های ماتریسی، جداکنندهٔ سطر باید دو بک‌اسلش (\\) در رشتهٔ نهایی باشد
+        def _fix_mat_rows(m: re.Match) -> str:
+            head, body, tail = m.group(1), m.group(2), m.group(3)
+            body = re.sub(r"(?<!\\)\\(?![\\a-zA-Z])", r"\\\\", body)
+            return f"{head}{body}{tail}"
+
         s = re.sub(
-            r"(?<![\\a-zA-Z])(begin|end)\s*\{([a-zA-Z]*matrix|array|aligned|cases)\}",
-            r"\\\1{\2}",
+            r"(\\begin\{[bpvBV]?matrix\})([\s\S]*?)(\\end\{[bpvBV]?matrix\})",
+            _fix_mat_rows,
             s,
         )
-        # تضمین وجود بک‌اسلش قبل از frac{ و sqrt{ و vec{ و cos/sin/tan
-        s = re.sub(
-            r"(?<![\\a-zA-Z])(frac|dfrac|tfrac|sqrt|vec|binom|overbrace|underbrace|overline|underline|overrightarrow)\s*\{",
-            r"\\\1{",
-            s,
-        )
-        # اگر محیط ماتریس خارج از $$ ... $$ نوشته شده باشد، آن را درون $$ ... $$ بگذار
-        s = re.sub(
-            r"(?<!\$)\\begin\{([bpvBV]?matrix)\}([\s\S]*?)\\end\{\1\}(?!\$)",
-            r"$$\\begin{\1}\2\\end{\1}$$",
-            s,
-        )
-        # اگر توان منفی بدون آکولاد نوشته شده باشد (مانند ^-1 یا ^-۱)، درون آکولاد قرار بده تا در RTL معکوس نشود
+
+        # اطمینان از وجود آکولاد دور توان‌های منفی مانند ^-1 یا ^-۱
         s = re.sub(r"\^\s*(-[0-9۰-۹]+)", r"^{\1}", s)
         return s
     if isinstance(obj, list):
@@ -122,65 +95,37 @@ def restore_latex_commands(obj: Any) -> Any:
     return obj
 
 
-def sanitize_json_string(raw_text: str) -> str:
-    """پاک‌سازی بلوک مارک‌داون، ویرگول‌های اضافه و ایمن‌سازی بک‌اسلش‌های LaTeX در JSON."""
-    t = (raw_text or "").strip().lstrip("\ufeff")
-    fence = _FENCE_RE.search(t)
-    if fence:
-        t = fence.group(1).strip()
-    t = _LEADING_FENCE_RE.sub("", t)
-    t = _TRAILING_FENCE_RE.sub("", t)
-    t = _TRAILING_COMMA_RE.sub(r"\1", t)
-    return preprocess_latex_json(t)
+def sanitize_json_string(raw_text: str) -> Any:
+    """پاک‌سازی بک‌اسلش‌های LaTeX و پارس مستقیم JSON به دیکشنری/لیست پایتون."""
+    if not raw_text or not str(raw_text).strip():
+        raise ValueError("Empty response from AI model")
 
+    # 1. Extract JSON array or object (with priority to whichever starts first)
+    extracted = _extract_json_span(raw_text)
+    extracted = _TRAILING_COMMA_RE.sub(r"\1", extracted)
 
-# نام مستعار برای سازگاری با کدهای قبلی
-sanitize_json_text = sanitize_json_string
+    # 2. Fix duplicate or broken dollar signs (e.g. $\$ -> $)
+    extracted = re.sub(r"\$\\+\$|\$\\\$|\$\$\$", "$", extracted)
+    extracted = re.sub(r"\\+\$", "$", extracted)
+
+    # 3. Escape single backslashes so JSON parsing does NOT eat \f, \t, \b, \v, \s, \c
+    # Replace \ with \\ EXCEPT if it is already \\ or escaping a double quote \"
+    cleaned = re.sub(r'(?<!\\)\\(?!"|\\)', r"\\\\", extracted)
+
+    try:
+        return restore_latex_commands(json.loads(cleaned))
+    except Exception as e:
+        # Fallback: strict double-escape
+        try:
+            cleaned_fallback = extracted.replace("\\", "\\\\").replace('\\\\"', '\\"')
+            return restore_latex_commands(json.loads(cleaned_fallback))
+        except Exception:
+            raise ValueError(f"JSON Sanitization Failed: {str(e)}")
 
 
 def safe_parse_json(raw_text: str) -> Any:
-    """پارس مقاوم JSON (آرایه یا شیء) با پشتیبانی از بک‌اسلش‌های فرمول‌های LaTeX."""
-    if not raw_text or not str(raw_text).strip():
-        raise ValueError("متن ورودی JSON خالی است.")
-
-    text = str(raw_text).strip().lstrip("\ufeff")
-    fence = _FENCE_RE.search(text)
-    if fence:
-        text = fence.group(1).strip()
-    text = _LEADING_FENCE_RE.sub("", text)
-    text = _TRAILING_FENCE_RE.sub("", text)
-
-    # استخراج بلوک JSON (با اولویتِ اولین کاراکتر بازکننده در متن: [ یا {)
-    first_arr = text.find("[")
-    first_obj = text.find("{")
-    if first_arr != -1 and (first_obj == -1 or first_arr < first_obj):
-        m = re.search(r"\[.*\]", text, re.DOTALL)
-        if m:
-            text = m.group(0)
-    elif first_obj != -1:
-        m = re.search(r"\{.*\}", text, re.DOTALL)
-        if m:
-            text = m.group(0)
-
-    # تلاش ۱: پیش‌پردازش هوشمند بک‌اسلش‌های LaTeX و ویرگول‌های انتهایی
-    cleaned = sanitize_json_string(text)
-    try:
-        return restore_latex_commands(json.loads(cleaned))
-    except Exception:
-        pass
-
-    # تلاش ۲: پیش‌پردازش دستورات LaTeX + جایگزینی مستقیم بک‌اسلش‌های غیرمعتبر
-    cleaned_regex = preprocess_latex_json(_TRAILING_COMMA_RE.sub(r"\1", text))
-    cleaned_regex = re.sub(r'(?<!\\)\\(?![\\"/bfnrtu])', r"\\\\", cleaned_regex)
-    try:
-        return restore_latex_commands(json.loads(cleaned_regex))
-    except Exception:
-        pass
-
-    # تلاش ۳: تبدیل تمام بک‌اسلش‌ها به دو بک‌اسلش با حفظ گیومه‌های escapeشده
-    cleaned2 = _TRAILING_COMMA_RE.sub(r"\1", text).replace("\\", "\\\\")
-    cleaned2 = re.sub(r'\\\\"', r'\"', cleaned2)
-    return restore_latex_commands(json.loads(cleaned2))
+    """نام مستعار سازگار برای پارس امن JSON حاوی دستورات LaTeX."""
+    return sanitize_json_string(raw_text)
 
 
 def _balanced_objects(text: str) -> list[str]:
@@ -209,14 +154,14 @@ def _balanced_objects(text: str) -> list[str]:
             if depth > 0:
                 depth -= 1
                 if depth == 0 and start is not None:
-                    spans.append(text[start: i + 1])
+                    spans.append(text[start : i + 1])
                     start = None
     return spans
 
 
 def _try_dict(candidate: str) -> Optional[dict[str, Any]]:
     try:
-        obj = safe_parse_json(candidate)
+        obj = sanitize_json_string(candidate)
     except Exception:
         return None
     return obj if isinstance(obj, dict) else None
@@ -228,36 +173,33 @@ def extract_json_object(text: str) -> Optional[dict[str, Any]]:
         return None
 
     base = text.strip().lstrip("\ufeff")
-    sanitized = sanitize_json_string(base)
+    obj = _try_dict(base)
+    if isinstance(obj, dict):
+        return obj
 
-    for cand in (sanitized, base):
-        obj = _try_dict(cand)
-        if obj is not None:
+    m = _GREEDY_OBJ_RE.search(base)
+    if m:
+        obj = _try_dict(m.group(0))
+        if isinstance(obj, dict):
             return obj
-        m = _GREEDY_OBJ_RE.search(cand)
-        if m:
-            obj = _try_dict(m.group(0))
-            if obj is not None:
-                return obj
 
-    spans = _balanced_objects(sanitized) or _balanced_objects(base)
-    for span in sorted(set(spans), key=len, reverse=True)[:6]:
+    for span in sorted(set(_balanced_objects(base)), key=len, reverse=True)[:6]:
         obj = _try_dict(span)
-        if obj is not None:
+        if isinstance(obj, dict):
             return obj
     return None
 
 
 def extract_json_array(text: str) -> list[Any]:
     """استخراج آرایهٔ JSON از خروجی مدل (با پشتیبانی از LaTeX و شیءِ حاوی کلید questions)."""
-    parsed = safe_parse_json(text)
+    parsed = sanitize_json_string(text)
     if isinstance(parsed, list):
         return parsed
     if isinstance(parsed, dict) and isinstance(parsed.get("questions"), list):
         return parsed["questions"]
     m = _GREEDY_ARR_RE.search(text or "")
     if m:
-        arr = safe_parse_json(m.group(0))
+        arr = sanitize_json_string(m.group(0))
         if isinstance(arr, list):
             return arr
     raise ValueError("خروجی مدل آرایهٔ JSON معتبری نیست.")

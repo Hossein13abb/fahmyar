@@ -88,7 +88,7 @@ SYSTEM_SYLLABUS_WARNING = (
 
 JSON_LATEX_ESCAPING_RULE = (
     r"CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. "
-    r"Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash. "
+    r"Write \\begin{bmatrix}, \\frac, \\sqrt, \\theta, \\vec. Never use a single backslash for LaTeX commands, and NEVER escape the $ delimiter itself (write $ ... $, not \$). "
     r"For example, write \\begin{bmatrix} instead of \begin{bmatrix}, write \\frac{a}{b} instead of \frac{a}{b}, "
     r"and write \\cdot instead of \cdot. Failure to do this breaks JSON syntax."
 )

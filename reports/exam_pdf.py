@@ -131,45 +131,26 @@ def to_persian_numbers(text: Any) -> str:
 
 
 def latex_to_persian_text(text: Any) -> str:
-    r"""پیش‌پردازندهٔ کامل تبدیل دستورات LaTeX به متن فارسیِ تمیز پیش از ارسال به arabic_reshaper و bidi.
+    r"""پیش‌پردازندهٔ کامل تبدیل دستورات LaTeX (با یا بدون بک‌اسلش) به متن فارسیِ تمیز پیش از ارسال به PDF.
 
-    جلوگیری از وارونه‌شدن دستورات LaTeX (مانند `\vec{a}` یا `30^\circ`) توسط الگوریتم دوجهته (BiDi):
-    1. درجه: `30^\circ` یا `\circ` -> `۳۰ درجه`
-    2. بردار: `\vec{a}` -> `بردار a`
-    3. کسر: `\frac{a}{b}` -> `(a / b)`
-    4. رادیکال: `\sqrt{x}` -> `رادیکال(x)`
-    5. ماتریس: `\begin{bmatrix} a & b \\ c & d \end{bmatrix}` -> `[ a , b | c , d ]`
-    6. حذف `$` و تگ‌های ناشناختهٔ LaTeX و تبدیل ارقام به فارسی.
+    - حذف نویز علامت‌های دلار (`$\$`, `$$$`, `$$`, `$`)
+    - تبدیل درجه: `45^\circ` یا `45\circ` یا `45circ` -> `۴۵ درجه`
+    - تبدیل رادیکال: `\sqrt{7}` یا `sqrt{7}` -> `رادیکال(۷)`
+    - تبدیل بردار: `\vec{a}` یا `vec{a}` -> `بردار a`
+    - تبدیل کسر: `\frac{a}{b}` یا `frac{a}{b}` -> `(a / b)`
+    - تبدیل `\cos^{-1}` / `cos^{-1}` -> `کسینوس وارون` و `\theta` / `theta` -> `زاویه تتا`
+    - تبدیل ماتریس به `[ a , b | c , d ]` و ارقام به فارسی.
     """
-    if text is None:
-        return ""
-    s = str(text)
-    if not s:
+    if not text:
         return ""
 
-    # احیای کاراکترهای کنترلی احتمالی (\b و \f)
+    s = str(text)
     s = s.replace("\x08", "\\b").replace("\x0c", "\\f")
 
-    # 1. Degrees: 30^\circ or 30^{\circ} or \degree -> ۳۰ درجه
-    s = re.sub(r"([\d۰-۹]+)\s*\^?\s*\{?\s*\\+(?:circ|degree)\s*\}?", r"\1 درجه", s)
-    s = re.sub(r"\^?\s*\{?\s*\\+(?:circ|degree)\s*\}?", " درجه", s)
+    # Remove weird dollar noise
+    s = re.sub(r"\$\\+\$|\$\\\$|\$\$\$|\$\$|\\+\$|\$", " ", s)
 
-    # 2. Vectors: \vec{a} or \vec{b} or \overrightarrow{AB} -> بردار a
-    s = re.sub(r"\\+(?:vec|overrightarrow)\s*\{([a-zA-Z])\}", r"بردار \1", s)
-    s = re.sub(r"\\+(?:vec|overrightarrow)\s*\{([^}]+)\}", r"بردار \1", s)
-
-    # 3. Fractions: \frac{a}{b} -> (a / b) (با پشتیبانی از کسرهای تودرتو)
-    for _ in range(4):
-        next_s = re.sub(r"\\+(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"(\1 / \2)", s)
-        if next_s == s:
-            break
-        s = next_s
-
-    # 4. Square Roots: \sqrt{x} -> رادیکال(x)
-    s = re.sub(r"\\+sqrt\s*\[([^\[\]]+)\]\s*\{([^}]+)\}", r"رادیکال[\1](\2)", s)
-    s = re.sub(r"\\+sqrt\s*\{([^}]+)\}", r"رادیکال(\1)", s)
-
-    # 5. Matrices: \begin{bmatrix} a & b \\ c & d \end{bmatrix} -> [ a , b | c , d ]
+    # Matrices: \begin{bmatrix} a & b \\ c & d \end{bmatrix} -> [ a , b | c , d ]
     def clean_matrix(match: re.Match) -> str:
         content = match.group(1)
         content = content.replace("\\\\", " | ").replace("&", " , ")
@@ -183,7 +164,31 @@ def latex_to_persian_text(text: Any) -> str:
         flags=re.DOTALL,
     )
 
-    # نمادهای رایج ریاضی پیش از حذف تگ‌های باقی‌مانده
+    # Replace degrees: 45^\circ or 45\circ or 45circ -> ۴۵ درجه
+    s = re.sub(r"([\d۰-۹]+)\s*\^?\s*\{?\s*\\?(?:circ|degree)\b\}?", r"\1 درجه", s)
+    s = re.sub(r"\^?\s*\{?\s*\\(?:circ|degree)\b\}?", " درجه", s)
+
+    # Replace sqrt: \sqrt{7} or sqrt{7} -> رادیکال(۷)
+    s = re.sub(r"\\?sqrt\s*\[([^\[\]]+)\]\s*\{([^}]+)\}", r"رادیکال[\1](\2)", s)
+    s = re.sub(r"\\?sqrt\s*\{([^}]+)\}", r"رادیکال(\1)", s)
+
+    # Replace vec: \vec{a} or vec{a} -> بردار a
+    s = re.sub(r"\\?(?:vec|overrightarrow)\s*\{([^}]+)\}", r"بردار \1", s)
+
+    # Replace frac: \frac{a}{b} or frac{a}{b} -> (a / b)
+    for _ in range(4):
+        next_s = re.sub(r"\\?(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"(\1 / \2)", s)
+        if next_s == s:
+            break
+        s = next_s
+
+    # Replace cos^-1 / sin^-1 / tan^-1 and theta
+    s = re.sub(r"\\?cos\s*\^\s*\{?\s*-[1۱]\s*\}?", "کسینوس وارون", s)
+    s = re.sub(r"\\?sin\s*\^\s*\{?\s*-[1۱]\s*\}?", "سینوس وارون", s)
+    s = re.sub(r"\\?tan\s*\^\s*\{?\s*-[1۱]\s*\}?", "تانژانت وارون", s)
+    s = re.sub(r"\\?theta\b", "زاویه تتا", s)
+
+    # Common operators
     s = re.sub(r"\\+times\b", "x", s)
     s = re.sub(r"\\+cdot\b", "·", s)
     s = re.sub(r"\\+div\b", "÷", s)
@@ -198,24 +203,17 @@ def latex_to_persian_text(text: Any) -> str:
     s = re.sub(r"\\+pi\b", "π", s)
     s = re.sub(r"\\+alpha\b", "آلفا", s)
     s = re.sub(r"\\+beta\b", "بتا", s)
-    s = re.sub(r"\\+theta\b", "تتا", s)
     s = re.sub(r"\\+Delta\b", "Δ", s)
     s = re.sub(r"\\+(?:left|right)\b", "", s)
     s = re.sub(r"\\+(?:text|textbf|mathrm|mathbf)\s*\{([^{}]*)\}", r"\1", s)
 
-    # در صورتی که ماتریس از قبل باز شده یا \\ و & باقی مانده باشد
     s = s.replace("\\\\", " | ").replace("&", " , ")
-
-    # 6. Remove inline math delimiters $ ... $
-    s = s.replace("\\$", "").replace("$", "")
-
-    # 7. Clean up remaining escaped backslashes or unknown latex tags
     s = re.sub(r"\\[a-zA-Z]+", "", s)
     s = s.replace("\\", "")
     s = re.sub(r"\^\{([^{}]+)\}", r"^\1", s)
     s = re.sub(r"_\{([^{}]+)\}", r"_\1", s)
 
-    # 8. Convert digits to Persian digits
+    # Convert digits to Persian
     persian_digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
     s = s.translate(persian_digits)
 

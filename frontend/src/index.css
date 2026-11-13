@@ -118,3 +118,7 @@ body {
   display: inline;
   margin: 0;
 }
+.math-text-container > p {
+  margin: 0;
+  display: inline;
+}

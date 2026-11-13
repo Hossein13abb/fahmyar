@@ -81,7 +81,7 @@ Examples of CORRECT formatting:
 - Matrices: `$$\begin{bmatrix} 2 & 1 \\ 1 & 3 \end{bmatrix}$$`
 Never output raw LaTeX commands outside of `$` or `$$` delimiters!
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
-CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash.
+CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\theta, \\vec. Never use a single backslash for LaTeX commands, and NEVER escape the $ delimiter itself (write $ ... $, not \$).
 CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):
 You MUST generate questions exclusively compliant with the updated Iranian 6-3-3 high school textbooks published AFTER 1397 (2018).
 
@@ -167,7 +167,7 @@ Examples of CORRECT formatting:
 - Matrices: `$$\begin{bmatrix} 2 & 1 \\ 1 & 3 \end{bmatrix}$$`
 Never output raw LaTeX commands outside of `$` or `$$` delimiters!
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
-CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash.
+CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\theta, \\vec. Never use a single backslash for LaTeX commands, and NEVER escape the $ delimiter itself (write $ ... $, not \$).
 CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):
 You MUST generate questions exclusively compliant with the updated Iranian 6-3-3 high school textbooks published AFTER 1397 (2018).
 

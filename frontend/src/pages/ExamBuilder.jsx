@@ -1220,7 +1220,7 @@ export default function ExamBuilder({ embedded = false }) {
                         </div>
                       </div>
                       <div className="math-content mt-3 text-[13px] font-bold leading-7 text-brand-950">
-                        <MathText content={q.text || q.question_text || q.title || ''} />
+                        <MathText content={q.text || q.question_text || q.title || ''} className="text-slate-800 text-base" />
                       </div>
                       {q.diagram_svg && (
                         <figure className="mt-3 overflow-hidden rounded-2xl border border-teal-200/70 bg-white p-3 shadow-inner">
@@ -1246,7 +1246,7 @@ export default function ExamBuilder({ embedded = false }) {
                                 {fmtFa(oi + 1)}
                               </span>
                               <div className="math-inline min-w-0 flex-1">
-                                <MathText content={opt || ''} />
+                                <MathText content={opt || ''} className="text-slate-700 text-sm" />
                               </div>
                               {correct && <Check className="mr-auto h-4 w-4 shrink-0 self-center text-emerald-600" />}
                             </li>

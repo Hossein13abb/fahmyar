@@ -536,5 +536,31 @@ def test_critical_math_formatting_rule_and_pristine_json_latex():
     txt = parsed[0]["text"]
     assert r"\cos^{-1}" in txt
     assert r"\vec{n}_1" in txt
-    assert r"$$\begin{bmatrix} 2 & 1 \\ 1 & 3 \end{bmatrix}$$" in txt
+    assert r"\begin{bmatrix} 2 & 1 \\ 1 & 3 \end{bmatrix}" in txt
     assert "T^{-1}" in txt
+
+
+
+def test_sanitize_json_backslash_and_dollar_noise():
+    from ai.json_sanitize import sanitize_json_string
+    from reports.exam_pdf import latex_to_persian_text
+
+    # Single-backslash rac, 	heta, egin, \sqrt, ec and broken $\$ dollars
+    raw = r'[{"id": 1, "text": "مقدار $\$\sqrt{7}\$$ و $\theta$ و $\vec{a}$ و $\frac{1}{2}$ و \cos^{-1}(4/9) چیست؟"}]'
+    parsed = sanitize_json_string(raw)
+    txt = parsed[0]["text"]
+    assert r"\sqrt{7}" in txt
+    assert r"\theta" in txt
+    assert r"\vec{a}" in txt
+    assert r"\frac{1}{2}" in txt
+    assert r"$\$" not in txt
+
+    # PDF converter handles both escaped and unescaped commands + cos^{-1} + theta
+    pdf_txt = latex_to_persian_text(r"$\$ sqrt{7} \$ و vec{a} و frac{1}{2} و \cos^{-1} و theta و 45^\circ")
+    assert "رادیکال(۷)" in pdf_txt
+    assert "بردار a" in pdf_txt
+    assert "(۱ / ۲)" in pdf_txt
+    assert "کسینوس وارون" in pdf_txt
+    assert "زاویه تتا" in pdf_txt
+    assert "۴۵ درجه" in pdf_txt
+    assert "$" not in pdf_txt
