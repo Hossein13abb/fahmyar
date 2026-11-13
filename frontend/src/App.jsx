@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
-import Home from './pages/Home'
+import LandingPage from './pages/LandingPage'
 import StudentDashboard from './pages/StudentDashboard'
 import ExamRoom from './pages/ExamRoom'
 import ReportView from './pages/ReportView'
@@ -46,15 +46,17 @@ function Landing() {
   const { isAuthenticated, user, booting } = useAuth()
   if (booting) return <LoadingSpinner label="در حال آماده‌سازی نشست شما…" />
   if (isAuthenticated) return <Navigate to={homeFor(user)} replace />
-  return <Home />
+  return <LandingPage />
 }
 
 export default function App() {
   const { user } = useAuth()
+  const location = useLocation()
+  const isLanding = location.pathname === '/'
   return (
     <div className="flex min-h-full flex-col">
       <Navbar />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
+      <main className={isLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8'}>
         <Routes>
           <Route path="/" element={<Landing />} />
 
