@@ -42,7 +42,7 @@ class BuildExamRequest(BaseModel):
 def build_exam(
     body: BuildExamRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     exam_sections: list[dict[str, Any]] = []
     warnings: list[str] = []

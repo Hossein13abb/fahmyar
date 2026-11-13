@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
@@ -6,12 +6,25 @@ import Login from './pages/Login'
 import StudentDashboard from './pages/StudentDashboard'
 import ExamRoom from './pages/ExamRoom'
 import ReportView from './pages/ReportView'
-import TeacherDashboard from './pages/TeacherDashboard'
 import SchoolStaffDashboard from './pages/SchoolStaffDashboard'
 import LoadingSpinner from './components/LoadingSpinner'
 
+// نقش‌های کادر مدرسه — هرکدام مستقیماً به SchoolStaffDashboard هدایت می‌شوند
+const STAFF_ROLES = ['teacher', 'admin', 'school_staff']
+
 function homeFor(user) {
   return user?.role === 'student' ? '/dashboard' : '/staff'
+}
+
+/** کارنامهٔ کیفی یک دانش‌آموز (کادر مدرسه) — «بازگشت به داشبورد مدرسه» همیشه به تب ۲ برمی‌گردد */
+function StaffReport() {
+  const navigate = useNavigate()
+  return (
+    <ReportView
+      mode="teacher"
+      onBackToDashboard={() => navigate('/staff', { state: { tab: 'results' } })}
+    />
+  )
 }
 
 function RequireAuth({ roles }) {
@@ -56,12 +69,13 @@ export default function App() {
             <Route path="/report/:sessionId" element={<ReportView mode="student" />} />
           </Route>
 
-          <Route element={<RequireAuth roles={['teacher', 'admin']} />}>
+          <Route element={<RequireAuth roles={STAFF_ROLES} />}>
             <Route path="/staff" element={<SchoolStaffDashboard />} />
-            {/* مسیر قدیمی — برای سازگاری به داشبورد جدید هدایت می‌شود */}
+            <Route path="/staff/report/:studentId/:sessionId" element={<StaffReport />} />
+            {/* مسیرهای قدیمی — برای سازگاری به داشبورد جدید هدایت می‌شوند */}
             <Route path="/builder" element={<Navigate to="/staff" replace />} />
-            <Route path="/teacher" element={<TeacherDashboard />} />
-            <Route path="/teacher/report/:studentId/:sessionId" element={<ReportView mode="teacher" />} />
+            <Route path="/teacher" element={<Navigate to="/staff" replace />} />
+            <Route path="/teacher/report/:studentId/:sessionId" element={<Navigate to="/staff" replace />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

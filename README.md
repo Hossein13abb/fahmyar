@@ -47,6 +47,7 @@ python -m uvicorn main:app --reload
 | دانش‌آموز | `student2` | `student123` | پایهٔ ۱۰، ریاضی |
 | معلم | `teacher1` | `teacher123` | دسترسی به گزارش‌ها و تصویبِ سؤالات |
 | مدیر | `admin` | `admin123` | دسترسی کامل |
+| کادر مدرسه | `school_staff1` | `school_staff123` | ورود به داشبورد یکپارچهٔ کادر مدرسه |
 
 ---
 

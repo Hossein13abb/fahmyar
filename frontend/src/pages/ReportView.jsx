@@ -210,9 +210,11 @@ const rawStudentAnswer = (text) => {
   return s
 }
 
-function ExamReport({ report, mode }) {
+function ExamReport({ report, mode, onBackToDashboard }) {
 
   const navigate = useNavigate()
+  const handleBack = onBackToDashboard ?? (() => navigate(mode === 'teacher' ? '/staff' : '/dashboard'))
+  const backLabel = mode === 'teacher' ? 'بازگشت به داشبورد مدرسه' : 'بازگشت به داشبورد'
   const dimensions = report.dimensions ?? []
   const perQuestion = report.per_question ?? []
   const rootCauses = report.root_causes ?? []
@@ -242,11 +244,11 @@ function ExamReport({ report, mode }) {
             چاپ / دانلود گزارش
           </button>
           <button
-            onClick={() => navigate(mode === 'teacher' ? '/teacher' : '/dashboard')}
+            onClick={handleBack}
             className="flex items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-white px-5 py-3 text-[13px] font-bold text-brand-800 transition hover:bg-brand-50"
           >
             <ArrowRight className="h-5 w-5" />
-            {mode === 'teacher' ? 'بازگشت به پنل معلم' : 'بازگشت به داشبورد'}
+            {backLabel}
           </button>
         </div>
       </section>
@@ -371,9 +373,11 @@ function ExamReport({ report, mode }) {
   )
 }
 
-export default function ReportView({ mode = 'student' }) {
+export default function ReportView({ mode = 'student', onBackToDashboard }) {
   const { sessionId, studentId } = useParams()
   const navigate = useNavigate()
+  const handleBack = onBackToDashboard ?? (() => navigate(mode === 'teacher' ? '/staff' : '/dashboard'))
+  const backLabel = mode === 'teacher' ? 'بازگشت به داشبورد مدرسه' : 'بازگشت به داشبورد'
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -401,15 +405,15 @@ export default function ReportView({ mode = 'student' }) {
       <div className="card mx-auto max-w-lg p-8 text-center">
         <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
         <p className="mt-2 font-bold text-amber-900">{error}</p>
-        <button onClick={() => navigate(-1)} className="mt-4 rounded-2xl border border-brand-200 px-5 py-2.5 font-bold text-brand-800 hover:bg-brand-50">
-          بازگشت
+        <button onClick={handleBack} className="mt-4 rounded-2xl border border-brand-200 px-5 py-2.5 font-bold text-brand-800 hover:bg-brand-50">
+          {backLabel}
         </button>
       </div>
     )
   }
 
   if (report?.exam) {
-    return <ExamReport report={report} mode={mode} />
+    return <ExamReport report={report} mode={mode} onBackToDashboard={onBackToDashboard} />
   }
 
   const s = report.sections ?? {}
@@ -444,11 +448,11 @@ export default function ReportView({ mode = 'student' }) {
             چاپ / دانلود گزارش
           </button>
           <button
-            onClick={() => navigate(mode === 'teacher' ? '/teacher' : '/dashboard')}
+            onClick={handleBack}
             className="flex items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-white px-5 py-3 text-[13px] font-bold text-brand-800 transition hover:bg-brand-50"
           >
             <ArrowRight className="h-5 w-5" />
-            {mode === 'teacher' ? 'بازگشت به پنل معلم' : 'بازگشت به داشبورد'}
+            {backLabel}
           </button>
         </div>
       </section>

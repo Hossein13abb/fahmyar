@@ -81,7 +81,7 @@ export default function Login({ portal }) {
 
   const [mode, setMode] = useState('login') // login | register
   // درگاه کادر مدرسه فقط حساب admin را می‌پذیرد؛ درگاه دانش‌آموز فقط حساب student را
-  const role = isStaff ? 'admin' : 'student'
+  const role = isStaff ? 'school_staff' : 'student'
   const activeMode = isStaff ? 'login' : mode
   const [showPassword, setShowPassword] = useState(false)
   const [form, setForm] = useState({
@@ -114,7 +114,7 @@ export default function Login({ portal }) {
           >
             <span className="inline-flex rounded-2xl bg-white/10 p-3 ring-1 ring-white/15"><School className="h-7 w-7 text-amber-200" /></span>
             <span className="mt-4 block text-lg font-black text-white">ورود کادر مدرسه</span>
-            <span className="mt-1 block text-[11px] font-bold text-amber-200/90">فقط حساب مدیر مدرسه (admin) مجاز است</span>
+            <span className="mt-1 block text-[11px] font-bold text-amber-200/90">ورود کادر مدرسه: دبیر · مدیر · کادر مدرسه</span>
             <span className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-amber-300 px-4 py-2.5 text-[12px] font-black text-brand-950 transition group-hover:bg-amber-200">ادامه به درگاه کادر مدرسه <ArrowLeft className="h-4 w-4" /></span>
           </Link>
           <Link
@@ -128,7 +128,7 @@ export default function Login({ portal }) {
           </Link>
         </div>
         <p className="mx-auto mt-6 text-[11px] leading-6 text-slate-400">
-          حساب دمو — مدیر مدرسه: <code className="rounded bg-slate-100 px-1.5 py-0.5">admin / admin123</code> · دانش‌آموز: <code className="rounded bg-slate-100 px-1.5 py-0.5">student1 / student123</code>
+          حساب دمو — مدیر: <code className="rounded bg-slate-100 px-1.5 py-0.5">admin / admin123</code> · دبیر: <code className="rounded bg-slate-100 px-1.5 py-0.5">teacher1 / teacher123</code> · کادر مدرسه: <code className="rounded bg-slate-100 px-1.5 py-0.5">school_staff1 / school_staff123</code> · دانش‌آموز: <code className="rounded bg-slate-100 px-1.5 py-0.5">student1 / student123</code>
         </p>
       </div>
     )
@@ -163,11 +163,12 @@ export default function Login({ portal }) {
         loggedUser = await register(payload)
       }
       // ── دیوار آتش بین دو درگاه ──
-      const allowed = isStaff ? loggedUser.role === 'admin' : loggedUser.role === 'student'
+      const STAFF_ROLES = ['teacher', 'admin', 'school_staff']
+      const allowed = isStaff ? STAFF_ROLES.includes(loggedUser.role) : loggedUser.role === 'student'
       if (!allowed) {
         logout()
         setError(isStaff
-          ? 'این حساب دسترسی کادر مدرسه ندارد؛ این درگاه فقط برای حساب مدیر مدرسه (admin) است.'
+          ? 'این حساب دسترسی کادر مدرسه ندارد؛ این درگاه فقط برای حساب‌های کادر مدرسه (دبیر / مدیر / کادر مدرسه) است.'
           : 'این حساب با درگاه دانش‌آموز سازگار نیست؛ لطفاً از درگاه کادر مدرسه وارد شوید.')
         setLoading(false)
         return

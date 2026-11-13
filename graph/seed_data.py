@@ -688,6 +688,7 @@ _DEMO_USERS = [
     dict(username="student2", password="student123", role="student", grade=10, major="math", full_name="دانش‌آموز دوم"),
     dict(username="teacher1", password="teacher123", role="teacher", grade=None, major=None, full_name="دبیر نمونه"),
     dict(username="admin", password="admin123", role="admin", grade=None, major=None, full_name="مدیر سیستم"),
+    dict(username="school_staff1", password="school_staff123", role="school_staff", grade=None, major=None, full_name="کادر مدرسه (نمونه)"),
 ]
 
 

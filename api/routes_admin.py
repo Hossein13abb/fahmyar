@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api/teacher", tags=["teacher"])
 @router.get("/overview")
 def overview(
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     from sqlalchemy import func
 
@@ -53,7 +53,7 @@ def overview(
 def student_reports(
     student_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     student = db.query(User).filter(User.id == student_id, User.role == "student").first()
     if student is None:
@@ -91,7 +91,7 @@ def student_report_detail(
     student_id: int,
     session_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     session = (
         db.query(AssessmentSession)
@@ -119,7 +119,7 @@ def student_report_detail(
 def list_students(
     grade: Optional[int] = Query(default=None, ge=1, le=12),
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     q = db.query(User).filter(User.role == "student")
     if grade is not None:
@@ -132,7 +132,7 @@ def list_students(
 def pending_questions(
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     pending = (
         db.query(Question)
@@ -148,7 +148,7 @@ def pending_questions(
 def approve_question(
     question_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     question = db.query(Question).filter(Question.id == question_id).first()
     if question is None:
@@ -164,7 +164,7 @@ def approve_question(
 def reject_question(
     question_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     question = db.query(Question).filter(Question.id == question_id).first()
     if question is None:
@@ -178,7 +178,7 @@ def reject_question(
 def concept_detail(
     concept_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     concept = db.query(Concept).filter(Concept.id == concept_id).first()
     if concept is None:
@@ -254,7 +254,7 @@ def _needs_teacher_review(session: AssessmentSession) -> bool:
 @router.get("/student-results")
 def student_results(
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     """فهرست واقعی دانش‌آموزان + آخرین آزمونِ ثبت‌شدهٔ هر کدام + وضعیت درک (ECD)."""
     students = db.query(User).filter(User.role == "student").order_by(User.grade, User.id).all()
@@ -445,7 +445,7 @@ def _validate_preview_questions(data) -> list[dict]:
 @router.post("/generate-exam-preview")
 async def generate_exam_preview(
     payload: GenerateExamPreviewRequest,
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     subjects = SUBJECT_SLUGS[payload.field]
     if payload.subject not in subjects:
@@ -530,7 +530,7 @@ class GenerateExamPdfRequest(BaseModel):
 @router.post("/generate-exam-pdf")
 def generate_exam_pdf(
     payload: GenerateExamPdfRequest,
-    user: User = Depends(require_roles("teacher", "admin")),
+    user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
     """PDF نهایی کنکوری از لیستِ تأییدشدهٔ سؤال‌ها — تگِ منبع مطلقاً چاپ نمی‌شود."""
     school_name = (payload.school_name or "").strip() or "مدرسهٔ نمونه"

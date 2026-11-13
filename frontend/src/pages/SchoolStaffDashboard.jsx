@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   School,
   LogOut,
@@ -40,14 +40,18 @@ const AVATAR_GRAD = [
 const fmtFaName = (full) => full.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('‌')
 
 const TABS = [
-  { key: 'results', label: 'نتایج دانش‌آموزان', Icon: Users },
-  { key: 'builder', label: 'طراحی آزمون', Icon: ClipboardEdit },
+  { key: 'builder', label: 'طراحی آزمون کنکوری', Icon: ClipboardEdit },
+  { key: 'results', label: 'نتایج و گزارش‌های دانش‌آموزان', Icon: Users },
 ]
 
 export default function SchoolStaffDashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [tab, setTab] = useState('results')
+  const location = useLocation()
+  // اگر کاربر از صفحهٔ کارنامه («بازگشت به داشبورد مدرسه») برگشته باشد، مستقیماً به تب ۲ می‌رود
+  const [tab, setTab] = useState(() =>
+    location.state?.tab === 'results' || location.state?.tab === 'builder' ? location.state.tab : 'builder',
+  )
   const [rows, setRows] = useState([])
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -98,7 +102,7 @@ export default function SchoolStaffDashboard() {
           <div>
             <p className="text-[13px] font-black text-slate-800">پنل کادر مدرسه</p>
             <p className="text-[10px] font-medium text-slate-400">
-              {user?.full_name || user?.username} · {user?.role === 'admin' ? 'مدیر مدرسه' : 'دبیر'}
+              {user?.full_name || user?.username} · {user?.role === 'admin' ? 'مدیر مدرسه' : user?.role === 'school_staff' ? 'کادر مدرسه' : 'دبیر'}
             </p>
           </div>
         </div>
@@ -255,7 +259,7 @@ export default function SchoolStaffDashboard() {
                           {row.last_session_id ? (
                             <button
                               type="button"
-                              onClick={() => navigate(`/teacher/report/${row.student.id}/${row.last_session_id}`)}
+                              onClick={() => navigate(`/staff/report/${row.student.id}/${row.last_session_id}`)}
                               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-1.5 text-[10px] font-black text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100"
                             >
                               <ScrollText className="h-3.5 w-3.5" />

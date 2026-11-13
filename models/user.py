@@ -8,7 +8,8 @@ from models.database import Base
 ROLE_STUDENT = "student"
 ROLE_TEACHER = "teacher"
 ROLE_ADMIN = "admin"
-VALID_ROLES = {ROLE_STUDENT, ROLE_TEACHER, ROLE_ADMIN}
+ROLE_SCHOOL_STAFF = "school_staff"
+VALID_ROLES = {ROLE_STUDENT, ROLE_TEACHER, ROLE_ADMIN, ROLE_SCHOOL_STAFF}
 VALID_MAJORS = {"math", "experimental", "general"}
 
 
@@ -19,7 +20,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(64), nullable=False, index=True)
     password_hash = Column(String(256), nullable=False)
-    role = Column(String(20), nullable=False, default=ROLE_STUDENT)  # student | teacher | admin
+    role = Column(String(20), nullable=False, default=ROLE_STUDENT)  # student | teacher | admin | school_staff
     grade = Column(Integer, nullable=True)  # 10 | 11 | 12 (برای دانش‌آموزان)
     major = Column(String(20), nullable=True)  # math | experimental | general
     full_name = Column(String(200), default="")

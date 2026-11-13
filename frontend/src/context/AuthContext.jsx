@@ -62,7 +62,7 @@ export function AuthProvider({ children }) {
       token,
       booting,
       isAuthenticated: Boolean(token && user),
-      isTeacher: user?.role === 'teacher' || user?.role === 'admin',
+      isTeacher: user?.role === 'teacher' || user?.role === 'admin' || user?.role === 'school_staff',
       login,
       register,
       logout,
