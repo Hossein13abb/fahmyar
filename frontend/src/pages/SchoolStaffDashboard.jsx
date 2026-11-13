@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   School,
-  LogOut,
   Users,
   ClipboardEdit,
   ClipboardCheck,
@@ -46,7 +45,7 @@ const TABS = [
 ]
 
 export default function SchoolStaffDashboard() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   // اگر کاربر از صفحهٔ کارنامه («بازگشت به داشبورد مدرسه») برگشته باشد، مستقیماً به تب ۲ می‌رود
@@ -93,11 +92,6 @@ export default function SchoolStaffDashboard() {
       ]
     : []
 
-  const handleLogout = () => {
-    logout()
-    navigate('/', { replace: true })
-  }
-
   return (
     <div className="animate-fade-up space-y-5">
       {/* ── هدر داشبورد کادر مدرسه ── */}
@@ -113,14 +107,6 @@ export default function SchoolStaffDashboard() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-[12px] font-bold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-        >
-          <LogOut className="h-4 w-4" />
-          خروج از حساب
-        </button>
       </header>
 
       {/* ── تب‌های داشبورد ── */}

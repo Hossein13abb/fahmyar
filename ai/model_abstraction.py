@@ -478,6 +478,22 @@ def _extract_marker(prompt: str, tag: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+_SUBJECT_LABELS = {
+    "math": "ریاضی",
+    "calculus": "حسابان",
+    "geometry": "هندسه",
+    "discrete": "گسسته",
+    "statistics": "آمار و احتمال",
+    "physics": "فیزیک",
+    "chemistry": "شیمی",
+    "biology": "زیست‌شناسی",
+}
+
+
+def _subject_label(slug: str) -> str:
+    return _SUBJECT_LABELS.get(slug, slug)
+
+
 class MockProvider(AIProvider):
     name = "mock"
 
@@ -512,6 +528,20 @@ class MockProvider(AIProvider):
 
     # --- قالب‌های قطعی: پیش‌نمایش چهارگزینه‌ای کنکوری ---
     _KONKUR_BANK = {
+        "statistics": [
+            {"text": "از ۵ نفر به‌تصادف ۲ نفر برای گروه انتخاب می‌کنیم. چند انتخاب ممکن است؟",
+             "options": ["۸", "۱۰", "۱۶", "۲۰"], "correct_answer": 2,
+             "explanation": "تعداد انتخاب‌های ۲ نفر از ۵ نفر برابرِ ترکیب ۲ از ۵ است که می‌شود ۱۰."},
+            {"text": "میانگینِ سه عدد ۴، ۷ و ۱۰ چیست؟",
+             "options": ["۶", "۷", "۸", "۲۱"], "correct_answer": 2,
+             "explanation": "میانگین برابر است با مجموعِ اعداد تقسیم بر تعدادشان: ۲۱ تقسیم بر ۳ = ۷."},
+            {"text": "احتمالِ آمدنِ عدد زوج در پرتاب یک تاس سالم چیست؟",
+             "options": ["یک‌ششم", "یک‌سوم", "یک‌دوم", "دوسوم"], "correct_answer": 3,
+             "explanation": "سه حالت مطلوب (۲، ۴ و ۶) از شش حالت کل — احتمالِ یک‌دوم."},
+            {"text": "واریانسِ مجموعه‌دادهٔ {۲، ۴، ۴، ۴، ۵، ۵، ۷، ۹} چیست؟",
+             "options": ["۲", "۴", "۶", "۸"], "correct_answer": 2,
+             "explanation": "میانگین این داده‌ها ۵ است و میانگینِ توانِ دومِ انحراف‌ها برابرِ ۴ می‌شود؛ پس واریانس ۴ است."},
+        ],
         "physics": [
             {"text": "بارِ نقطهای +Q در نقطهٔ A میدانِ E ایجاد کرده است. اگر فاصلهٔ A تا بار، دو برابر شود، بزرگیِ میدان در A چگونه تغییر می‌کند؟",
              "options": ["همان E باقی می‌ماند", "نصف می‌شود", "یک‌چهارم می‌شود", "دو برابر می‌شود"], "correct_answer": 3,
@@ -634,20 +664,25 @@ class MockProvider(AIProvider):
     }
 
     def _mock_konkur_preview(self, prompt: str) -> str:
-        subject = _extract_marker(prompt, "SUBJECT") or "physics"
-        topic = _extract_marker(prompt, "TOPIC") or "مبحث کلی"
+        subjects_raw = _extract_marker(prompt, "SUBJECTS") or _extract_marker(prompt, "SUBJECT") or "physics"
+        subjects = [part.strip() for part in re.split(r"[،,]", subjects_raw) if part.strip()] or ["physics"]
+        topic = (_extract_marker(prompt, "TOPIC") or "").strip()
         try:
             count = max(1, min(20, int(_extract_marker(prompt, "COUNT") or "5")))
         except ValueError:
             count = 5
         difficulty = _extract_marker(prompt, "DIFFICULTY") or "متوسط"
         custom = _extract_marker(prompt, "CUSTOM")
-        bank = self._KONKUR_BANK.get(subject) or self._KONKUR_BANK["physics"]
         tags = ["کنکور ۱۴۰۲", "قلم‌چی", "تألیفی AI"]
         items = []
         for i in range(count):
-            base = bank[i % len(bank)]
+            # تقسیم متوازن سؤالات بین دروس انتخابی (round-robin)
+            slug = subjects[i % len(subjects)]
+            bank = self._KONKUR_BANK.get(slug) or self._KONKUR_BANK["physics"]
+            base = bank[(i // len(subjects)) % len(bank)]
             text = base["text"]
+            if topic and topic != "—":
+                text = f"{text}"
             if custom:
                 text = f"{text}"
             items.append({
@@ -657,6 +692,7 @@ class MockProvider(AIProvider):
                 "correct_answer": int(base["correct_answer"]),
                 "source_tag": tags[i % len(tags)],
                 "explanation": base["explanation"],
+                "subject": _subject_label(slug),
             })
         return json.dumps(items, ensure_ascii=False)
 

@@ -277,20 +277,21 @@ def student_results(
 # آزمون‌ساز کنکوری — پیش‌نمایش چهارگزینه‌ای (AI) + PDF نهایی از لیست تأییدشده
 # ─────────────────────────────────────────────────────────────────────────────
 
+_EXPERIMENTAL_SUBJECTS = {
+    "biology": "زیست‌شناسی",
+    "math": "ریاضیات",
+    "physics": "فیزیک",
+    "chemistry": "شیمی",
+}
+
 SUBJECT_SLUGS = {
     "math": {
-        "calculus": "حسابان",
-        "geometry": "هندسه",
-        "discrete": "گسسته",
-        "physics": "فیزیک",
-        "chemistry": "شیمی",
+        "10": {"math": "ریاضی", "geometry": "هندسه", "physics": "فیزیک", "chemistry": "شیمی"},
+        "11": {"calculus": "حسابان", "geometry": "هندسه", "statistics": "آمار و احتمال", "physics": "فیزیک", "chemistry": "شیمی"},
+        "12": {"calculus": "حسابان", "geometry": "هندسه", "discrete": "گسسته", "physics": "فیزیک", "chemistry": "شیمی"},
+        "comprehensive": {"calculus": "حسابان", "geometry": "هندسه", "discrete": "گسسته", "physics": "فیزیک", "chemistry": "شیمی"},
     },
-    "tajrobi": {
-        "biology": "زیست‌شناسی",
-        "math": "ریاضیات",
-        "physics": "فیزیک",
-        "chemistry": "شیمی",
-    },
+    "tajrobi": {grade: dict(_EXPERIMENTAL_SUBJECTS) for grade in ("10", "11", "12", "comprehensive")},
 }
 
 FIELD_LABELS = {"math": "ریاضی و فیزیک", "tajrobi": "علوم تجربی"}
@@ -302,25 +303,30 @@ QUESTION_TYPE_LABELS = {
     "recall": "حفظی",
     "computational": "محاسباتی",
     "problem": "مسئله",
-    "mixed": "ترکیبی",
+    "mixed": "نامشخص / ترکیبی",
 }
 
 KONKUR_PREVIEW_PROMPT = """شما «مؤلف ارشد سؤالات کنکوری» در سامانهٔ فهم‌یار هستید.
 
 دستورات اکید:
-۱. دقیقاً COUNT سؤالِ چهارگزینه‌ایِ سطح‌کنکورِ سراسری (نه سطح مدرسه) در مبحث خواسته‌شده طراحی کن.
-۲. هر سؤال دقیقاً ۴ گزینه دارد و فقط یک گزینه درست است. گزینه‌های انحرافی باید «دام‌های» حلال باشند که بدفهمی‌های رایج همان مبحث را هدف بگیرند.
-۳. خروجی را فقط و فقط به صورت یک آرایهٔ JSON خالص برگردان؛ هیچ توضیح، مقدمه یا Markdown اضافه ننویس.
-۴. ساختار هر عنصر آرایه دقیقاً این است:
-   {{"id": 1, "text": "متن سؤال (فارسی)", "options": ["گزینهٔ ۱", "گزینهٔ ۲", "گزینهٔ ۳", "گزینهٔ ۴"], "correct_answer": 2, "source_tag": "تألیفی AI", "explanation": "یک خط استدلال کوتاه برای کلید"}}
+۱. دقیقاً COUNT سؤالِ چهارگزینه‌ایِ سطح‌کنکورِ سراسری (نه سطح مدرسه) طراحی کن.
+۲. سؤالات را به‌طور متوازن بین این درس‌ها تقسیم کن: {subjects_labels}.
+   - اگر COUNT بر تعداد درس‌ها بخش‌پذیر نبود، سؤال‌های باقی‌مانده را به ترتیب به درس‌های اول بده.
+   - هر سؤال باید «subject» داشته باشد و دقیقاً نام فارسیِ همان درسی باشد که سؤال از آن است.
+   - اگر «مبحث» مشخص شده باشد، سؤالاتِ هر درس را حول همان مبحث/موضوع بچین؛ اگر مبحث خالی باشد، از پُرتکرارترین و مهم‌ترین مطالبِ هر درس طرح کن و ترکیبی پوشش بده.
+۳. هر سؤال دقیقاً ۴ گزینه دارد و فقط یک گزینه درست است. گزینه‌های انحرافی باید «دام‌های» حلال باشند که بدفهمی‌های رایجِ همان مبحثِ همان درس را هدف بگیرند.
+۴. خروجی را فقط و فقط به صورت یک آرایهٔ JSON خالص برگردان؛ هیچ توضیح، مقدمه یا Markdown اضافه ننویس.
+۵. ساختار هر عنصر آرایه دقیقاً این است:
+   {{"id": 1, "text": "متن سؤال (فارسی)", "options": ["گزینهٔ ۱", "گزینهٔ ۲", "گزینهٔ ۳", "گزینهٔ ۴"], "correct_answer": 2, "subject": "فیزیک", "source_tag": "تألیفی AI", "explanation": "یک خط استدلال کوتاه برای کلید"}}
    - correct_answer شمارهٔ گزینهٔ درست است (از ۱ تا ۴).
+   - subject دقیقاً یکی از این نام‌ها باشد: {subjects_labels}.
    - source_tag یکی از این‌ها باشد: «کنکور ۱۴۰۱» تا «کنکور ۱۴۰۴»، «قلم‌چی»، «گاج»؛ اگر سؤالِ تألیفیِ خودت است دقیقاً «تألیفی AI» بگذار.
-۵. سطح سختی باید «{difficulty_label}» باشد و سبک سؤال‌ها متناسب با «{question_type_label}».
-۶. اگر «دستورالعمل سفارشی» کاربر چیزی خواست، آن را رعایت کن ولی ساختار JSON و چهارگزینه‌بودن حفظ شود.
+۶. سطح سختی باید «{difficulty_label}» باشد و سبک سؤال‌ها متناسب با «{question_type_label}». اگر سبک «نامشخص / ترکیبی» بود، سبک‌ها را عمداً ترکیبی از مفهومی/محاسباتی/مسئله‌ای/نموداری بچین.
+۷. اگر «دستورالعمل سفارشی» کاربر چیزی خواست، آن را رعایت کن ولی ساختار JSON و چهارگزینه‌بودن حفظ شود.
 
 <<<FIELD>>>{field_label}<<<END>>>
-<<<SUBJECT>>>{subject_slug}<<<END>>>
-<<<SUBJECT_LABEL>>>{subject_label}<<<END>>>
+<<<SUBJECTS>>>{subjects_slugs}<<<END>>>
+<<<SUBJECT_LABELS>>>{subjects_labels}<<<END>>>
 <<<GRADE>>>{grade_label}<<<END>>>
 <<<TOPIC>>>{topic}<<<END>>>
 <<<QUESTION_TYPE>>>{question_type_label}<<<END>>>
@@ -333,8 +339,8 @@ KONKUR_PREVIEW_PROMPT = """شما «مؤلف ارشد سؤالات کنکوری�
 class GenerateExamPreviewRequest(BaseModel):
     field: str = Field(pattern="^(math|tajrobi)$")
     grade: str = Field(pattern="^(10|11|12|comprehensive)$")
-    subject: str = Field(min_length=1, max_length=30)
-    topic: str = Field(min_length=1, max_length=140)
+    subjects: list[str] = Field(min_length=1, max_length=8)
+    topic: Optional[str] = Field(default=None, max_length=140)
     question_type: str = Field(pattern="^(conceptual|recall|computational|problem|mixed)$")
     difficulty: str = Field(pattern="^(easy|medium|hard|challenging)$")
     count: int = Field(default=10, ge=1, le=20)
@@ -373,6 +379,7 @@ def _validate_preview_questions(data) -> list[dict]:
             continue
         tag = str(item.get("source_tag") or "").strip()[:60] or "تألیفی AI"
         explanation = str(item.get("explanation") or "").strip()
+        subject_label = str(item.get("subject") or "").strip()[:40]
         clean.append(
             {
                 "id": len(clean) + 1,
@@ -381,6 +388,7 @@ def _validate_preview_questions(data) -> list[dict]:
                 "correct_answer": ca,
                 "source_tag": tag,
                 "explanation": explanation,
+                "subject": subject_label,
             }
         )
     return clean
@@ -391,10 +399,17 @@ async def generate_exam_preview(
     payload: GenerateExamPreviewRequest,
     user: User = Depends(require_roles("teacher", "admin", "school_staff")),
 ):
-    subjects = SUBJECT_SLUGS[payload.field]
-    if payload.subject not in subjects:
-        raise HTTPException(status_code=422, detail="درس انتخابی برای این رشته معتبر نیست.")
-    subject_label = subjects[payload.subject]
+    slug_map = SUBJECT_SLUGS[payload.field][payload.grade]
+    # حذف تکراری‌ها با حفظ ترتیب
+    requested = list(dict.fromkeys(payload.subjects))
+    invalid = [s_ for s_ in requested if s_ not in slug_map]
+    if invalid:
+        raise HTTPException(status_code=422, detail="درس انتخابی برای این رشته و پایه معتبر نیست.")
+    subject_labels = [slug_map[s_] for s_ in requested]
+    subjects_labels = "، ".join(subject_labels)
+    subject_label = subjects_labels  # برای سازگاری با خروجی‌های قبلی
+    subjects_slugs = "، ".join(requested)
+    topic_text = (payload.topic or "").strip()
     grade_fa = GRADE_LABELS[payload.grade]
     difficulty_label = DIFFICULTY_LABELS.get(payload.difficulty, payload.difficulty)
     qtype_label = QUESTION_TYPE_LABELS[payload.question_type]
@@ -402,10 +417,10 @@ async def generate_exam_preview(
     prompt = KONKUR_PREVIEW_PROMPT.format(
         count=payload.count,
         field_label=FIELD_LABELS[payload.field],
-        subject_slug=payload.subject,
-        subject_label=subject_label,
+        subjects_slugs=subjects_slugs,
+        subjects_labels=subjects_labels,
         grade_label=grade_fa,
-        topic=payload.topic.strip(),
+        topic=topic_text or "—",
         question_type_label=qtype_label,
         difficulty_label=difficulty_label,
         custom_prompt=(payload.custom_prompt or "").strip() or "—",
@@ -424,8 +439,8 @@ async def generate_exam_preview(
 
     if not questions:
         raise HTTPException(
-            status_code=502,
-            detail="مدل خروجی ساختارمند و معتبری نداد؛ لطفاً دوباره تلاش کنید یا دستورالعمل سفارشی را خلاصه‌تر بنویسید.",
+            status_code=400,
+            detail="مدل هوش مصنوعی پاسخ نامعتبری داد. لطفاً دوباره تلاش کنید",
         )
 
     return {
@@ -435,9 +450,10 @@ async def generate_exam_preview(
             "field_label": FIELD_LABELS[payload.field],
             "grade": payload.grade,
             "grade_label": grade_fa,
-            "subject": payload.subject,
+            "subjects": requested,
+            "subjects_labels": subject_labels,
             "subject_label": subject_label,
-            "topic": payload.topic.strip(),
+            "topic": topic_text,
             "question_type": payload.question_type,
             "question_type_label": qtype_label,
             "difficulty": payload.difficulty,
@@ -464,7 +480,7 @@ class GenerateExamPdfRequest(BaseModel):
     school_name: str = Field(default="مدرسهٔ نمونه", max_length=140)
     grade: str = Field(default="comprehensive", pattern="^(10|11|12|comprehensive)$")
     major: str = Field(default="", max_length=80)
-    subject_label: str = Field(default="", max_length=60)
+    subject_label: str = Field(default="", max_length=120)
     topic: str = Field(default="", max_length=140)
     duration_minutes: int = Field(default=90, ge=10, le=240)
     difficulty: str = Field(default="medium", pattern="^(easy|medium|hard|challenging)$")

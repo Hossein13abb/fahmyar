@@ -17,7 +17,6 @@ import {
   SearchCheck,
   Map,
   GraduationCap,
-  LogOut,
   ShieldCheck,
   Compass,
   BookOpenCheck,
@@ -52,7 +51,7 @@ const HOW_STEPS = [
 ]
 
 export default function StudentDashboard() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
 
   const [tab, setTab] = useState('topic') // topic | wrong_answer
@@ -75,11 +74,6 @@ export default function StudentDashboard() {
   const [history, setHistory] = useState(null) // null = در حال بارگذاری | [] = خالی
   const [historyError, setHistoryError] = useState('')
   const [started, setStarted] = useState(false) // false = صفحهٔ خوش‌آمد، true = جریان فهم‌سنجی
-  const handleLogout = () => {
-    logout()
-    navigate('/', { replace: true })
-  }
-
   // بارگذاری مفاهیم مسیر A
   useEffect(() => {
     let alive = true
@@ -196,14 +190,6 @@ export default function StudentDashboard() {
             <p className="text-[10px] font-medium text-slate-400">{user?.full_name || user?.username}</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-[12px] font-bold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-        >
-          <LogOut className="h-4 w-4" />
-          خروج از حساب
-        </button>
       </header>
 
       {!started ? (

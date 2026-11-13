@@ -1,4 +1,4 @@
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { LogOut, GraduationCap, BookOpenCheck, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -25,15 +25,13 @@ function LogoMark() {
 export default function Navbar() {
   const { user, logout, isTeacher } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
   const role = ROLE_META[user?.role] ?? ROLE_META.student
-  const onLoginPage = location.pathname.startsWith('/login')
 
   return (
     <header className="no-print sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         {/* راست (RTL اول): لوگو + نام */}
-        <Link to={isTeacher ? '/staff' : '/dashboard'} className="flex items-center gap-3">
+        <Link to={user ? (isTeacher ? '/staff' : '/dashboard') : '/'} className="flex items-center gap-3">
           <LogoMark />
           <span className="leading-tight">
             <span className="block text-[19px] font-black tracking-tight text-brand-900">فهم‌یار</span>
@@ -41,7 +39,7 @@ export default function Navbar() {
         </Link>
 
         {/* چپ: کاربر + خروج */}
-        {user && !onLoginPage && (
+        {user && (
           <div className="flex items-center gap-2 sm:gap-3">
             <span className={`chip ring-1 ${role.cls} hidden sm:inline-flex`}>
               <role.Icon className="h-3.5 w-3.5" />
@@ -53,7 +51,7 @@ export default function Navbar() {
             <button
               onClick={() => {
                 logout()
-                navigate('/login', { replace: true })
+                navigate('/', { replace: true })
               }}
               title="خروج از حساب"
               aria-label="خروج از حساب"

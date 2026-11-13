@@ -2,7 +2,6 @@ import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
-import Login from './pages/Login'
 import StudentDashboard from './pages/StudentDashboard'
 import ExamRoom from './pages/ExamRoom'
 import ReportView from './pages/ReportView'
@@ -32,9 +31,8 @@ function RequireAuth({ roles }) {
   const location = useLocation()
   if (booting) return <LoadingSpinner label="در حال آماده‌سازی نشست شما…" />
   if (!isAuthenticated) {
-    // هر نقش از درگاه خودش وارد می‌شود
-    const portalPath = roles?.includes('student') ? '/login/student' : roles ? '/login/staff' : '/login'
-    return <Navigate to={portalPath} replace state={{ from: location.pathname }} />
+    // تنها درگاه ورود، صفحهٔ اصلی (Landing Page) است
+    return <Navigate to="/" replace state={{ from: location.pathname }} />
   }
   if (roles && !roles.includes(user.role)) {
     // دانش‌آموز به پنل کادر مدرسه دسترسی ندارد و برعکس
@@ -59,9 +57,6 @@ export default function App() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
         <Routes>
           <Route path="/" element={<Landing />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/login/staff" element={<Login portal="staff" />} />
-          <Route path="/login/student" element={<Login portal="student" />} />
 
           <Route element={<RequireAuth roles={['student']} />}>
             <Route path="/dashboard" element={<StudentDashboard />} />

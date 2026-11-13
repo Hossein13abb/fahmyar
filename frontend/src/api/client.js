@@ -26,8 +26,8 @@ client.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('fahmyar_token')
       localStorage.removeItem('fahmyar_user')
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.assign('/login')
+      if (window.location.pathname !== '/') {
+        window.location.assign('/')
       }
     }
     return Promise.reject(error)

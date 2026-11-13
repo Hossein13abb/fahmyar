@@ -18,6 +18,7 @@ import {
   FileDown,
   FileText,
   ChevronDown,
+  Percent,
   Trash2,
   ArrowUp,
   ArrowDown,
@@ -33,20 +34,40 @@ const FIELDS = [
   { id: 'tajrobi', label: 'تجربی', Icon: Leaf, grad: 'from-emerald-500 to-green-600' },
 ]
 
-const SUBJECTS_BY_FIELD = {
-  math: [
-    { id: 'calculus', label: 'حسابان', Icon: Sigma },
-    { id: 'geometry', label: 'هندسه', Icon: Shapes },
-    { id: 'discrete', label: 'گسسته', Icon: Binary },
-    { id: 'physics', label: 'فیزیک', Icon: Atom },
-    { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
-  ],
-  tajrobi: [
-    { id: 'biology', label: 'زیست‌شناسی', Icon: Leaf },
-    { id: 'math', label: 'ریاضیات', Icon: Sigma },
-    { id: 'physics', label: 'فیزیک', Icon: Atom },
-    { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
-  ],
+// لیست دروس — دقیقاً بر اساس ترکیب «رشته × پایه» (محل منبع حقیقتِ UI آزمون‌ساز)
+const MATH_SUBJECTS_10 = [
+  { id: 'math', label: 'ریاضی', Icon: Sigma },
+  { id: 'geometry', label: 'هندسه', Icon: Shapes },
+  { id: 'physics', label: 'فیزیک', Icon: Atom },
+  { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
+]
+const MATH_SUBJECTS_11 = [
+  { id: 'calculus', label: 'حسابان', Icon: Sigma },
+  { id: 'geometry', label: 'هندسه', Icon: Shapes },
+  { id: 'statistics', label: 'آمار و احتمال', Icon: Percent },
+  { id: 'physics', label: 'فیزیک', Icon: Atom },
+  { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
+]
+const MATH_SUBJECTS_12 = [ // دوازدهم و جامع
+  { id: 'calculus', label: 'حسابان', Icon: Sigma },
+  { id: 'geometry', label: 'هندسه', Icon: Shapes },
+  { id: 'discrete', label: 'گسسته', Icon: Binary },
+  { id: 'physics', label: 'فیزیک', Icon: Atom },
+  { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
+]
+const EXPERIMENTAL_SUBJECTS = [ // تجربی — همهٔ پایه‌ها
+  { id: 'biology', label: 'زیست‌شناسی', Icon: Leaf },
+  { id: 'math', label: 'ریاضیات', Icon: Sigma },
+  { id: 'physics', label: 'فیزیک', Icon: Atom },
+  { id: 'chemistry', label: 'شیمی', Icon: FlaskConical },
+]
+const subjectsFor = (field, grade) => {
+  if (field === 'math') {
+    if (grade === '10') return MATH_SUBJECTS_10
+    if (grade === '11') return MATH_SUBJECTS_11
+    return MATH_SUBJECTS_12
+  }
+  return EXPERIMENTAL_SUBJECTS
 }
 
 const FIELD_LABELS = { math: 'ریاضی', tajrobi: 'تجربی' }
@@ -61,11 +82,11 @@ const GRADES = [
 const GRADE_LABELS = Object.fromEntries(GRADES.map((g) => [g.id, g.label]))
 
 const QUESTION_TYPES = [
+  { id: 'mixed', label: 'نامشخص / ترکیبی' },
   { id: 'conceptual', label: 'مفهومی' },
   { id: 'recall', label: 'حفظی' },
   { id: 'computational', label: 'محاسباتی' },
   { id: 'problem', label: 'مسئله' },
-  { id: 'mixed', label: 'ترکیبی' },
 ]
 const QUESTION_TYPE_LABELS = Object.fromEntries(QUESTION_TYPES.map((t) => [t.id, t.label]))
 
@@ -116,7 +137,7 @@ export default function ExamBuilder({ embedded = false }) {
   // ── فرم مرحلهٔ ۱ ──
   const [field, setField] = useState(loadField)                // math | tajrobi
   const [grade, setGradeState] = useState(loadGrade)           // 10 | 11 | 12 | comprehensive
-  const [subject, setSubject] = useState(() => SUBJECTS_BY_FIELD[loadField()][0].id)
+  const [selectedSubjects, setSelectedSubjects] = useState(() => subjectsFor(loadField(), loadGrade()).map((x) => x.id))
   const [topic, setTopic] = useState('')
   const [questionType, setQuestionType] = useState('mixed')
   const [count, setCount] = useState(10)
@@ -144,6 +165,7 @@ export default function ExamBuilder({ embedded = false }) {
 
   const setGrade = (g) => {
     setGradeState(g)
+    setSelectedSubjects(subjectsFor(field, g).map((x) => x.id))
     try {
       localStorage.setItem('fahmyar_grade', g)
     } catch {
@@ -152,7 +174,7 @@ export default function ExamBuilder({ embedded = false }) {
   }
   const setFieldPersist = (f) => {
     setField(f)
-    setSubject(SUBJECTS_BY_FIELD[f][0].id)
+    setSelectedSubjects(subjectsFor(f, grade).map((x) => x.id))
     try {
       localStorage.setItem('fahmyar_field', f)
     } catch {
@@ -160,8 +182,10 @@ export default function ExamBuilder({ embedded = false }) {
     }
   }
 
-  const subjectOptions = SUBJECTS_BY_FIELD[field]
-  const subjectLabel = subjectOptions.find((s) => s.id === subject)?.label ?? ''
+  const subjectOptions = subjectsFor(field, grade)
+  const subjectsLabel = subjectOptions.filter((s) => selectedSubjects.includes(s.id)).map((s) => s.label).join('، ')
+  const toggleSubject = (id) =>
+    setSelectedSubjects((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
 
   useEffect(() => {
     if (!generating) return undefined
@@ -188,7 +212,7 @@ export default function ExamBuilder({ embedded = false }) {
   }
 
   const validate = () => {
-    if (!topic.trim()) return 'مبحث آزمون را بنویسید (مثلاً: مشتق و نقاط اکسترمم).'
+    if (selectedSubjects.length === 0) return 'حداقل یک درس را انتخاب کنید.'
     if (!duration || duration < 10) return 'زمان آزمون باید حداقل ۱۰ دقیقه باشد.'
     return ''
   }
@@ -204,8 +228,8 @@ export default function ExamBuilder({ embedded = false }) {
       const { data } = await client.post('/api/teacher/generate-exam-preview', {
         field,
         grade,
-        subject,
-        topic: topic.trim(),
+        subjects: selectedSubjects,
+        topic: topic.trim() || null,
         question_type: questionType,
         difficulty,
         count,
@@ -257,7 +281,7 @@ export default function ExamBuilder({ embedded = false }) {
           school_name: schoolName.trim() || 'مدرسهٔ نمونه',
           grade,
           major: FIELD_PRINT_LABELS[field],
-          subject_label: subjectLabel,
+          subject_label: subjectsLabel,
           topic: topic.trim(),
           duration_minutes: duration,
           difficulty,
@@ -293,7 +317,7 @@ export default function ExamBuilder({ embedded = false }) {
   }
 
   const difficultyLabel = DIFFICULTY_LABELS[difficulty] ?? 'متوسط'
-  const questionTypeLabel = QUESTION_TYPE_LABELS[questionType] ?? 'ترکیبی'
+  const questionTypeLabel = QUESTION_TYPE_LABELS[questionType] ?? 'نامشخص / ترکیبی'
 
   return (
     <div className="animate-fade-up space-y-6">
@@ -404,28 +428,39 @@ export default function ExamBuilder({ embedded = false }) {
 
               {/* ── انتخاب درس (دینامیک بر اساس رشته) ── */}
               <section className="card p-5 sm:p-6">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
                     <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">۱</span>
-                    انتخاب درس
+                    انتخاب درس (چندگانه)
                   </h2>
-                  <span className="chip bg-brand-50 text-brand-800 ring-1 ring-brand-200">رشتهٔ {FIELD_LABELS[field]}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="chip bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200">{toFarsiNumber(selectedSubjects.length)} درس انتخاب شد</span>
+                    <span className="chip bg-brand-50 text-brand-800 ring-1 ring-brand-200">رشتهٔ {FIELD_LABELS[field]}</span>
+                  </div>
                 </div>
+                <p className="mt-2 text-[11px] font-medium leading-5 text-slate-500">
+                  امکان انتخاب/لغو چند درس با کلیک وجود دارد؛ سؤالات به‌طور متوازن بین درس‌های انتخابی تقسیم می‌شوند.
+                </p>
                 <div className={`mt-4 grid gap-2.5 ${subjectOptions.length > 4 ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'}`}>
                   {subjectOptions.map(({ id, label, Icon }) => {
-                    const on = subject === id
+                    const on = selectedSubjects.includes(id)
                     return (
                       <button
                         key={id}
                         type="button"
                         aria-pressed={on}
-                        onClick={() => setSubject(id)}
-                        className={`flex flex-col items-center gap-2 rounded-2xl border p-3.5 transition-all duration-200 ${
+                        onClick={() => toggleSubject(id)}
+                        className={`relative flex flex-col items-center gap-2 rounded-2xl border p-3.5 transition-all duration-200 ${
                           on
                             ? 'border-transparent bg-gradient-to-br from-brand-600 to-emerald-700 text-white shadow-lift ring-2 ring-brand-300/60'
                             : 'border-slate-200/80 bg-slate-50/50 text-slate-600 hover:border-brand-200 hover:bg-white'
                         }`}
                       >
+                        {on && (
+                          <span className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-emerald-700 shadow-sm">
+                            <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                          </span>
+                        )}
                         <Icon className={`h-6 w-6 ${on ? 'text-white' : 'text-brand-700'}`} strokeWidth={1.8} />
                         <span className="text-[12px] font-black leading-5">{label}</span>
                       </button>
@@ -441,12 +476,12 @@ export default function ExamBuilder({ embedded = false }) {
                   مبحث و سبک سؤال
                 </h2>
 
-                <label htmlFor="exam-topic" className="label mt-4">مبحث آزمون <span className="text-red-500">*</span></label>
+                <label htmlFor="exam-topic" className="label mt-4">مبحث آزمون <span className="font-medium text-slate-400">(اختیاری)</span></label>
                 <input
                   id="exam-topic"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  placeholder="مثلاً: مشتق و نقاط اکسترمم، میدان الکتریکی، گردش خون…"
+                  placeholder="اختیاری — مثلاً: مشتق و نقاط اکسترمم، میدان الکتریکی، گردش خون… (خالی بگذارید تا ترکیبی پوشش داده شود)"
                   className="input"
                   maxLength={140}
                 />
@@ -577,12 +612,12 @@ export default function ExamBuilder({ embedded = false }) {
                     <dd className="font-bold text-brand-950">{grade === 'comprehensive' ? 'جامع (همهٔ پایه‌ها)' : `پایهٔ ${GRADE_LABELS[grade]}`}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                    <dt className="text-slate-500">درس</dt>
-                    <dd className="font-bold text-brand-950">{subjectLabel}</dd>
+                    <dt className="text-slate-500">درس‌ها</dt>
+                    <dd className="max-w-[62%] truncate text-left font-bold text-brand-950" title={subjectsLabel}>{subjectsLabel || '—'}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                     <dt className="text-slate-500">مبحث</dt>
-                    <dd className="max-w-[60%] truncate text-left font-bold text-brand-950" title={topic}>{topic.trim() || '—'}</dd>
+                    <dd className="max-w-[60%] truncate text-left font-bold text-brand-950" title={topic}>{topic.trim() || 'نامشخص (ترکیبی)'}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                     <dt className="text-slate-500">نوع سؤالات</dt>
@@ -675,6 +710,9 @@ export default function ExamBuilder({ embedded = false }) {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">{fmtFa(idx + 1)}</span>
+                          {q.subject && (
+                            <span className="chip bg-sky-50 text-sky-800 ring-1 ring-sky-200">{q.subject}</span>
+                          )}
                           {q.source_tag && (
                             <span className="chip bg-amber-50 text-amber-800 ring-1 ring-amber-200" title="این تگ فقط در پیش‌نمایش دیده می‌شود و در PDF چاپ نمی‌شود">
                               {q.source_tag}
@@ -761,8 +799,8 @@ export default function ExamBuilder({ embedded = false }) {
                     <dd className="font-bold text-brand-950">{FIELD_PRINT_LABELS[field]} · {grade === 'comprehensive' ? 'جامع' : `پایهٔ ${GRADE_LABELS[grade]}`}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
-                    <dt className="text-slate-500">درس / مبحث</dt>
-                    <dd className="max-w-[60%] truncate text-left font-bold text-brand-950" title={`${subjectLabel} — ${topic}`}>{subjectLabel} · {topic.trim() || '—'}</dd>
+                    <dt className="text-slate-500">درس‌ها / مبحث</dt>
+                    <dd className="max-w-[62%] truncate text-left font-bold text-brand-950" title={`${subjectsLabel} — ${topic}`}>{subjectsLabel || '—'} · {topic.trim() || 'نامشخص'}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                     <dt className="text-slate-500">نوع سؤالات</dt>
