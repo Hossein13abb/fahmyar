@@ -74,8 +74,16 @@ _SYSTEM = r"""شما یک طراح سؤال تشخیصیِ خبره برای س�
 
 You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
-CRITICAL JSON ESCAPING RULE: When writing LaTeX formulas in JSON text fields, you MUST escape every backslash with a double backslash. For example, write \\begin{bmatrix} instead of \begin{bmatrix}, write \\frac{a}{b} instead of \frac{a}{b}, and write \\cdot instead of \cdot. Failure to do this breaks JSON syntax.
-CRITICAL: If the subject is Physics (فیزیک) or Geometry (هندسه), or involves kinematics, circuits, or geometric shapes, you MUST provide a valid, clean SVG diagram in the diagram_svg field. The SVG must use font-family='Vazirmatn, Arial' for texts, and all numbers inside <text> tags MUST be Persian digits. Do not use complex paths if simple rect/circle/line will do.
+CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash.
+BANNED TOPICS: You are strictly forbidden from generating questions about the following removed topics from the Iranian curriculum: 
+- Equation of an Ellipse or standard forms (معادله بیضی) - Only focus on the definition/focal properties.
+- Integrals (انتگرال) in Hesaban.
+Do NOT use these concepts under any circumstances.
+SVGs are OPTIONAL. Set `diagram_svg` to `null` if the question can be solved without a picture (e.g., standard algebra, matrices). NEVER attempt to draw precise intersecting coordinates (like a line tangent to a circle) because your coordinate math will be wrong. Only draw simple block diagrams, circuits, or abstract isolated shapes. If you are unsure about the visual alignment, return `null`.
+DIFFICULTY CALIBRATION:
+- آسان (Easy): Direct formula application, single-step calculation.
+- متوسط (Medium): Requires 2 steps, basic conceptual understanding.
+- سخت (Hard): Requires synthesizing multiple concepts, deep analysis, or has a hidden trap. DO NOT label a plug-and-chug question as Hard.
 """
 
 
@@ -138,8 +146,16 @@ def _stringify_item(item) -> str:
 
 _BOOKLET_PROMPT = r"""You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
-CRITICAL JSON ESCAPING RULE: When writing LaTeX formulas in JSON text fields, you MUST escape every backslash with a double backslash. For example, write \\begin{bmatrix} instead of \begin{bmatrix}, write \\frac{a}{b} instead of \frac{a}{b}, and write \\cdot instead of \cdot. Failure to do this breaks JSON syntax.
-CRITICAL: If the subject is Physics (فیزیک) or Geometry (هندسه), or involves kinematics, circuits, or geometric shapes, you MUST provide a valid, clean SVG diagram in the diagram_svg field. The SVG must use font-family='Vazirmatn, Arial' for texts, and all numbers inside <text> tags MUST be Persian digits. Do not use complex paths if simple rect/circle/line will do.
+CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash.
+BANNED TOPICS: You are strictly forbidden from generating questions about the following removed topics from the Iranian curriculum: 
+- Equation of an Ellipse or standard forms (معادله بیضی) - Only focus on the definition/focal properties.
+- Integrals (انتگرال) in Hesaban.
+Do NOT use these concepts under any circumstances.
+SVGs are OPTIONAL. Set `diagram_svg` to `null` if the question can be solved without a picture (e.g., standard algebra, matrices). NEVER attempt to draw precise intersecting coordinates (like a line tangent to a circle) because your coordinate math will be wrong. Only draw simple block diagrams, circuits, or abstract isolated shapes. If you are unsure about the visual alignment, return `null`.
+DIFFICULTY CALIBRATION:
+- آسان (Easy): Direct formula application, single-step calculation.
+- متوسط (Medium): Requires 2 steps, basic conceptual understanding.
+- سخت (Hard): Requires synthesizing multiple concepts, deep analysis, or has a hidden trap. DO NOT label a plug-and-chug question as Hard.
 
 شما «متخصص ارشد طراحی آزمون تشخیصی عمیق (Deep Diagnostic)» برای سیستم فهم‌یار هستید. برای مفهوم «{concept}» ({subject} — پایهٔ {grade}) یک دفترچهٔ آزمون تشخیصی ۹ سؤالی بسازید.
 

@@ -8,9 +8,20 @@
 """
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
+
+try:
+    from svglib.svglib import svg2rlg
+    from reportlab.graphics import renderPDF
+    _HAS_SVGLIB = True
+except Exception:
+    svg2rlg = None  # type: ignore[assignment]
+    renderPDF = None  # type: ignore[assignment]
+    _HAS_SVGLIB = False
 
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -107,6 +118,80 @@ def to_persian_numbers(text: Any) -> str:
     return str(text).translate(str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹'))
 
 
+def clean_latex_for_pdf(text: Any) -> str:
+    r"""پاک‌سازی فرمول‌های LaTeX ویژهٔ خروجی PDF (ReportLab).
+
+    این تابع فقط هنگام تولید PDF اجرا می‌شود و متن خام LaTeX را به فرمت خوانا تبدیل می‌کند:
+    - حذف تمام علامت‌های `$`
+    - تبدیل `\begin{bmatrix}` یا `\begin{pmatrix}` به `[ `
+    - تبدیل `\end{bmatrix}` یا `\end{pmatrix}` به ` ]`
+    - تبدیل `&` به `, `
+    - تبدیل `\\` (سطر جدید ماتریس) به ` | `
+    - تبدیل `\frac{a}{b}` به `(a/b)`
+    - تبدیل `\times` به `x`
+    """
+    if text is None:
+        return ""
+    s = str(text)
+    if not s:
+        return ""
+
+    # احیای کاراکترهای کنترلی احتمالی
+    s = s.replace("\x08", "\\b").replace("\x0c", "\\f")
+
+    # ۱) محیط‌های ماتریسی (bmatrix, pmatrix, vmatrix, matrix)
+    s = re.sub(r"(?:\\+)?\bbegin\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}", "[ ", s)
+    s = re.sub(r"(?:\\+)?\bend\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}", " ]", s)
+
+    # ۲) کسرها: \frac{a}{b} -> (a/b) (با پشتیبانی از کسرهای تودرتو)
+    for _ in range(4):
+        new_s = re.sub(r"(?:\\+)?(?:d|t)?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}", r"(\1/\2)", s)
+        if new_s == s:
+            break
+        s = new_s
+
+    # ۳) رادیکال و ضرب و نمادهای رایج ریاضی
+    s = re.sub(r"(?:\\+)?sqrt\s*\[([^\[\]]*)\]\s*\{([^{}]*)\}", r"√[\1](\2)", s)
+    s = re.sub(r"(?:\\+)?sqrt\s*\{([^{}]*)\}", r"√(\1)", s)
+    s = re.sub(r"(?:\\+)?times\b", "x", s)
+    s = re.sub(r"(?:\\+)?cdot\b", "·", s)
+    s = re.sub(r"(?:\\+)?div\b", "÷", s)
+    s = re.sub(r"(?:\\+)?pm\b", "±", s)
+    s = re.sub(r"(?:\\+)?(?:leq|le)\b", "≤", s)
+    s = re.sub(r"(?:\\+)?(?:geq|ge)\b", "≥", s)
+    s = re.sub(r"(?:\\+)?(?:neq|ne)\b", "≠", s)
+    s = re.sub(r"(?:\\+)?approx\b", "≈", s)
+    s = re.sub(r"(?:\\+)?(?:to|rightarrow)\b", "→", s)
+    s = re.sub(r"(?:\\+)?Rightarrow\b", "⇒", s)
+    s = re.sub(r"(?:\\+)?infty\b", "∞", s)
+    s = re.sub(r"(?:\\+)?pi\b", "π", s)
+    s = re.sub(r"(?:\\+)?alpha\b", "α", s)
+    s = re.sub(r"(?:\\+)?beta\b", "β", s)
+    s = re.sub(r"(?:\\+)?gamma\b", "γ", s)
+    s = re.sub(r"(?:\\+)?delta\b", "δ", s)
+    s = re.sub(r"(?:\\+)?Delta\b", "Δ", s)
+    s = re.sub(r"(?:\\+)?theta\b", "θ", s)
+    s = re.sub(r"(?:\\+)?lambda\b", "λ", s)
+    s = re.sub(r"(?:\\+)?(?:left|right)\b", "", s)
+    s = re.sub(r"(?:\\+)?(?:text|textbf|mathrm|mathbf)\s*\{([^{}]*)\}", r"\1", s)
+
+    # ۴) تبدیل جداکنندهٔ سطر ماتریس (\\) به ` | ` و ستون (&) به `, `
+    s = s.replace("\\\\", " | ")
+    s = s.replace("&", ", ")
+
+    # ۵) ساده‌سازی توان و اندیس مانند x^{2} -> x^2
+    s = re.sub(r"\^\{([^{}]+)\}", r"^\1", s)
+    s = re.sub(r"_\{([^{}]+)\}", r"_\1", s)
+
+    # ۶) حذف تمام علامت‌های `$`
+    s = s.replace("\\$", "").replace("$", "")
+
+    # پاک‌سازی فاصله‌های تکراری
+    s = re.sub(r"[ \t]{2,}", " ", s).strip()
+    return s
+
+
+
 def _fa(value: Any) -> str:
     return to_persian_numbers(str(value))
 
@@ -165,6 +250,7 @@ def rtl_flowables(
     max_width_mm: float,
 ) -> list[Paragraph]:
     """متن فارسی را به خط‌های پاراگراف راست‌چین تبدیل می‌کند (امن برای Platypus)."""
+    text = clean_latex_for_pdf(text)
     font = style.fontName or FONT_REG
     size = style.fontSize
     # حاشیهٔ اطمینان: اندازه‌گیری ما با اندکی خطا نسبت به چینش داخلی ReportLab انجام می‌شود؛
@@ -252,6 +338,92 @@ class DottedLine(Flowable):
         c.setDash(1, 2.6)
         c.line(0, 5.5 * mm, self.width, 5.5 * mm)
         c.restoreState()
+
+
+class SvgDiagramFlowable(Flowable):
+    """رندر ایمنِ نمودار SVG روی کانواس PDF با استفاده از svglib + renderPDF."""
+
+    def __init__(self, drawing: Any, pad_mm: float = 2.0):
+        super().__init__()
+        self.drawing = drawing
+        self.pad = pad_mm * mm
+        self.width = float(getattr(drawing, "width", 100.0))
+        self.height = float(getattr(drawing, "height", 60.0)) + 2 * self.pad
+
+    def wrap(self, availWidth, availHeight):
+        self.avail_width = availWidth
+        return availWidth, self.height
+
+    def draw(self):
+        if not _HAS_SVGLIB or renderPDF is None or self.drawing is None:
+            return
+        try:
+            c = self.canv
+            c.saveState()
+            avail_w = getattr(self, "avail_width", self.width)
+            x_offset = max(0.0, (avail_w - float(self.drawing.width)) / 2.0)
+            renderPDF.draw(self.drawing, c, x_offset, self.pad)
+            c.restoreState()
+        except Exception:
+            pass
+
+
+def _svg_flowable(
+    svg_text: Optional[str],
+    max_width_mm: float = 110.0,
+    max_height_mm: float = 52.0,
+) -> Optional[Flowable]:
+    """در صورت وجود SVG معتبر و نصب بودن svglib، آن را در فایل موقت ذخیره کرده، مقیاس می‌دهد و Flowable برمی‌گرداند."""
+    if not svg_text or not isinstance(svg_text, str) or "<svg" not in svg_text.lower():
+        return None
+    if not _HAS_SVGLIB or svg2rlg is None or renderPDF is None:
+        return None
+
+    tmp_path: Optional[str] = None
+    try:
+        # آماده‌سازی متن‌های فارسی داخل تگ <text> برای نمایش درست در svglib
+        def _reshape_svg_text(m: re.Match) -> str:
+            open_t, inner, close_t = m.group(1), m.group(2), m.group(3)
+            if re.search(r"[\u0600-\u06FF]", inner):
+                inner = prepare_farsi_text(inner)
+            open_t = re.sub(r"font-family\s*=\s*['\"][^'\"]*['\"]", 'font-family="Vazirmatn"', open_t)
+            return f"{open_t}{inner}{close_t}"
+
+        prepared_svg = re.sub(
+            r"(<text\b[^>]*>)([^<]*)(</text>)",
+            _reshape_svg_text,
+            svg_text.strip(),
+            flags=re.IGNORECASE,
+        )
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".svg", encoding="utf-8", delete=False) as tmp:
+            tmp.write(prepared_svg)
+            tmp.flush()
+            tmp_path = tmp.name
+
+        drawing = svg2rlg(tmp_path)
+        if drawing is None:
+            return None
+        dw = float(getattr(drawing, "width", 0.0) or 0.0)
+        dh = float(getattr(drawing, "height", 0.0) or 0.0)
+        if dw <= 0 or dh <= 0:
+            return None
+
+        max_w = max_width_mm * mm
+        max_h = max_height_mm * mm
+        scale = min(max_w / dw, max_h / dh, 1.0)
+        drawing.width = dw * scale
+        drawing.height = dh * scale
+        drawing.scale(scale, scale)
+        return SvgDiagramFlowable(drawing)
+    except Exception:
+        return None
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
 
 
 class NumberedCanvas(canvas.Canvas):
@@ -558,7 +730,8 @@ def _instruction_box() -> Table:
 
 def _option_cell(text: str, index: int) -> list[Flowable]:
     label = OPTION_LETTERS[index]
-    return rtl_flowables(f"{label}) {text}", _style(f"opt-{index}", fontSize=9.5, leading=18), 89 - 8)
+    cleaned_opt = clean_latex_for_pdf(text)
+    return rtl_flowables(f"{label}) {cleaned_opt}", _style(f"opt-{index}", fontSize=9.5, leading=18), 89 - 8)
 
 
 def _options_table(item: dict[str, Any]) -> Table:
@@ -586,9 +759,14 @@ def _options_table(item: dict[str, Any]) -> Table:
 
 
 def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowable]:
-    """سؤال کنکوری: سربرگ + متن + چهار گزینه در دو ستون — بدون هیچ جدولِ غیرقابل‌شکست."""
+    """سؤال کنکوری: سربرگ + متن (با پاک‌سازی LaTeX) + شکل SVG (در صورت وجود) + چهار گزینه در دو ستون."""
     story: list[Flowable] = [_question_header(item)]
-    story += rtl_flowables(item["text"], _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
+    cleaned_text = clean_latex_for_pdf(item.get("text", ""))
+    story += rtl_flowables(cleaned_text, _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
+    svg_flow = _svg_flowable(item.get("diagram_svg"))
+    if svg_flow is not None:
+        story.append(Spacer(1, 1.5 * mm))
+        story.append(svg_flow)
     story.append(Spacer(1, 1.5 * mm))
     story.append(_options_table(item))
     story.append(Spacer(1, 4.5 * mm))
@@ -601,11 +779,12 @@ def _answer_flow(item: dict[str, Any]) -> list[Flowable]:
     ca = int(item["correct_answer"])
     letter = OPTION_LETTERS[ca - 1]
     story: list[Flowable] = [_question_header(item, tag="کلید")]
-    preview = item["text"] if len(item["text"]) <= 150 else item["text"][:150] + "…"
+    cleaned_text = clean_latex_for_pdf(item.get("text", ""))
+    preview = cleaned_text if len(cleaned_text) <= 150 else cleaned_text[:150] + "…"
     story += rtl_flowables(preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 178)
     story.append(Spacer(1, 1.5 * mm))
     story += rtl_flowables(f"پاسخ صحیح: گزینهٔ {_fa(ca)} ({letter})", _style("ak-key", fontName=FONT_XBOLD, fontSize=11, textColor=BRAND_DARK, leading=20), 178)
-    explanation = (item.get("explanation") or "").strip()
+    explanation = clean_latex_for_pdf((item.get("explanation") or "").strip())
     if explanation:
         story += rtl_flowables(explanation, _style("ak-a", fontSize=9, leading=18, textColor=colors.HexColor("#1F2937")), 178)
     else:

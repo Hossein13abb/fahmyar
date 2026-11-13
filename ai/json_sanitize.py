@@ -5,9 +5,11 @@
   - متن توضیحی قبل یا بعد از JSON اضافه می‌کنند
   - درون رشته‌های JSON فرمول‌های LaTeX را با یک بک‌اسلش می‌نویسند (مانند `\\begin{bmatrix}`،
     `\\frac{a}{b}`، `\\sqrt{x}`، `\\times`، `\\cdot`) که در `json.loads` استاندارد پایتون
-    باعث خطای `Invalid \\escape` یا تبدیل `\\b`/`\\f`/`\\t`/`\\r`/`\\n` به کاراکترهای کنترلی می‌شود.
+    باعث خطای `Invalid \\escape` یا تبدیل `\\b`/`\\f`/`\\t`/`\\r`/`\\n` به کاراکترهای کنترلی می‌شود،
+    یا بک‌اسلش را بلعیده و در UI به‌صورت `begin{bmatrix}` نمایش داده می‌شود.
 
-این ماژول با `sanitize_json_string` و `safe_parse_json` تمام این موارد را به شکل امن اصلاح و پارس می‌کند.
+این ماژول با `preprocess_latex_json`، `sanitize_json_string`، `restore_latex_commands` و `safe_parse_json`
+تمام این موارد را قبل و بعد از `json.loads` به شکل امن اصلاح و پارس می‌کند.
 """
 from __future__ import annotations
 
@@ -26,12 +28,20 @@ _GREEDY_ARR_RE = re.compile(r"\[.*\]", re.DOTALL)
 # و اگر با یک بک‌اسلش نوشته شوند، json.loads آن‌ها را به کاراکتر کنترلی (\x08, \x0c, \n, \r, \t) تبدیل می‌کند.
 _LATEX_BFNRT_CMDS = re.compile(
     r"(?<!\\)\\("
-    r"begin|beta|binom|bar|textbf|bigcup|bigcap|bigoplus|bigotimes|bot|bullet|"
+    r"begin|beta|binom|bar|textbf|bigcup|bigcap|bigoplus|bigotimes|bot|bullet|boxed|"
     r"frac|forall|flat|frown|"
-    r"neq|nabla|nu|not|natural|neg|ni|nmid|nparallel|nsubseteq|"
+    r"neq|nabla|nu|not|natural|neg|ni|nmid|nparallel|nsubseteq|ngeq|nleq|"
     r"right|rightarrow|Rightarrow|rho|rangle|rceil|rfloor|rhd|rtimes|"
-    r"times|tan|tanh|theta|tau|text|textbf|textit|textrm|top|triangle|to|tilde"
+    r"times|tan|tanh|theta|tau|text|textbf|textit|textrm|top|triangle|to|tilde|tfrac"
     r")(?![a-zA-Z])"
+)
+
+# دستورات محیطی یا ریاضی که ممکن است بک‌اسلش آن‌ها بلعیده شده باشد (مثلاً begin{bmatrix})
+_BARE_ENV_RE = re.compile(
+    r"(?<![\\a-zA-Z])(begin|end)\s*\{([a-zA-Z]*matrix|array|aligned|cases)\}"
+)
+_BARE_CMD_WITH_BRACE_RE = re.compile(
+    r"(?<![\\a-zA-Z])(frac|dfrac|tfrac|sqrt|binom|overbrace|underbrace|overline|underline|overrightarrow)\s*\{"
 )
 
 # درون محیط‌های ماتریسی (\begin{...} ... \end{...})، جداکنندهٔ سطر در LaTeX باید دو بک‌اسلش (\\) در رشتهٔ نهایی باشد
@@ -48,6 +58,62 @@ def _fix_matrix_row_breaks(match: re.Match) -> str:
     return f"{open_tag}{fixed_body}{close_tag}"
 
 
+def preprocess_latex_json(raw_text: str) -> str:
+    """پیش‌پردازندهٔ اختصاصی پیش از `json.loads` برای حفظ حداقل یک بک‌اسلش در تمام دستورات LaTeX."""
+    if not raw_text:
+        return ""
+    t = raw_text
+
+    # ۰) احیای کاراکترهای کنترلی احتمالی که از \b، \f، \t، \r ناشی شده‌اند
+    t = t.replace("\x08", r"\\b").replace("\x0c", r"\\f")
+    t = re.sub(r"\t(?=(?:imes|an|anh|heta|au|ext|op|riangle|o|ilde|frac)\b)", r"\\t", t)
+    t = re.sub(r"\r(?=(?:ight|ho|angle|ceil|floor)\b)", r"\\r", t)
+
+    # ۱) احیای دستورات بدون بک‌اسلش مانند begin{bmatrix}، end{bmatrix}، frac{، sqrt{
+    t = _BARE_ENV_RE.sub(r"\\\\\1{\2}", t)
+    t = _BARE_CMD_WITH_BRACE_RE.sub(r"\\\\\1{", t)
+
+    # ۲) دستورات LaTeX که با b/f/n/r/t شروع می‌شوند (مانند \begin, \frac, \right, \times, \tan, \neq, \to)
+    t = _LATEX_BFNRT_CMDS.sub(r"\\\\\1", t)
+
+    # ۳) هر بک‌اسلش تکی که دنبالهٔ آن یک escape معتبر JSON نیست (\sqrt, \cdot, \end, \left, \alpha, \$ و ...)
+    t = re.sub(r'(?<!\\)\\(?![\\"/bfnrtu]|u[0-9a-fA-F]{4})', r"\\\\", t)
+
+    # ۴) اصلاح جداکنندهٔ سطر (\\) در محیط‌های ماتریسی LaTeX
+    t = _MATRIX_ENV_RE.sub(_fix_matrix_row_breaks, t)
+    return t
+
+
+def restore_latex_commands(obj: Any) -> Any:
+    """پس‌پردازندهٔ امن پس از `json.loads` برای تضمین وجود بک‌اسلش در دستورات LaTeX خروجی."""
+    if isinstance(obj, str):
+        if "<svg" in obj.lower():
+            return obj
+        s = obj
+        # اصلاح کاراکترهای کنترلی اگر از مسیر دیگری وارد شده باشند
+        s = s.replace("\x08", "\\b").replace("\x0c", "\\f")
+        s = re.sub(r"\t(?=(?:imes|an|anh|heta|au|ext|op|riangle|o|ilde|frac)\b)", r"\\t", s)
+        s = re.sub(r"\r(?=(?:ight|ho|angle|ceil|floor)\b)", r"\\r", s)
+        # تضمین وجود بک‌اسلش قبل از begin{...matrix} و end{...matrix}
+        s = re.sub(
+            r"(?<![\\a-zA-Z])(begin|end)\s*\{([a-zA-Z]*matrix|array|aligned|cases)\}",
+            r"\\\1{\2}",
+            s,
+        )
+        # تضمین وجود بک‌اسلش قبل از frac{ و sqrt{ و دستورات مشابه
+        s = re.sub(
+            r"(?<![\\a-zA-Z])(frac|dfrac|tfrac|sqrt|binom|overbrace|underbrace|overline|underline|overrightarrow)\s*\{",
+            r"\\\1{",
+            s,
+        )
+        return s
+    if isinstance(obj, list):
+        return [restore_latex_commands(item) for item in obj]
+    if isinstance(obj, dict):
+        return {k: restore_latex_commands(v) for k, v in obj.items()}
+    return obj
+
+
 def sanitize_json_string(raw_text: str) -> str:
     """پاک‌سازی بلوک مارک‌داون، ویرگول‌های اضافه و ایمن‌سازی بک‌اسلش‌های LaTeX در JSON."""
     t = (raw_text or "").strip().lstrip("\ufeff")
@@ -57,16 +123,7 @@ def sanitize_json_string(raw_text: str) -> str:
     t = _LEADING_FENCE_RE.sub("", t)
     t = _TRAILING_FENCE_RE.sub("", t)
     t = _TRAILING_COMMA_RE.sub(r"\1", t)
-
-    # ۱) دستورات LaTeX که با b/f/n/r/t شروع می‌شوند (مانند \begin, \frac, \right, \times, \tan, \neq, \to)
-    t = _LATEX_BFNRT_CMDS.sub(r"\\\\\1", t)
-
-    # ۲) هر بک‌اسلش تکی که دنبالهٔ آن یک escape معتبر JSON نیست (\sqrt, \cdot, \alpha, \lim, \sin, \log, \ge, \le, ...)
-    t = re.sub(r'(?<!\\)\\(?![\\"/bfnrtu]|u[0-9a-fA-F]{4})', r"\\\\", t)
-
-    # ۳) اصلاح جداکنندهٔ سطر (\\) در محیط‌های ماتریسی LaTeX
-    t = _MATRIX_ENV_RE.sub(_fix_matrix_row_breaks, t)
-    return t
+    return preprocess_latex_json(t)
 
 
 # نام مستعار برای سازگاری با کدهای قبلی
@@ -97,24 +154,25 @@ def safe_parse_json(raw_text: str) -> Any:
         if m:
             text = m.group(0)
 
-    # تلاش ۱: پاک‌سازی هوشمند بک‌اسلش‌های LaTeX و ویرگول‌های انتهایی
+    # تلاش ۱: پیش‌پردازش هوشمند بک‌اسلش‌های LaTeX و ویرگول‌های انتهایی
     cleaned = sanitize_json_string(text)
     try:
-        return json.loads(cleaned)
+        return restore_latex_commands(json.loads(cleaned))
     except Exception:
         pass
 
-    # تلاش ۲: جایگزینی مستقیم بک‌اسلش‌های غیرمعتبر طبق الگوی استاندارد
-    cleaned_regex = re.sub(r'\\(?![\\"/bfnrtu])', r"\\\\", _TRAILING_COMMA_RE.sub(r"\1", text))
+    # تلاش ۲: پیش‌پردازش دستورات LaTeX + جایگزینی مستقیم بک‌اسلش‌های غیرمعتبر
+    cleaned_regex = preprocess_latex_json(_TRAILING_COMMA_RE.sub(r"\1", text))
+    cleaned_regex = re.sub(r'(?<!\\)\\(?![\\"/bfnrtu])', r"\\\\", cleaned_regex)
     try:
-        return json.loads(cleaned_regex)
+        return restore_latex_commands(json.loads(cleaned_regex))
     except Exception:
         pass
 
     # تلاش ۳: تبدیل تمام بک‌اسلش‌ها به دو بک‌اسلش با حفظ گیومه‌های escapeشده
     cleaned2 = _TRAILING_COMMA_RE.sub(r"\1", text).replace("\\", "\\\\")
     cleaned2 = re.sub(r'\\\\"', r'\"', cleaned2)
-    return json.loads(cleaned2)
+    return restore_latex_commands(json.loads(cleaned2))
 
 
 def _balanced_objects(text: str) -> list[str]:

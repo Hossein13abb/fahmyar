@@ -24,7 +24,7 @@ import json
 import re
 
 from reports.report_generator import build_report
-from reports.exam_pdf import DIFFICULTY_LABELS, build_exam_pdf
+from reports.exam_pdf import DIFFICULTY_LABELS, build_exam_pdf, clean_latex_for_pdf
 from reports.session_status import (
     COMPREHENSION_LABELS,
     comprehension_status,
@@ -587,10 +587,11 @@ def generate_exam_pdf(
         questions.append(
             {
                 "order": i,
-                "text": q.text.strip(),
-                "options": [str(o).strip() for o in q.options],
+                "text": clean_latex_for_pdf(q.text.strip()),
+                "options": [clean_latex_for_pdf(str(o).strip()) for o in q.options],
                 "correct_answer": int(q.correct_answer),
-                "explanation": (q.explanation or "").strip(),
+                "explanation": clean_latex_for_pdf((q.explanation or "").strip()),
+                "diagram_svg": q.diagram_svg,
             }
         )
 

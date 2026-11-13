@@ -16,3 +16,4 @@ jdatetime>=5
 # تست
 pytest>=8.0
 httpx>=0.27
+svglib>=1.5.1

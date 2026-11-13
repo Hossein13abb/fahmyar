@@ -350,3 +350,104 @@ def test_exam_preview_multi_model_retry_fallback(seeded):
         assert attempts[1] == "qwen/qwen-2.5-coder-32b-instruct:free"
     finally:
         router.generate = orig_gen
+
+
+
+def test_clean_latex_for_pdf_and_svg_pdf_export(seeded):
+    from main import app
+    from reports.exam_pdf import clean_latex_for_pdf
+
+    cleaned = clean_latex_for_pdf(
+        r"دترمینان $$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$$ و $\frac{a}{b} \times ۲$ چیست؟"
+    )
+    assert "$" not in cleaned
+    assert "[ " in cleaned and " ]" in cleaned
+    assert " | " in cleaned
+    assert ", " in cleaned
+    assert "(a/b)" in cleaned
+    assert " x " in cleaned
+
+    client = TestClient(app)
+    r = client.post("/api/auth/login", json={"username": "teacher1", "password": "teacher123"})
+    token = r.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    valid_svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 160" width="300" height="160">'
+        '<rect x="20" y="20" width="260" height="120" fill="#f8fafc" stroke="#0d9488" stroke-width="2"/>'
+        '<circle cx="150" cy="80" r="40" fill="none" stroke="#0f172a" stroke-width="2"/>'
+        '<text x="150" y="85" font-family="Vazirmatn, Arial" font-size="14" text-anchor="middle">شعاع ۵</text>'
+        "</svg>"
+    )
+    res = client.post(
+        "/api/teacher/generate-exam-pdf",
+        json={
+            "title": "آزمون تست هندسه و حسابان",
+            "school_name": "دبیرستان نمونه",
+            "grade": "12",
+            "major": "ریاضی و فیزیک",
+            "subject_label": "هندسه ۳",
+            "topic": "ماتریس و مقاطع مخروطی",
+            "duration_minutes": 45,
+            "difficulty": "کنکوری",
+            "questions": [
+                {
+                    "id": 1,
+                    "text": r"دترمینان $$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$$ و $\frac{۱}{۲} \times ۴$ کدام است؟",
+                    "options": [r"$\frac{۱}{۲}$", "$-۲$", "$۰$", "$۴$"],
+                    "correct_answer": 2,
+                    "source_tag": "تألیفی AI",
+                    "explanation": r"حاصل $\frac{۱}{۲} \times ۴ = ۲$ و دترمینان برابر $-۲$ است.",
+                    "diagram_svg": valid_svg,
+                },
+                {
+                    "id": 2,
+                    "text": "سؤال با SVG معیوب که باید بدون خطا نادیده گرفته شود",
+                    "options": ["۱", "۲", "۳", "۴"],
+                    "correct_answer": 1,
+                    "source_tag": "قلم‌چی",
+                    "explanation": "پاسخ ۱",
+                    "diagram_svg": "<svg><broken>",
+                },
+            ],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    assert res.headers["content-type"] == "application/pdf"
+    assert res.content.startswith(b"%PDF-")
+    assert len(res.content) > 5000
+
+
+def test_prompt_rules_and_swallowed_backslash_recovery():
+    from ai.exam_generator import build_exam_preview_prompt
+    from ai.json_sanitize import safe_parse_json
+
+    prompt = build_exam_preview_prompt(
+        count=3,
+        field_label="ریاضی و فیزیک",
+        subjects_slugs="geometry",
+        subjects_labels="هندسه ۳",
+        subject_configs=[{"subject": "geometry", "count": 3, "difficulty": "سخت", "subTopics": []}],
+        sub_topics=[],
+        ai_ratio=50,
+        grade_label="دوازدهم",
+        topic="—",
+        question_type_label="نامشخص / ترکیبی",
+        difficulty_label="سخت",
+        custom_prompt="—",
+    )
+    assert "You MUST double-escape all LaTeX commands in the JSON" in prompt
+    assert "BANNED TOPICS:" in prompt
+    assert "معادله بیضی" in prompt
+    assert "انتگرال" in prompt
+    assert "SVGs are OPTIONAL." in prompt
+    assert "DIFFICULTY CALIBRATION:" in prompt
+
+    # حتی اگر بک‌اسلشِ begin{bmatrix} یا frac{ بلعیده شده باشد، پیش‌پردازنده آن را احیا می‌کند
+    swallowed = '[{"id": 1, "text": "$$begin{bmatrix} ۱ & ۲ \\\\ ۳ & ۴ end{bmatrix}$$ و $frac{۱}{۲} + sqrt{x}$"}]'
+    parsed = safe_parse_json(swallowed)
+    assert r"\begin{bmatrix}" in parsed[0]["text"]
+    assert r"\end{bmatrix}" in parsed[0]["text"]
+    assert r"\frac{۱}{۲}" in parsed[0]["text"]
+    assert r"\sqrt{x}" in parsed[0]["text"]

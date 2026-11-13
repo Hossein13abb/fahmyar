@@ -1,9 +1,9 @@
 """ماژول اختصاصی تولید آزمون کنکوری و شبیه‌سازی بانک سؤالات — منطبق با سرفصل‌های رسمی ایران.
 
 این ماژول:
-۱. پرامپت سیستم را با قید اکیدِ سرفصل‌های نظام جدید ایران (بدون مباحث حذف‌شده مانند انتگرال در حسابان) می‌سازد.
+۱. پرامپت سیستم را با قید اکیدِ سرفصل‌های نظام جدید ایران و بخش BANNED TOPICS (بدون مباحث حذف‌شده مانند انتگرال در حسابان و معادلهٔ بیضی در هندسه دوازدهم) می‌سازد.
 ۲. نسبتِ «سؤالات بانک آزمون استاندارد» (`100 - ai_ratio`) به «سؤالات تشخیصی هوش مصنوعی» (`ai_ratio`) را اعمال می‌کند.
-۳. قاعدهٔ اکیدِ Double-Escape برای بک‌اسلش‌های LaTeX درون رشته‌های JSON را در پرامپت سیستم قرار می‌دهد.
+۳. قاعدهٔ اکیدِ Double-Escape برای بک‌اسلش‌های LaTeX درون رشته‌های JSON، منطق هوشمند/اختیاری برای `diagram_svg` و کالیبراسیون دقیق سطح سختی (`DIFFICULTY CALIBRATION`) را در پرامپت سیستم قرار می‌دهد.
 ۴. با حلقهٔ تلاش مجدد چندمدلی (`for attempt in range(3):`) و `safe_parse_json` در صورت شکست پارس JSON یا مدل اول، به‌طور خودکار با مدل رایگان بعدی تلاش می‌کند.
 ۵. پیش از ارسال پاسخ JSON به فرانت‌اند، تمام ارقام انگلیسی (`0123456789`) را با `to_persian_numbers` به ارقام فارسی (`۰۱۲۳۴۵۶۷۸۹`) تبدیل می‌کند.
 """
@@ -14,7 +14,7 @@ import logging
 import re
 from typing import Any, Callable, Optional
 
-from ai.json_sanitize import extract_json_array, safe_parse_json
+from ai.json_sanitize import extract_json_array, restore_latex_commands, safe_parse_json
 from ai.model_abstraction import get_router
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,8 @@ def persianize_svg_texts(svg: str) -> str:
 
 
 def persianize_json_values(obj: Any) -> Any:
-    """تبدیل بازگشتی تمام رشته‌های موجود در خروجی JSON به ارقام فارسی پیش از ارسال به فرانت‌اند."""
+    """تبدیل بازگشتی تمام رشته‌های موجود در خروجی JSON به ارقام فارسی و حفظ بک‌اسلش‌های LaTeX پیش از ارسال به فرانت‌اند."""
+    obj = restore_latex_commands(obj)
     if isinstance(obj, str):
         if "<svg" in obj.lower():
             return persianize_svg_texts(obj)
@@ -74,15 +75,18 @@ DIFFICULTY_MAP_FA = {
 
 
 SYSTEM_SYLLABUS_WARNING = (
-    "CRITICAL: You are generating questions for the IRANIAN national curriculum. "
-    "DO NOT include removed topics like Integrals (انتگرال) in Hesaban. "
+    "CRITICAL: You are generating questions for the IRANIAN national curriculum.\n"
+    "BANNED TOPICS: You are strictly forbidden from generating questions about the following removed topics from the Iranian curriculum: \n"
+    "- Equation of an Ellipse or standard forms (معادله بیضی) - Only focus on the definition/focal properties.\n"
+    "- Integrals (انتگرال) in Hesaban.\n"
+    "Do NOT use these concepts under any circumstances.\n"
     "Stick strictly to the provided topics."
 )
 
 JSON_LATEX_ESCAPING_RULE = (
-    r"CRITICAL JSON ESCAPING RULE: When writing LaTeX formulas in JSON text fields, "
-    r"you MUST escape every backslash with a double backslash. For example, write "
-    r"\\begin{bmatrix} instead of \begin{bmatrix}, write \\frac{a}{b} instead of \frac{a}{b}, "
+    r"CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. "
+    r"Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash. "
+    r"For example, write \\begin{bmatrix} instead of \begin{bmatrix}, write \\frac{a}{b} instead of \frac{a}{b}, "
     r"and write \\cdot instead of \cdot. Failure to do this breaks JSON syntax."
 )
 
@@ -90,15 +94,26 @@ LATEX_MATH_INSTRUCTION = (
     "You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. "
     "Wrap inline math in $...$ and block math/matrices in $$...$$. "
     "DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. "
-    "For matrices, use $$ \\begin{bmatrix} ۱ & ۲ \\\\ ۳ & ۴ \\end{bmatrix} $$.\n"
+    "For matrices, use $$ \\\\begin{bmatrix} ۱ & ۲ \\\\\\\\ ۳ & ۴ \\\\end{bmatrix} $$.\n"
     "Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$."
 )
 
 SVG_DIAGRAM_INSTRUCTION = (
-    "CRITICAL: If the subject is Physics (فیزیک) or Geometry (هندسه), or involves kinematics, circuits, "
-    "or geometric shapes, you MUST provide a valid, clean SVG diagram in the diagram_svg field. "
-    "The SVG must use font-family='Vazirmatn, Arial' for texts, and all numbers inside <text> tags "
-    "MUST be Persian digits. Do not use complex paths if simple rect/circle/line will do."
+    "SVGs are OPTIONAL. Set `diagram_svg` to `null` if the question can be solved without a picture "
+    "(e.g., standard algebra, matrices). NEVER attempt to draw precise intersecting coordinates "
+    "(like a line tangent to a circle) because your coordinate math will be wrong. "
+    "Only draw simple block diagrams, circuits, or abstract isolated shapes. "
+    "If you are unsure about the visual alignment, return `null`.\n"
+    "When you DO include an SVG diagram in `diagram_svg`, use font-family='Vazirmatn, Arial' for texts, "
+    "and all numbers inside <text> tags MUST be Persian digits."
+)
+
+DIFFICULTY_CALIBRATION_INSTRUCTION = (
+    "DIFFICULTY CALIBRATION:\n"
+    "- آسان (Easy): Direct formula application, single-step calculation.\n"
+    "- متوسط (Medium): Requires 2 steps, basic conceptual understanding.\n"
+    "- سخت (Hard): Requires synthesizing multiple concepts, deep analysis, or has a hidden trap. "
+    "DO NOT label a plug-and-chug question as Hard."
 )
 
 
@@ -116,12 +131,13 @@ KONKUR_EXAM_SYSTEM_PROMPT = """{syllabus_warning}
 {latex_instruction}
 {json_escaping_rule}
 {svg_instruction}
+{difficulty_calibration}
 
 شما «مؤلف ارشد سؤالات کنکوری» در سامانهٔ فهم‌یار هستید.
 
 دستورات اکید:
 ۱. دقیقاً {count} سؤالِ چهارگزینه‌ایِ استاندارد نظام جدید ایران طراحی کن.
-   - هشدار بسیار مهم: مباحث حذف‌شده از کتاب‌های درسی نظام جدید ایران (مانند «انتگرال» در حسابان یا هر مبحث خارج از کتاب درسی) مطلقاً نباید در سؤالات یا گزینه‌ها بیاید.
+   - هشدار بسیار مهم: مباحث حذف‌شده از کتاب‌های درسی نظام جدید ایران (مانند «انتگرال» در حسابان، «معادلهٔ بیضی» و فرم استاندارد آن در هندسه دوازدهم — صرفاً تعریف و ویژگی‌های کانونی بیضی مجاز است — یا هر مبحث خارج از کتاب درسی) مطلقاً نباید در سؤالات یا گزینه‌ها بیاید.
    - تمام اعداد، فرمول‌های عددی و ضرایب در متن سؤال، گزینه‌ها و پاسخ تشریحی باید با ارقام فارسی (۰۱۲۳۴۵۶۷۸۹) نوشته شوند.
 ۲. سؤالات را دقیقاً بر اساس پیکربندی هر درس (`SUBJECT_CONFIGS`) بین درس‌های انتخاب‌شده ({subjects_labels}) تقسیم کن:
    - برای هر درس، دقیقاً به تعداد `count` مشخص‌شده، با سطح دشواری `difficulty` آن درس (آسان / متوسط / سخت / کنکوری) و صرفاً از ریز‌مباحث انتخاب‌شده (`subTopics`) سؤال طرح کن.
@@ -132,7 +148,7 @@ KONKUR_EXAM_SYSTEM_PROMPT = """{syllabus_warning}
    - {ai_ratio}٪ سؤالات به سبک «تشخیصی هوش مصنوعی» (مفهومی، خلاقانه و دام‌محور برای کشف بدفهمی) با `source_tag` برابر «تألیفی AI».
 ۴. هر سؤال دقیقاً ۴ گزینه دارد و فقط یک گزینه درست است.
 ۵. خروجی را فقط و فقط به صورت یک آرایهٔ JSON خالص برگردان؛ هیچ توضیح، مقدمه یا Markdown اضافه ننویس:
-   [{{"id": 1, "text": "متن سؤال با فرمول LaTeX و ارقام فارسی", "options": ["گزینهٔ ۱", "گزینهٔ ۲", "گزینهٔ ۳", "گزینهٔ ۴"], "correct_answer": 2, "subject": "فیزیک", "difficulty": "کنکوری", "source_tag": "تألیفی AI", "diagram_svg": "<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 400 300\\" width=\\"100%\\" height=\\"100%\\">...</svg> یا null", "explanation": "یک خط استدلال کوتاه با ارقام فارسی"}}]
+   [{{"id": 1, "text": "متن سؤال با فرمول LaTeX و ارقام فارسی", "options": ["گزینهٔ ۱", "گزینهٔ ۲", "گزینهٔ ۳", "گزینهٔ ۴"], "correct_answer": 2, "subject": "فیزیک", "difficulty": "کنکوری", "source_tag": "تألیفی AI", "diagram_svg": null, "explanation": "یک خط استدلال کوتاه با ارقام فارسی"}}]
 
 <<<FIELD>>>{field_label}<<<END>>>
 <<<SUBJECTS>>>{subjects_slugs}<<<END>>>
@@ -173,6 +189,7 @@ def build_exam_preview_prompt(
         latex_instruction=LATEX_MATH_INSTRUCTION,
         json_escaping_rule=JSON_LATEX_ESCAPING_RULE,
         svg_instruction=SVG_DIAGRAM_INSTRUCTION,
+        difficulty_calibration=DIFFICULTY_CALIBRATION_INSTRUCTION,
         count=count,
         field_label=field_label,
         subjects_slugs=subjects_slugs,
@@ -234,9 +251,10 @@ async def generate_exam_questions(
 
         try:
             raw_questions = extract_json_array(response.text or "")
+            raw_questions = restore_latex_commands(raw_questions)
             questions = validator_fn(raw_questions) if validator_fn else raw_questions
             if questions:
-                return questions, None
+                return restore_latex_commands(questions), None
             logger.warning(
                 "[ExamGenerator] Attempt %d/3 returned empty validated questions (model=%s); retrying...",
                 attempt + 1,
