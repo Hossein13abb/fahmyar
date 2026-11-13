@@ -355,8 +355,12 @@ def test_exam_preview_multi_model_retry_fallback(seeded):
 
 def test_clean_latex_for_pdf_and_svg_pdf_export(seeded):
     from main import app
-    from reports.exam_pdf import clean_latex_for_pdf
+    from reports.exam_pdf import clean_latex_for_pdf, has_math
 
+    # مسیر اصلی: فرمول‌ها به تصویر واقعی رندر می‌شوند و به متن تبدیل نمی‌شوند
+    assert has_math(r"دترمینان $\frac{a}{b}$ چیست؟") is True
+
+    # مسیر fallback (فقط وقتی رندر تصویری شکست بخورد): پاک‌سازی متنیِ امن
     cleaned = clean_latex_for_pdf(
         r"دترمینان $$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$$ و $\frac{a}{b} \times ۲$ چیست؟"
     )
@@ -585,3 +589,103 @@ def test_final_pdf_cleanup_and_get_pdf_safe_text():
 
     safe = get_pdf_safe_text(raw)
     assert isinstance(safe, str) and len(safe) > 10
+
+
+def test_math_renderer_real_fractions_and_radicals():
+    """فرمول‌ها باید به تصویر واقعی (کسر/رادیکال/بردار/ماتریس) رندر شوند — نه متنِ «به روی»."""
+    from reports.math_renderer import normalize_latex, render_math_png
+
+    assert normalize_latex(r"$\frac{a}{b}$") == r"\frac{a}{b}"
+    assert normalize_latex(r"sqrt{7}") == r"\sqrt{7}"
+    assert normalize_latex(r"vec{AB}") == r"\vec{AB}"
+    assert normalize_latex(r"\\frac{a}{b}") == r"\frac{a}{b}"
+
+    frac = render_math_png(r"$\frac{۵\sqrt{۱۴}}{۱۴}$", font_size=10.5)
+    assert frac is not None
+    assert frac.width > 10 and frac.height > 8
+    assert frac.depth > 0
+    assert frac.png[:8] == b"\x89PNG\r\n\x1a\n"
+
+    for expr in (
+        r"$\sqrt{۷}$",
+        r"$\vec{a}=(۱,۲,۲)$",
+        r"$\cos^{-1}\left(\frac{۴}{۹}\right)$",
+        r"$۴۵^\circ$",
+        r"$$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$$",
+    ):
+        rendered = render_math_png(expr, font_size=10.5)
+        assert rendered is not None, expr
+        assert rendered.width > 0 and rendered.height > 0
+
+
+def test_pdf_text_flow_splits_math_segments():
+    from reports.pdf_text_flow import has_math, split_math_segments
+
+    segs = split_math_segments(r"مقدار $\frac{۱}{۲}$ و $$\sqrt{۷}$$ کدام است؟")
+    kinds = [seg[0] for seg in segs]
+    assert kinds.count("math") == 2
+    assert kinds[0] == "text"
+    assert has_math(r"اگر $x^2=۴$ باشد") is True
+    assert has_math("این جمله هیچ فرمولی ندارد") is False
+
+
+def test_exam_pdf_contains_real_math_images():
+    """PDF نهایی باید تصویر فرمول (XObject) داشته باشد و برچسب دلار خام در آن نماند."""
+    import pymupdf
+
+    from reports.exam_pdf import build_exam_pdf
+
+    questions = [
+        {
+            "order": 1,
+            "subject": "هندسه ۳",
+            "difficulty": "متوسط",
+            "text": r"اگر $\vec{a}=(۱,۲)$ باشد، حاصل $\frac{۵\sqrt{۱۴}}{۱۴}$ کدام است؟",
+            "options": [r"$\frac{۵\sqrt{۱۴}}{۱۴}$", r"$\sqrt{۷}$", r"$۴۵^\circ$", r"$T^{-1}$"],
+            "correct_answer": 1,
+            "explanation": r"داریم $\sqrt{۷}<\frac{۵\sqrt{۱۴}}{۱۴}$ پس پاسخ ۱ است.",
+            "diagram_svg": None,
+        }
+    ]
+    pdf = build_exam_pdf(
+        school_name="دبیرستان نمونه",
+        title="آزمون رندر ریاضی",
+        questions=questions,
+        duration_minutes=30,
+        difficulty="متوسط",
+        grade="12",
+        major="ریاضی و فیزیک",
+        subject_label="هندسه ۳",
+        topic="بردار",
+    )
+    assert pdf.startswith(b"%PDF-")
+    doc = pymupdf.open(stream=pdf, filetype="pdf")
+    try:
+        images = sum(len(page.get_images(full=True)) for page in doc)
+        assert images >= 4  # کسر، رادیکال، درجه، T^-1
+        text = "".join(page.get_text() for page in doc)
+        assert "به روی" not in text  # دیگر فرمول‌ها به کلمه ترجمه نمی‌شوند
+        assert "$" not in text
+    finally:
+        doc.close()
+
+
+def test_ai_prompt_requires_persian_digits_inside_math():
+    from ai.exam_generator import build_exam_preview_prompt
+
+    prompt = build_exam_preview_prompt(
+        count=2,
+        field_label="ریاضی و فیزیک",
+        subjects_slugs="geometry",
+        subjects_labels="هندسه ۳",
+        subject_configs=[{"subject": "geometry", "count": 2, "difficulty": "متوسط", "subTopics": []}],
+        sub_topics=[],
+        ai_ratio=50,
+        grade_label="دوازدهم",
+        topic="—",
+        question_type_label="نامشخص / ترکیبی",
+        difficulty_label="متوسط",
+        custom_prompt="—",
+    )
+    assert "PERSIAN DIGITS INSIDE MATH (VISUAL RENDERER REQUIREMENT)" in prompt
+    assert "۵" in prompt and "۱۴" in prompt

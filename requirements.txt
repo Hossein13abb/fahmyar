@@ -17,4 +17,6 @@ jdatetime>=5
 pytest>=8.0
 httpx>=0.27
 svglib>=1.5.1
+# رندر واقعی فرمول‌های ریاضی (کسر/رادیکال/ماتریس) به تصویر PNG برای ReportLab
 matplotlib>=3.8.0
+pillow>=10.0

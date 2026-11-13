@@ -103,7 +103,11 @@ LATEX_MATH_INSTRUCTION = (
     "- Vectors & subscripts: `$\\vec{n}_1 = (1, 2, 2)$` (NOT `n_1=(1,2,2)`)\n"
     "- Matrices: `$$\\begin{bmatrix} 2 & 1 \\\\ 1 & 3 \\end{bmatrix}$$`\n"
     "Never output raw LaTeX commands outside of `$` or `$$` delimiters!\n"
-    "DO NOT write text like 'x be tavan 2'. Even inside LaTeX blocks, use Persian numbers (۰۱۲۳۴۵۶۷۸۹) where appropriate, e.g., $۲x + ۵ = ۱۲$."
+    "PERSIAN DIGITS INSIDE MATH (VISUAL RENDERER REQUIREMENT):\n"
+    "Inside these math blocks use standard LaTeX syntax but replace ALL English digits with Persian digits, "
+    "e.g. `$\\frac{۵\\sqrt{۱۴}}{۱۴}$` instead of `$\\frac{5\\sqrt{14}}{14}$`. "
+    "This is CRITICAL for the visual renderer that draws real fractions and radicals in the PDF.\n"
+    "DO NOT write text like 'x be tavan 2'. Never describe a formula in words — always typeset it in LaTeX."
 )
 
 SVG_DIAGRAM_INSTRUCTION = (

@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -59,10 +59,13 @@ from reportlab.platypus import (
     TableStyle,
     Flowable,
     Image as RLImage,
+    KeepTogether,
 )
 
 from models.concept import Concept
 from models.question import Question
+from reports.math_renderer import render_math_png
+from reports.pdf_text_flow import OptionsRow, has_math, math_paragraph_flowables
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FONT_DIR = BASE_DIR / "assets" / "fonts"
@@ -190,8 +193,10 @@ def final_pdf_cleanup(text: Any) -> str:
     return s
 
 
-# نام‌های مستعار برای سازگاری با سایر بخش‌ها
+# نام‌های مستعار برای سازگاری با سایر بخش‌ها (مسیر متنیِ fallback)
 latex_to_persian_text = final_pdf_cleanup
+
+#: دیگر «متنِ بی‌ریاضی» ساخته نمی‌شود — نام قدیمی به موتور رندر تصویری اشاره می‌کند.
 clean_latex_for_pdf = final_pdf_cleanup
 
 
@@ -239,79 +244,29 @@ _MATH_DELIM_RE = re.compile(r"\$\$[\s\S]+?\$\$|\$[^$]+\$")
 
 
 def latex_to_pdf_image(latex_str: str, dpi: int = 200) -> Optional[RLImage]:
-    r"""Converts a LaTeX string (e.g. $ \frac{a}{b} $ or $ \sqrt{2} $ or bmatrix) into a ReportLab Image object."""
-    if not _HAS_MATPLOTLIB or plt is None:
+    r"""تبدیل یک عبارت LaTeX (مثل $ \frac{a}{b} $، $ \sqrt{2} $ یا bmatrix) به تصویر ReportLab.
+
+    از موتور mathtext کتابخانهٔ matplotlib استفاده می‌کند (بدون نیاز به نصب LaTeX/TeX Live)
+    تا کسرها، رادیکال‌ها و ماتریس‌ها به‌صورت **واقعی** و برداری‌گونه رندر شوند.
+    """
+    if not _HAS_MATPLOTLIB:
         return None
-    fig = None
     try:
-        raw = str(latex_str or "").strip()
-        if not raw:
-            return None
-        # احیای کاراکترهای کنترلی احتمالی (\b و \f)
-        raw = raw.replace("\x08", "\\b").replace("\x0c", "\\f")
-        clean_expr = raw.strip("$").strip()
-        if not clean_expr:
-            return None
-
-        # تبدیل ارقام فارسی به انگلیسی برای فونت ریاضی Matplotlib (جلوگیری از مربع خالی)
-        expr = clean_expr.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
-        expr = expr.replace(r"\dfrac", r"\frac").replace(r"\tfrac", r"\frac")
-        expr = re.sub(r"(?<![\\a-zA-Z])(frac|sqrt)\s*\{", r"\\\1{", expr)
-        expr = re.sub(r"(?<![\\a-zA-Z])(begin|end)\s*\{([bpvBV]?matrix)\}", r"\\\1{\2}", expr)
-
-        m_mat = re.search(
-            r"(?:\\+)?begin\s*\{([bpvBV]?matrix)\}([\s\S]*?)(?:\\+)?end\s*\{[bpvBV]?matrix\}",
-            expr,
-        )
-        if m_mat:
-            body = m_mat.group(2).strip()
-            rows = [r.strip() for r in re.split(r"\\\\", body) if r.strip()]
-            grid = [[c.strip() for c in r.split("&")] for r in rows]
-            nrows = max(len(grid), 1)
-            ncols = max((len(r) for r in grid), default=1)
-            fig, ax = plt.subplots(figsize=(max(0.6, 0.55 * ncols), max(0.45, 0.38 * nrows)))
-            ax.set_xlim(0, ncols)
-            ax.set_ylim(0, nrows)
-            ax.axis("off")
-            for ri, row in enumerate(grid):
-                y = nrows - ri - 0.5
-                for ci, cell in enumerate(row):
-                    x = ci + 0.5
-                    cell_tex = cell.strip("$").strip() or "0"
-                    ax.text(x, y, f"${cell_tex}$", size=12, ha="center", va="center")
-            ax.plot([0.18, 0.04, 0.04, 0.18], [0.08, 0.08, nrows - 0.08, nrows - 0.08], color="#0f172a", lw=1.5)
-            ax.plot(
-                [ncols - 0.18, ncols - 0.04, ncols - 0.04, ncols - 0.18],
-                [0.08, 0.08, nrows - 0.08, nrows - 0.08],
-                color="#0f172a",
-                lw=1.5,
-            )
-        else:
-            fig, ax = plt.subplots(figsize=(0.1, 0.1))
-            ax.axis("off")
-            # Render math latex
-            text_obj = ax.text(0.5, 0.5, f"${expr.strip('$')}$", size=14, ha="center", va="center")  # noqa: F841
-
-        buf = io.BytesIO()
-        plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0.05, transparent=True, dpi=dpi)
-        plt.close(fig)
-        fig = None
-        buf.seek(0)
-
-        # Return ReportLab Image with proportional scaling
-        img = RLImage(buf)
-        img.drawWidth = img.drawWidth * 0.5
-        img.drawHeight = img.drawHeight * 0.5
-        img.hAlign = "RIGHT"
-        return img
+        rendered = render_math_png(latex_str, font_size=11.0, dpi=max(150, int(dpi)))
     except Exception:
-        if fig is not None:
-            try:
-                plt.close(fig)
-            except Exception:
-                pass
         return None
+    if rendered is None:
+        return None
+    try:
+        img = RLImage(io.BytesIO(rendered.png), width=rendered.width, height=rendered.height)
+    except Exception:
+        return None
+    img.hAlign = "RIGHT"
+    return img
 
+
+# نام مستعار مطابق مستندات
+render_latex_to_image = latex_to_pdf_image
 
 # نام مستعار مطابق مستندات
 render_latex_to_image = latex_to_pdf_image
@@ -354,34 +309,6 @@ def _extract_complex_math_images(raw_text: Any, max_width_pt: float = 180.0) -> 
 
 
 
-def _fa(value: Any) -> str:
-    return to_persian_numbers(str(value))
-
-
-def _fa_date() -> str:
-    try:
-        import jdatetime
-
-        return to_persian_numbers(jdatetime.date.today().strftime("%Y/%m/%d"))
-    except Exception:
-        from datetime import date
-
-        return to_persian_numbers(date.today().strftime("%Y/%m/%d"))
-
-
-def prepare_farsi_text(text: str) -> str:
-    """متن فارسی را برای رندر در ReportLab آماده می‌کند (پاک‌سازی LaTeX + ارقام فارسی + اتصال حروف + ترتیب دیداری RTL)."""
-    if not text:
-        return ""
-    cleaned = latex_to_persian_text(str(text))
-    return get_display(arabic_reshaper.reshape(cleaned))
-
-
-def reshaped(text: Any) -> str:
-    """نام مستعار — برای سازگاری با فراخوان‌های قبلی."""
-    return prepare_farsi_text(str(text or ""))
-
-
 def _esc_xml(visual: str) -> str:
     return visual.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -410,8 +337,21 @@ def rtl_flowables(
     text: Any,
     style: ParagraphStyle,
     max_width_mm: float,
-) -> list[Paragraph]:
-    """متن فارسی را به خط‌های پاراگراف راست‌چین تبدیل می‌کند (امن برای Platypus)."""
+    render_math: bool = True,
+) -> list[Flowable]:
+    """متن فارسی (به‌همراه فرمول‌های ریاضیِ تصویری) را به Flowableهای راست‌چین تبدیل می‌کند.
+
+    اگر متن شامل ``$...$`` یا ``$$...$$`` یا دستور LaTeXِ بدون دلار باشد، هر فرمول با
+    matplotlib به تصویر شفاف رندر و در جریان متن جای‌گذاری می‌شود (کسر و رادیکال واقعی).
+    در غیر این صورت همان مسیر متنیِ سبک انتخاب می‌شود.
+    """
+    if render_math and has_math(text):
+        return math_paragraph_flowables(
+            str(text),
+            style=style,
+            max_width=max_width_mm * mm - 18,
+            fallback=final_pdf_cleanup,
+        )
     text = final_pdf_cleanup(text)
     font = style.fontName or FONT_REG
     size = style.fontSize
@@ -898,43 +838,31 @@ def _instruction_box() -> Table:
     return t
 
 
-def _option_cell(text: str, index: int) -> list[Flowable]:
+def _option_text(text: str, index: int) -> str:
+    """متن گزینه با برچسب فارسی (الف/ب/ج/د)."""
     label = OPTION_LETTERS[index]
-    cleaned_opt = final_pdf_cleanup(str(text or "").strip())
-    return list(
-        rtl_flowables(f"{label} - {cleaned_opt}", _style(f"opt-{index}", fontSize=9.5, leading=18), 89 - 8)
-    )
+    return f"{label}) {str(text or '').strip()}"
 
 
-def _options_table(item: dict[str, Any]) -> Table:
-    """گزینه‌های چهارگانه در دو ستون — چینش استاندارد کنکور (راست→چپ: الف/ب سپس ج/د)."""
+def _option_style(index: int) -> ParagraphStyle:
+    return _style(f"opt-{index}", fontSize=9.5, leading=18)
+
+
+def _options_table(item: dict[str, Any]) -> "OptionsRow":
+    """گزینه‌های چهارگانه در یک ردیفِ تمام‌عرض، از راست به چپ (الف → د).
+
+    هر گزینه یک بلوکِ ریاضی‌فهم است؛ فرمول‌ها به تصویرِ واقعی (کسر/رادیکال/بردار) تبدیل می‌شوند.
+    """
     opts = list(item["options"])
-    cells = [_option_cell(opts[i], i) for i in range(4)]
-    # ستون‌ها از چپِ فیزیکی چیده می‌شوند: [ج (چپ)، الف (راست)] و [د (چپ)، ب (راست)]
-    data = [
-        [cells[2], cells[0]],
-        [cells[3], cells[1]],
-    ]
-    t = Table(data, colWidths=[89 * mm, 89 * mm])
-    t.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ]
-        )
-    )
-    return t
+    cells = [(_option_text(opts[i], i), _option_style(i)) for i in range(4)]
+    return OptionsRow(cells, width=178 * mm, fallback=final_pdf_cleanup)
 
 
 def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowable]:
-    """سؤال کنکوری: سربرگ + متن پاک‌سازی‌شده با final_pdf_cleanup/get_pdf_safe_text + شکل SVG + چهار گزینه."""
+    """سؤال کنکوری: سربرگ + متن با فرمول‌های تصویری (fallback: final_pdf_cleanup) + شکل SVG + چهار گزینه."""
     story: list[Flowable] = [_question_header(item)]
-    cleaned_text = final_pdf_cleanup(item.get("text", "") or item.get("question_text", "") or item.get("title", ""))
-    story += rtl_flowables(cleaned_text, _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
+    raw_text = item.get("text") or item.get("question_text") or item.get("title") or ""
+    story += rtl_flowables(raw_text, _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
     svg_flow = _svg_flowable(item.get("diagram_svg"))
     if svg_flow is not None:
         story.append(Spacer(1, 1.5 * mm))
@@ -942,27 +870,28 @@ def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowab
     story.append(Spacer(1, 1.5 * mm))
     story.append(_options_table(item))
     story.append(Spacer(1, 4.5 * mm))
-    return story
+    # سؤال هرگز بین دو صفحه تکه نمی‌شود (سربرگ تنها در پایین صفحه نمی‌ماند)
+    return [KeepTogether(story)]
 
 
 def _answer_flow(item: dict[str, Any]) -> list[Flowable]:
     """بلوکِ کلیدِ هر سؤال — شماره، گزینهٔ صحیح (با حرف)، استدلال کوتاه؛ بدون هیچ تگ منبعی."""
-    order = _fa(item["order"])
     ca = int(item["correct_answer"])
     letter = OPTION_LETTERS[ca - 1]
     story: list[Flowable] = [_question_header(item, tag="کلید")]
-    cleaned_text = final_pdf_cleanup(item.get("text", "") or item.get("question_text", "") or item.get("title", ""))
-    preview = cleaned_text if len(cleaned_text) <= 150 else cleaned_text[:150] + "…"
+    raw_text = str(item.get("text") or item.get("question_text") or item.get("title") or "")
+    # پیش‌نمایش کوتاه اما با فرمول‌های تصویری (بدون تبدیل متنیِ «به روی»)
+    preview = raw_text if len(raw_text) <= 160 else raw_text[:157] + "…"
     story += rtl_flowables(preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 178)
     story.append(Spacer(1, 1.5 * mm))
-    story += rtl_flowables(f"پاسخ صحیح: گزینهٔ {_fa(ca)} - {letter}", _style("ak-key", fontName=FONT_XBOLD, fontSize=11, textColor=BRAND_DARK, leading=20), 178)
-    explanation = final_pdf_cleanup((item.get("explanation") or "").strip())
-    if explanation:
-        story += rtl_flowables(explanation, _style("ak-a", fontSize=9, leading=18, textColor=colors.HexColor("#1F2937")), 178)
+    story += rtl_flowables(f"پاسخ صحیح: گزینهٔ {_fa(ca)} - {letter}", _style("ak-key", fontName=FONT_XBOLD, fontSize=11, textColor=BRAND_DARK, leading=20), 178, render_math=False)
+    raw_explanation = (item.get("explanation") or "").strip()
+    if raw_explanation:
+        story += rtl_flowables(raw_explanation, _style("ak-a", fontSize=9, leading=18, textColor=colors.HexColor("#1F2937")), 178)
     else:
         story += rtl_flowables("استدلال تشریحی برای این سؤال در سامانه ثبت نشده است.", _style("ak-a-empty", fontSize=8.5, leading=17, textColor=SLATE_500), 178)
     story.append(Spacer(1, 4 * mm))
-    return story
+    return [KeepTogether(story)]
 
 
 def _correction_flow(items: list[dict[str, Any]]) -> list[Flowable]:
