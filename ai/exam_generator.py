@@ -75,12 +75,15 @@ DIFFICULTY_MAP_FA = {
 
 
 SYSTEM_SYLLABUS_WARNING = (
-    "CRITICAL: You are generating questions for the IRANIAN national curriculum.\n"
-    "BANNED TOPICS: You are strictly forbidden from generating questions about the following removed topics from the Iranian curriculum: \n"
-    "- Equation of an Ellipse or standard forms (معادله بیضی) - Only focus on the definition/focal properties.\n"
-    "- Integrals (انتگرال) in Hesaban.\n"
-    "Do NOT use these concepts under any circumstances.\n"
-    "Stick strictly to the provided topics."
+    "CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):\n"
+    "You MUST generate questions exclusively compliant with the updated Iranian 6-3-3 high school textbooks published AFTER 1397 (2018).\n\n"
+    "BANNED NEZAM-GHADIM TOPICS (STRICTLY FORBIDDEN):\n"
+    "- Integrals (انتگرال) in Hesaban 2.\n"
+    "- General & Standard Equations of Ellipse/Hyperbola (معادله بیضی و هذلولی) in Geometry 3 - Only focus on the definition/focal properties.\n"
+    "- Matrix Inverses of 3x3 matrices (معکوس ماتریس 3x3).\n"
+    "- Obsolete physics topics removed post-1397.\n\n"
+    "Only include topics explicitly present in current 10th, 11th, and 12th grade Iranian textbooks.\n"
+    "Do NOT use these banned concepts under any circumstances."
 )
 
 JSON_LATEX_ESCAPING_RULE = (

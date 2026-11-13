@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import io
 import os
 import re
 import tempfile
@@ -22,6 +23,16 @@ except Exception:
     svg2rlg = None  # type: ignore[assignment]
     renderPDF = None  # type: ignore[assignment]
     _HAS_SVGLIB = False
+
+try:
+    import matplotlib
+    matplotlib.use("Agg")  # Headless backend
+    import matplotlib.pyplot as plt
+    _HAS_MATPLOTLIB = True
+except Exception:
+    matplotlib = None  # type: ignore[assignment]
+    plt = None  # type: ignore[assignment]
+    _HAS_MATPLOTLIB = False
 
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -47,6 +58,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
     Flowable,
+    Image as RLImage,
 )
 
 from models.concept import Concept
@@ -212,6 +224,128 @@ def latex_to_persian_text(text: Any) -> str:
 
 # نام مستعار برای سازگاری با فراخوانی‌های موجود
 clean_latex_for_pdf = latex_to_persian_text
+
+
+_COMPLEX_LATEX_RE = re.compile(
+    r"(?:\\+)?(?:(?:d|t)?frac\s*\{|sqrt\s*[\[\{]|begin\s*\{[bpvBV]?matrix\})"
+)
+_MATH_DELIM_RE = re.compile(r"\$\$[\s\S]+?\$\$|\$[^$]+\$")
+
+
+def latex_to_pdf_image(latex_str: str, dpi: int = 200) -> Optional[RLImage]:
+    r"""Converts a LaTeX string (e.g. $ \frac{a}{b} $ or $ \sqrt{2} $ or bmatrix) into a ReportLab Image object."""
+    if not _HAS_MATPLOTLIB or plt is None:
+        return None
+    fig = None
+    try:
+        raw = str(latex_str or "").strip()
+        if not raw:
+            return None
+        # احیای کاراکترهای کنترلی احتمالی (\b و \f)
+        raw = raw.replace("\x08", "\\b").replace("\x0c", "\\f")
+        clean_expr = raw.strip("$").strip()
+        if not clean_expr:
+            return None
+
+        # تبدیل ارقام فارسی به انگلیسی برای فونت ریاضی Matplotlib (جلوگیری از مربع خالی)
+        expr = clean_expr.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+        expr = expr.replace(r"\dfrac", r"\frac").replace(r"\tfrac", r"\frac")
+        expr = re.sub(r"(?<![\\a-zA-Z])(frac|sqrt)\s*\{", r"\\\1{", expr)
+        expr = re.sub(r"(?<![\\a-zA-Z])(begin|end)\s*\{([bpvBV]?matrix)\}", r"\\\1{\2}", expr)
+
+        m_mat = re.search(
+            r"(?:\\+)?begin\s*\{([bpvBV]?matrix)\}([\s\S]*?)(?:\\+)?end\s*\{[bpvBV]?matrix\}",
+            expr,
+        )
+        if m_mat:
+            body = m_mat.group(2).strip()
+            rows = [r.strip() for r in re.split(r"\\\\", body) if r.strip()]
+            grid = [[c.strip() for c in r.split("&")] for r in rows]
+            nrows = max(len(grid), 1)
+            ncols = max((len(r) for r in grid), default=1)
+            fig, ax = plt.subplots(figsize=(max(0.6, 0.55 * ncols), max(0.45, 0.38 * nrows)))
+            ax.set_xlim(0, ncols)
+            ax.set_ylim(0, nrows)
+            ax.axis("off")
+            for ri, row in enumerate(grid):
+                y = nrows - ri - 0.5
+                for ci, cell in enumerate(row):
+                    x = ci + 0.5
+                    cell_tex = cell.strip("$").strip() or "0"
+                    ax.text(x, y, f"${cell_tex}$", size=12, ha="center", va="center")
+            ax.plot([0.18, 0.04, 0.04, 0.18], [0.08, 0.08, nrows - 0.08, nrows - 0.08], color="#0f172a", lw=1.5)
+            ax.plot(
+                [ncols - 0.18, ncols - 0.04, ncols - 0.04, ncols - 0.18],
+                [0.08, 0.08, nrows - 0.08, nrows - 0.08],
+                color="#0f172a",
+                lw=1.5,
+            )
+        else:
+            fig, ax = plt.subplots(figsize=(0.1, 0.1))
+            ax.axis("off")
+            # Render math latex
+            text_obj = ax.text(0.5, 0.5, f"${expr.strip('$')}$", size=14, ha="center", va="center")  # noqa: F841
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0.05, transparent=True, dpi=dpi)
+        plt.close(fig)
+        fig = None
+        buf.seek(0)
+
+        # Return ReportLab Image with proportional scaling
+        img = RLImage(buf)
+        img.drawWidth = img.drawWidth * 0.5
+        img.drawHeight = img.drawHeight * 0.5
+        img.hAlign = "RIGHT"
+        return img
+    except Exception:
+        if fig is not None:
+            try:
+                plt.close(fig)
+            except Exception:
+                pass
+        return None
+
+
+# نام مستعار مطابق مستندات
+render_latex_to_image = latex_to_pdf_image
+
+
+def _extract_complex_math_images(raw_text: Any, max_width_pt: float = 180.0) -> list[RLImage]:
+    r"""اگر متن حاوی فرمول پیچیدهٔ LaTeX (\frac, \sqrt, \begin{bmatrix}) باشد، تصاویر RLImage متناظر را می‌سازد."""
+    if not raw_text or not _HAS_MATPLOTLIB:
+        return []
+    s = str(raw_text).replace("\x08", "\\b").replace("\x0c", "\\f")
+    if not _COMPLEX_LATEX_RE.search(s):
+        return []
+
+    blocks = [m.group(0) for m in _MATH_DELIM_RE.finditer(s) if _COMPLEX_LATEX_RE.search(m.group(0))]
+    if not blocks:
+        # اگر بدون علامت $ نوشته شده بود، کل عبارت پیچیده را استخراج کن
+        m_mat = re.search(
+            r"(?:\\+)?begin\s*\{[bpvBV]?matrix\}[\s\S]*?(?:\\+)?end\s*\{[bpvBV]?matrix\}",
+            s,
+        )
+        if m_mat:
+            blocks.append(m_mat.group(0))
+        else:
+            for m_cmd in re.finditer(
+                r"(?:\\+)?(?:(?:d|t)?frac\s*\{[^{}]+\}\s*\{[^{}]+\}|sqrt\s*(?:\[[^\[\]]+\])?\s*\{[^{}]+\})",
+                s,
+            ):
+                blocks.append(m_cmd.group(0))
+
+    images: list[RLImage] = []
+    for blk in blocks[:4]:
+        img = latex_to_pdf_image(blk)
+        if img is not None:
+            if float(img.drawWidth) > max_width_pt and float(img.drawWidth) > 0:
+                ratio = max_width_pt / float(img.drawWidth)
+                img.drawWidth = float(img.drawWidth) * ratio
+                img.drawHeight = float(img.drawHeight) * ratio
+            images.append(img)
+    return images
+
 
 
 def _fa(value: Any) -> str:
@@ -760,8 +894,16 @@ def _instruction_box() -> Table:
 
 def _option_cell(text: str, index: int) -> list[Flowable]:
     label = OPTION_LETTERS[index]
-    cleaned_opt = clean_latex_for_pdf(text)
-    return rtl_flowables(f"{label}) {cleaned_opt}", _style(f"opt-{index}", fontSize=9.5, leading=18), 89 - 8)
+    raw_opt = str(text or "").strip()
+    math_imgs = _extract_complex_math_images(raw_opt, max_width_pt=72 * mm)
+    cleaned_opt = latex_to_persian_text(raw_opt)
+    flows: list[Flowable] = list(
+        rtl_flowables(f"{label}) {cleaned_opt}", _style(f"opt-{index}", fontSize=9.5, leading=18), 89 - 8)
+    )
+    for img in math_imgs:
+        flows.append(Spacer(1, 0.8 * mm))
+        flows.append(img)
+    return flows
 
 
 def _options_table(item: dict[str, Any]) -> Table:
@@ -789,10 +931,14 @@ def _options_table(item: dict[str, Any]) -> Table:
 
 
 def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowable]:
-    """سؤال کنکوری: سربرگ + متن (با پاک‌سازی LaTeX) + شکل SVG (در صورت وجود) + چهار گزینه در دو ستون."""
+    """سؤال کنکوری: سربرگ + متن + تصویر فرمول‌های پیچیده (در صورت وجود) + شکل SVG + چهار گزینه در دو ستون."""
     story: list[Flowable] = [_question_header(item)]
-    cleaned_text = clean_latex_for_pdf(item.get("text", ""))
+    raw_text = str(item.get("text", "") or "")
+    cleaned_text = latex_to_persian_text(raw_text)
     story += rtl_flowables(cleaned_text, _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
+    for math_img in _extract_complex_math_images(raw_text, max_width_pt=150 * mm):
+        story.append(Spacer(1, 1.2 * mm))
+        story.append(math_img)
     svg_flow = _svg_flowable(item.get("diagram_svg"))
     if svg_flow is not None:
         story.append(Spacer(1, 1.5 * mm))
@@ -809,14 +955,18 @@ def _answer_flow(item: dict[str, Any]) -> list[Flowable]:
     ca = int(item["correct_answer"])
     letter = OPTION_LETTERS[ca - 1]
     story: list[Flowable] = [_question_header(item, tag="کلید")]
-    cleaned_text = clean_latex_for_pdf(item.get("text", ""))
+    cleaned_text = latex_to_persian_text(item.get("text", ""))
     preview = cleaned_text if len(cleaned_text) <= 150 else cleaned_text[:150] + "…"
     story += rtl_flowables(preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 178)
     story.append(Spacer(1, 1.5 * mm))
     story += rtl_flowables(f"پاسخ صحیح: گزینهٔ {_fa(ca)} ({letter})", _style("ak-key", fontName=FONT_XBOLD, fontSize=11, textColor=BRAND_DARK, leading=20), 178)
-    explanation = clean_latex_for_pdf((item.get("explanation") or "").strip())
+    raw_exp = (item.get("explanation") or "").strip()
+    explanation = latex_to_persian_text(raw_exp)
     if explanation:
         story += rtl_flowables(explanation, _style("ak-a", fontSize=9, leading=18, textColor=colors.HexColor("#1F2937")), 178)
+        for math_img in _extract_complex_math_images(raw_exp, max_width_pt=140 * mm):
+            story.append(Spacer(1, 1.0 * mm))
+            story.append(math_img)
     else:
         story += rtl_flowables("استدلال تشریحی برای این سؤال در سامانه ثبت نشده است.", _style("ak-a-empty", fontSize=8.5, leading=17, textColor=SLATE_500), 178)
     story.append(Spacer(1, 4 * mm))

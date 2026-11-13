@@ -589,10 +589,10 @@ def generate_exam_pdf(
         questions.append(
             {
                 "order": i,
-                "text": latex_to_persian_text(q.text.strip()),
-                "options": [latex_to_persian_text(str(o).strip()) for o in q.options],
+                "text": q.text.strip(),
+                "options": [str(o).strip() for o in q.options],
                 "correct_answer": int(q.correct_answer),
-                "explanation": latex_to_persian_text((q.explanation or "").strip()),
+                "explanation": (q.explanation or "").strip(),
                 "difficulty": (q.difficulty or "").strip(),
                 "subject": (q.subject or "").strip(),
                 "diagram_svg": q.diagram_svg,

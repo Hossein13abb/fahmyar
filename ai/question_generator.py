@@ -75,9 +75,16 @@ _SYSTEM = r"""شما یک طراح سؤال تشخیصیِ خبره برای س�
 You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
 CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash.
-BANNED TOPICS: You are strictly forbidden from generating questions about the following removed topics from the Iranian curriculum: 
-- Equation of an Ellipse or standard forms (معادله بیضی) - Only focus on the definition/focal properties.
-- Integrals (انتگرال) in Hesaban.
+CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):
+You MUST generate questions exclusively compliant with the updated Iranian 6-3-3 high school textbooks published AFTER 1397 (2018).
+
+BANNED NEZAM-GHADIM TOPICS (STRICTLY FORBIDDEN):
+- Integrals (انتگرال) in Hesaban 2.
+- General & Standard Equations of Ellipse/Hyperbola (معادله بیضی و هذلولی) in Geometry 3 - Only focus on the definition/focal properties.
+- Matrix Inverses of 3x3 matrices (معکوس ماتریس 3x3).
+- Obsolete physics topics removed post-1397.
+
+Only include topics explicitly present in current 10th, 11th, and 12th grade Iranian textbooks.
 Do NOT use these concepts under any circumstances.
 SVGs are OPTIONAL. Set `diagram_svg` to `null` if the question can be solved without a picture (e.g., standard algebra, matrices). NEVER attempt to draw precise intersecting coordinates (like a line tangent to a circle) because your coordinate math will be wrong. Only draw simple block diagrams, circuits, or abstract isolated shapes. If you are unsure about the visual alignment, return `null`.
 STRICT DIFFICULTY CALIBRATION:
@@ -147,9 +154,16 @@ def _stringify_item(item) -> str:
 _BOOKLET_PROMPT = r"""You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
 CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash.
-BANNED TOPICS: You are strictly forbidden from generating questions about the following removed topics from the Iranian curriculum: 
-- Equation of an Ellipse or standard forms (معادله بیضی) - Only focus on the definition/focal properties.
-- Integrals (انتگرال) in Hesaban.
+CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):
+You MUST generate questions exclusively compliant with the updated Iranian 6-3-3 high school textbooks published AFTER 1397 (2018).
+
+BANNED NEZAM-GHADIM TOPICS (STRICTLY FORBIDDEN):
+- Integrals (انتگرال) in Hesaban 2.
+- General & Standard Equations of Ellipse/Hyperbola (معادله بیضی و هذلولی) in Geometry 3 - Only focus on the definition/focal properties.
+- Matrix Inverses of 3x3 matrices (معکوس ماتریس 3x3).
+- Obsolete physics topics removed post-1397.
+
+Only include topics explicitly present in current 10th, 11th, and 12th grade Iranian textbooks.
 Do NOT use these concepts under any circumstances.
 SVGs are OPTIONAL. Set `diagram_svg` to `null` if the question can be solved without a picture (e.g., standard algebra, matrices). NEVER attempt to draw precise intersecting coordinates (like a line tangent to a circle) because your coordinate math will be wrong. Only draw simple block diagrams, circuits, or abstract isolated shapes. If you are unsure about the visual alignment, return `null`.
 STRICT DIFFICULTY CALIBRATION:

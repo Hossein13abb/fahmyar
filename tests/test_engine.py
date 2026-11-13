@@ -438,7 +438,7 @@ def test_prompt_rules_and_swallowed_backslash_recovery():
         custom_prompt="—",
     )
     assert "You MUST double-escape all LaTeX commands in the JSON" in prompt
-    assert "BANNED TOPICS:" in prompt
+    assert "BANNED NEZAM-GHADIM TOPICS" in prompt
     assert "معادله بیضی" in prompt
     assert "انتگرال" in prompt
     assert "SVGs are OPTIONAL." in prompt
@@ -469,3 +469,39 @@ def test_latex_to_persian_text_converter():
     assert "\\" not in out
     assert "vec" not in out
     assert "circ" not in out
+
+
+
+def test_nezam_jadid_syllabus_and_latex_to_pdf_image():
+    from reportlab.platypus import Image as RLImage
+    from ai.exam_generator import build_exam_preview_prompt
+    from reports.exam_pdf import latex_to_pdf_image, render_latex_to_image
+
+    prompt = build_exam_preview_prompt(
+        count=2,
+        field_label="ریاضی و فیزیک",
+        subjects_slugs="geometry",
+        subjects_labels="هندسه ۳",
+        subject_configs=[{"subject": "geometry", "count": 2, "difficulty": "متوسط", "subTopics": []}],
+        sub_topics=[],
+        ai_ratio=50,
+        grade_label="دوازدهم",
+        topic="—",
+        question_type_label="نامشخص / ترکیبی",
+        difficulty_label="متوسط",
+        custom_prompt="—",
+    )
+    assert "CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):" in prompt
+    assert "BANNED NEZAM-GHADIM TOPICS (STRICTLY FORBIDDEN):" in prompt
+    assert "معادله بیضی و هذلولی" in prompt
+    assert "معکوس ماتریس 3x3" in prompt
+
+    img_frac = latex_to_pdf_image(r"$ \frac{a}{b} $")
+    assert isinstance(img_frac, RLImage)
+    assert img_frac.drawWidth > 0 and img_frac.drawHeight > 0
+
+    img_sqrt = render_latex_to_image(r"$ \sqrt{2} $")
+    assert isinstance(img_sqrt, RLImage)
+
+    img_mat = latex_to_pdf_image(r"$$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$")
+    assert isinstance(img_mat, RLImage)
