@@ -683,37 +683,44 @@ class MockProvider(AIProvider):
             except Exception:
                 subject_configs = []
 
-        ai_pct_raw = _extract_marker(prompt, "AI_PERCENTAGE")
+        ai_pct_raw = _extract_marker(prompt, "AI_RATIO") or _extract_marker(prompt, "AI_PERCENTAGE")
         try:
             ai_pct = max(0, min(100, int(ai_pct_raw))) if ai_pct_raw != "" else None
         except ValueError:
             ai_pct = None
 
+        default_diff = _extract_marker(prompt, "DIFFICULTY") or "متوسط"
         bank_tags = ["کنکور ۱۴۰۲", "قلم‌چی", "گاج"]
         legacy_tags = ["کنکور ۱۴۰۲", "قلم‌چی", "تألیفی AI"]
+        fa_digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
-        # لیستِ جفت‌های (slug درس، اندیس سؤال در آن درس)
-        plan: list[tuple[str, int]] = []
+        # لیستِ (slug درس، اندیس سؤال در آن درس، سطح دشواری درس، ریز‌مبحث هدف)
+        plan: list[tuple[str, int, str, str]] = []
         if subject_configs:
             for cfg in subject_configs:
                 slug = str(cfg.get("subject") or "physics").strip()
                 c_count = max(1, min(20, int(cfg.get("count") or 1)))
+                c_diff = str(cfg.get("difficulty") or default_diff).strip() or "متوسط"
+                subs = [str(x).strip() for x in (cfg.get("subTopics") or cfg.get("topics") or []) if str(x).strip()]
                 for idx in range(c_count):
-                    plan.append((slug, idx))
+                    sub_label = subs[idx % len(subs)] if subs else ""
+                    plan.append((slug, idx, c_diff, sub_label))
         else:
             for i in range(count):
                 slug = subjects[i % len(subjects)]
-                plan.append((slug, i // len(subjects)))
+                plan.append((slug, i // len(subjects), default_diff, ""))
 
         total = len(plan)
         ai_quota = round(total * (ai_pct / 100.0)) if ai_pct is not None else None
 
         items = []
-        for i, (slug, local_idx) in enumerate(plan):
+        for i, (slug, local_idx, s_diff, sub_label) in enumerate(plan):
             bank = self._KONKUR_BANK.get(slug) or self._KONKUR_BANK["physics"]
             base = bank[local_idx % len(bank)]
             text = base["text"]
-            if topic and topic != "—":
+            if sub_label:
+                text = f"[{sub_label}] {text}"
+            elif topic and topic != "—":
                 text = f"{text}"
             if custom:
                 text = f"{text}"
@@ -723,12 +730,13 @@ class MockProvider(AIProvider):
                 source_tag = legacy_tags[i % len(legacy_tags)]
             items.append({
                 "id": i + 1,
-                "text": text,
-                "options": list(base["options"]),
+                "text": str(text).translate(fa_digits),
+                "options": [str(o).translate(fa_digits) for o in base["options"]],
                 "correct_answer": int(base["correct_answer"]),
-                "source_tag": source_tag,
-                "explanation": base["explanation"],
-                "subject": _subject_label(slug),
+                "source_tag": str(source_tag).translate(fa_digits),
+                "explanation": str(base["explanation"]).translate(fa_digits),
+                "subject": str(_subject_label(slug)).translate(fa_digits),
+                "difficulty": str(s_diff).translate(fa_digits),
             })
         return json.dumps(items, ensure_ascii=False)
 

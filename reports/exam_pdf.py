@@ -58,7 +58,13 @@ DIFFICULTY_LABELS = {
     "easy": "آسان",
     "medium": "متوسط",
     "hard": "سخت",
-    "challenging": "چالش‌برانگیز",
+    "challenging": "کنکوری",
+    "konkuri": "کنکوری",
+    "آسان": "آسان",
+    "متوسط": "متوسط",
+    "سخت": "سخت",
+    "کنکوری": "کنکوری",
+    "چالش‌برانگیز": "چالش‌برانگیز",
 }
 
 SOURCE_LABELS = {
@@ -97,25 +103,30 @@ FONT_BOLD = "Vazirmatn-Bold"
 FONT_XBOLD = "Vazirmatn-XBold"
 
 
+def to_persian_numbers(text: Any) -> str:
+    return str(text).translate(str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹'))
+
+
 def _fa(value: Any) -> str:
-    return "".join(_FA_DIGITS[int(d)] if d.isdigit() else d for d in str(value))
+    return to_persian_numbers(str(value))
 
 
 def _fa_date() -> str:
     try:
         import jdatetime
 
-        return jdatetime.date.today().strftime("%Y/%m/%d")
+        return to_persian_numbers(jdatetime.date.today().strftime("%Y/%m/%d"))
     except Exception:
         from datetime import date
 
-        return date.today().strftime("%Y/%m/%d")
+        return to_persian_numbers(date.today().strftime("%Y/%m/%d"))
 
 
 def prepare_farsi_text(text: str) -> str:
-    """متن فارسی را برای رندر در ReportLab آماده می‌کند (اتصال حروف + ترتیب دیداری RTL)."""
+    """متن فارسی را برای رندر در ReportLab آماده می‌کند (ارقام فارسی + اتصال حروف + ترتیب دیداری RTL)."""
     if not text:
         return ""
+    text = to_persian_numbers(str(text))
     return get_display(arabic_reshaper.reshape(text))
 
 

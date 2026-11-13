@@ -85,106 +85,210 @@ const subjectsFor = (field, grade) => {
   return dedupeById([...EXPERIMENTAL_SUBJECTS, ...EXPERIMENTAL_SUBJECTS, ...EXPERIMENTAL_SUBJECTS])
 }
 
-// درخت سرفصل‌های ایران (Mock) — برای پیکربندی per-درس سؤال‌ها (پشتیبانی از نام فارسی و slug)
-const _MATH_CHAPTERS = [
-  'فصل ۱: مجموعه، الگو و دنباله',
-  'فصل ۲: مثلثات',
-  'فصل ۳: توان‌های گویا و عبارت‌های جبری',
-  'فصل ۴: معادلهٔ درجهٔ دوم و کاربردها',
-  'فصل ۵: تابع و معادلهٔ درجهٔ دوم (پیشرفته)',
-  'فصل ۶: حد و پیوستگی',
-]
-const _CALCULUS_CHAPTERS = [
-  'فصل ۱: دنباله و سری‌های حسابی و هندسی',
-  'فصل ۲: تابع و انواع آن',
-  'فصل ۳: حد، پیوستگی و مجانب',
-  'فصل ۴: مشتق و قواعد مشتق‌گیری',
-  'فصل ۵: کاربردهای مشتق',
-  'فصل ۶: انتگرال و کاربردهای آن',
-]
-const _GEOMETRY_CHAPTERS = [
-  'فصل ۱: خطوط و زوایا',
-  'فصل ۲: چندضلعی‌ها و مساحت',
-  'فصل ۳: قضیهٔ تالس و تشابه',
-  'فصل ۴: مثلث و دایره',
-  'فصل ۵: دایره و خط',
-  'فصل ۶: تبدیل‌های هندسی و بردار',
-]
-const _DISCRETE_CHAPTERS = [
-  'فصل ۱: مبانی شمارش',
-  'فصل ۲: آشنایی با نظریهٔ اعداد',
-  'فصل ۳: الگوریتم‌ها و فلوچارت',
-  'فصل ۴: گراف و مدل‌سازی',
-  'فصل ۵: ترکیب و جایگشت',
-]
-const _STATISTICS_CHAPTERS = [
-  'فصل ۱: آمار توصیفی و نمایش داده‌ها',
-  'فصل ۲: احتمال در یک مرحلهٔ ساده',
-  'فصل ۳: متغیر تصادفی و توزیع‌های آن',
-  'فصل ۴: توزیع نرمال و کاربردها',
-  'فصل ۵: برآورد و استنباط آماری',
-]
-const _PHYSICS_CHAPTERS = [
-  'فصل ۱: فیزیک و اندازه‌گیری',
-  'فصل ۲: کار، انرژی و توان',
-  'فصل ۳: فشار و ویژگی‌های مواد',
-  'فصل ۴: دما و گرما',
-  'فصل ۵: الکتریسیتهٔ ساکن و جریان الکتریکی',
-  'فصل ۶: مغناطیس و القای الکترومغناطیسی',
-]
-const _CHEMISTRY_CHAPTERS = [
-  'فصل ۱: کیهان زادگاه الفبای هستی',
-  'فصل ۲: ردپای گازها در زندگی',
-  'فصل ۳: آب؛ آهنگِ زندگی',
-  'فصل ۴: قدرِ هدایای زمینی را بدانیم',
-  'فصل ۵: در پیِ غذای سالم',
-  'فصل ۶: شیمی آلی و پلیمرها',
-]
-const _BIOLOGY_CHAPTERS = [
-  'فصل ۱: مولکول‌های زیستی',
-  'فصل ۲: تنظیم عصبی و حواس',
-  'فصل ۳: تنظیم هورمونی و تولیدمثل',
-  'فصل ۴: ژنتیک و وراثت',
-  'فصل ۵: گیاهان و فتوسنتز',
-  'فصل ۶: زیست‌فناوری و کاربردهای آن',
-]
-
+// درخت سرفصل‌های رسمی نظام جدید ایران (پایه -> درس -> فصل -> [مباحث])
 const CURRICULUM_TREE = {
-  'ریاضی ۱': _MATH_CHAPTERS,
-  'ریاضی ۲': _MATH_CHAPTERS,
-  'ریاضی ۳': _MATH_CHAPTERS,
-  'ریاضی': _MATH_CHAPTERS,
-  'ریاضیات': _MATH_CHAPTERS,
-  'حسابان ۱': _CALCULUS_CHAPTERS,
-  'حسابان ۲': _CALCULUS_CHAPTERS,
-  'حسابان': _CALCULUS_CHAPTERS,
-  'هندسه ۱': _GEOMETRY_CHAPTERS,
-  'هندسه ۲': _GEOMETRY_CHAPTERS,
-  'هندسه ۳': _GEOMETRY_CHAPTERS,
-  'هندسه': _GEOMETRY_CHAPTERS,
-  'ریاضیات گسسته': _DISCRETE_CHAPTERS,
-  'گسسته': _DISCRETE_CHAPTERS,
-  'آمار و احتمال': _STATISTICS_CHAPTERS,
-  'فیزیک ۱': _PHYSICS_CHAPTERS,
-  'فیزیک ۲': _PHYSICS_CHAPTERS,
-  'فیزیک ۳': _PHYSICS_CHAPTERS,
-  'فیزیک': _PHYSICS_CHAPTERS,
-  'شیمی ۱': _CHEMISTRY_CHAPTERS,
-  'شیمی ۲': _CHEMISTRY_CHAPTERS,
-  'شیمی ۳': _CHEMISTRY_CHAPTERS,
-  'شیمی': _CHEMISTRY_CHAPTERS,
-  'زیست‌شناسی ۱': _BIOLOGY_CHAPTERS,
-  'زیست‌شناسی ۲': _BIOLOGY_CHAPTERS,
-  'زیست‌شناسی ۳': _BIOLOGY_CHAPTERS,
-  'زیست‌شناسی': _BIOLOGY_CHAPTERS,
-  math: _MATH_CHAPTERS,
-  calculus: _CALCULUS_CHAPTERS,
-  geometry: _GEOMETRY_CHAPTERS,
-  discrete: _DISCRETE_CHAPTERS,
-  statistics: _STATISTICS_CHAPTERS,
-  physics: _PHYSICS_CHAPTERS,
-  chemistry: _CHEMISTRY_CHAPTERS,
-  biology: _BIOLOGY_CHAPTERS,
+  "دوازدهم": {
+    "حسابان ۲": {
+      "فصل ۱: تابع": ["تبدیل نمودارها", "تابع درجه ۳", "یکنواختی", "بخش‌پذیری"],
+      "فصل ۲: مثلثات": ["تناوب", "تابع تانژانت", "معادلات مثلثاتی"],
+      "فصل ۳: حد": ["حدهای نامتناهی", "حد در بی‌نهایت"],
+      "فصل ۴: مشتق": ["مفهوم مشتق", "مشتق‌پذیری", "آهنگ تغییر"],
+      "فصل ۵: کاربرد مشتق": ["اکسترمم‌های تابع", "بهینه‌سازی"]
+    },
+    "هندسه ۳": {
+      "فصل ۱: ماتریس": ["ماتریس و اعمال روی آن", "دترمینان", "دستگاه معادلات خطی"],
+      "فصل ۲: مقاطع مخروطی": ["آشنایی با مقاطع", "دایره", "بیضی", "سهمی"],
+      "فصل ۳: بردارها": ["معرفی فضای R3", "ضرب داخلی", "ضرب خارجی"]
+    },
+    "ریاضیات گسسته": {
+      "فصل ۱: آشنایی با نظریهٔ اعداد": ["بخش‌پذیری و تقسیم", "هم‌نهشتی", "معادلات سیاله خطی"],
+      "فصل ۲: گراف و مدل‌سازی": ["معرفی گراف", "مدل‌سازی با گراف", "گراف‌های اویلری و همیلتونی"],
+      "فصل ۳: ترکیبیات (شمارش)": ["مبانی شمارش", "اصل شمول و عدم شمول", "اصل لانهٔ کبوتری"]
+    },
+    "فیزیک ۳": {
+      "فصل ۱: حرکت بر خط راست": ["شناخت حرکت", "حرکت با سرعت ثابت", "حرکت با شتاب ثابت"],
+      "فصل ۲: دینامیک": ["قوانین حرکت نیوتون", "معرفی نیروهای خاص", "تکانه و قانون دوم نیوتون"],
+      "فصل ۳: نوسان و امواج": ["نوسان دوره‌ای و حرکت هماهنگ ساده", "موج و انواع آن", "بازتاب و شکست موج"],
+      "فصل ۴: فیزیک اتمی و هسته‌ای": ["اثر فوتوالکتریک و طیف اتمی", "مدل اتمی بور", "فیزیک هسته‌ای و واپاشی"]
+    },
+    "شیمی ۳": {
+      "فصل ۱: مولکول‌ها در خدمت تندرستی": ["پاک‌کننده‌ها و اسید و باز آرنیوس", "درجهٔ یونش و ثابت تعادل اسیدی", "پی‌اچ و واکنش خنثی‌شدن"],
+      "فصل ۲: آسایش و رفاه در سایهٔ شیمی": ["الکتروشیمی و عدد اکسایش", "سلول‌های گالوانی و پتانسیل استاندارد", "الکترولیز، آبکاری و خوردگی"],
+      "فصل ۳: شیمی جلوه‌ای از هنر، زیبایی و ماندگاری": ["انواع جامدها (کووالانسی، یونی، مولکولی، فلزی)", "قطبیت مولکولی و نیروهای بین‌مولکولی"],
+      "فصل ۴: شیمی، راهی به سوی آینده‌ای روشن‌تر": ["تعادل شیمیایی و اصل لوشاتلیه", "کاتالیزگرها و سنتز آمونیاک"]
+    },
+    "زیست‌شناسی ۳": {
+      "فصل ۱: مولکول‌های اطلاعاتی": ["نوکلئیک‌اسیدها و همانندسازی دنا", "پروتئین‌ها و ساختار آنزیم‌ها"],
+      "فصل ۲: جریان اطلاعات در یاخته": ["رونویسی", "ترجمه", "تنظیم بیان ژن"],
+      "فصل ۳: انتقال اطلاعات در نسل‌ها": ["مفاهیم پایهٔ وراثت", "الگوهای وراثتی", "بیماری‌های وراثتی"],
+      "فصل ۴: تغییر در اطلاعات وراثتی": ["جهش‌های ژنی و کروموزومی", "تغییر در جمعیت‌ها و گونه‌زایی"],
+      "فصل ۵: از ماده به انرژی": ["تنفس یاخته‌ای هوازی", "تخمیر و تنفس بی‌هوازی"],
+      "فصل ۶: از انرژی به ماده": ["واکنش‌های نوری فتوسنتز", "چرخهٔ کالوین و فتوسنتز در شرایط دشوار"]
+    },
+    "ریاضی ۳": {
+      "فصل ۱: تابع": ["توابع چندجمله‌ای", "ترکیب توابع", "وارون تابع"],
+      "فصل ۲: مثلثات": ["تناوب و تابع تانژانت", "معادلات مثلثاتی"],
+      "فصل ۳: حد بی‌نهایت و حد در بی‌نهایت": ["حدهای نامتناهی", "حد در بی‌نهایت و مجانب"],
+      "فصل ۴: مشتق": ["مفهوم مشتق و خط مماس", "قواعد مشتق‌گیری"],
+      "فصل ۵: کاربرد مشتق": ["نقاط بحرانی و اکسترمم‌ها", "بهینه‌سازی"],
+      "فصل ۶: هندسه": ["مقاطع مخروطی", "دایره و بیضی"],
+      "فصل ۷: احتمال": ["احتمال شرطی", "قانون احتمال کل"]
+    }
+  },
+  "یازدهم": {
+    "حسابان ۱": {
+      "فصل ۱: جبر و معادله": ["دنباله‌های حسابی و هندسی", "معادلات درجهٔ دوم و گویا", "مجموع جملات دنباله"],
+      "فصل ۲: تابع": ["دامنه و برد توابع", "توابع یک‌به‌یک و وارون", "اعمال جبری روی توابع"],
+      "فصل ۳: مثلثات": ["واحد رادیان", "نسبت‌های مثلثاتی مجموع و تفاضل", "توابع مثلثاتی"],
+      "فصل ۴: نمایی و لگاریتمی": ["تابع نمایی و ویژگی‌ها", "لگاریتم و قوانین آن", "معادلات نمایی و لگاریتمی"],
+      "فصل ۵: حد و پیوستگی": ["مفهوم حد و قضایای حد", "رفع ابهام حدی", "پیوستگی تابع"]
+    },
+    "هندسه ۲": {
+      "فصل ۱: دایره": ["زاویه‌ها در دایره", "طول مماس و قوت نقطه", "چهارضلعی محاطی و محیطی"],
+      "فصل ۲: تبدیل‌های هندسی و کاربردها": ["انتقال، تقارن و دوران", "تجانس و تشابه"],
+      "فصل ۳: روابط طولی در مثلث": ["قضایای سینوس‌ها و کسینوس‌ها", "میانه، نیمساز و ارتفاع در مثلث"]
+    },
+    "آمار و احتمال": {
+      "فصل ۱: آشنایی با مبانی ریاضیات": ["گزاره‌ها و ترکیب گزاره‌ها", "استدلال ریاضی و سورها", "نظریهٔ مجموعه‌ها"],
+      "فصل ۲: احتمال": ["فضای نمونه‌ای و پیشامد", "احتمال شرطی و پیشامدهای مستقل", "قانون احتمال کل و قضیهٔ بیز"],
+      "فصل ۳: آمار توصیفی": ["شاخص‌های گرایش به مرکز", "شاخص‌های پراکندگی و نمودار جعبه‌ای"],
+      "فصل ۴: آمار استنباطی": ["جامعه و نمونه", "فاصلهٔ اطمینان و برآورد"]
+    },
+    "فیزیک ۲": {
+      "فصل ۱: الکتریسیتهٔ ساکن": ["بار الکتریکی و قانون کولن", "میدان الکتریکی", "پتانسیل الکتریکی و خازن"],
+      "فصل ۲: جریان الکتریکی و مدارهای جریان مستقیم": ["جریان و مقاومت الکتریکی (قانون اهم)", "نیروی محرکه و توان در مدار", "ترکیب مقاومت‌ها"],
+      "فصل ۳: مغناطیس و القای الکترومغناطیسی": ["مغناطیس و نیروی مغناطیسی", "شار مغناطیسی و قانون فارادی", "قانون لنز و جریان متناوب"]
+    },
+    "شیمی ۲": {
+      "فصل ۱: قدر هدایای زمینی را بدانیم": ["الگوها و روندهای تناوبی", "آرایش الکترونی عناصر واسطه", "شیمی آلی و هیدروکربن‌ها"],
+      "فصل ۲: در پی غذای سالم": ["ترموشیمی و آنتالپی واکنش", "قانون هس و آنتالپی پیوند", "سینتیک و سرعت واکنش"],
+      "فصل ۳: پوشاک، نیازی پایان‌ناپذیر": ["پلیمرها و درشت‌مولکول‌ها", "الکل‌ها، اسیدهای آلی و استرها", "پلی‌استرها و پلی‌آمیدها"]
+    },
+    "زیست‌شناسی ۲": {
+      "فصل ۱: تنظیم عصبی": ["یاخته‌های بافت عصبی و پتانسیل عمل", "دستگاه عصبی مرکزی و محیطی"],
+      "فصل ۲: حواس": ["گیرنده‌های حسی", "بینایی، شنوایی و تعادل"],
+      "فصل ۳: دستگاه حرکتی": ["استخوان‌ها و اسکلت", "ماهیچه‌ها و مکانیسم انقباض"],
+      "فصل ۴: تنظیم شیمیایی": ["غدد درون‌ریز و هورمون‌ها", "بازخوردهای هورمونی"],
+      "فصل ۵: ایمنی": ["خطوط دفاع غیراختصاصی", "ایمنی اختصاصی (لنفوسیت‌ها)"],
+      "فصل ۶: تقسیم یاخته": ["چرخهٔ یاخته‌ای و میتوز", "میوز و تولید گامت"],
+      "فصل ۷: تولیدمثل": ["دستگاه تولیدمثل در انسان", "رشد و نمو جنین"],
+      "فصل ۸: تولیدمثل نهاندانگان": ["تولیدمثل غیرجنسی و جنسی در گیاهان", "تشکیل دانه و میوه"]
+    },
+    "ریاضی ۲": {
+      "فصل ۱: هندسهٔ تحلیلی و جبر": ["معادلهٔ خط و فاصله", "معادلات درجهٔ دوم"],
+      "فصل ۲: هندسه": ["قضیهٔ تالس و تشابه", "روابط طولی در مثلث"],
+      "فصل ۳: تابع": ["توابع گویا و رادیکالی", "توابع یک‌به‌یک و وارون"],
+      "فصل ۴: مثلثات": ["رادیان و دایرهٔ مثلثاتی", "نمودارهای مثلثاتی"],
+      "فصل ۵: توابع نمایی و لگاریتمی": ["تابع نمایی و ویژگی‌ها", "لگاریتم و معادلات لگاریتمی"],
+      "فصل ۶: حد و پیوستگی": ["مفهوم حد", "محاسبهٔ حد توابع", "پیوستگی"],
+      "فصل ۷: احتمال": ["احتمال شرطی", "پیشامدهای مستقل"]
+    }
+  },
+  "دهم": {
+    "ریاضی ۱": {
+      "فصل ۱: مجموعه، الگو و دنباله": ["مجموعه‌های متناهی و نامتناهی", "متمم و اعمال روی مجموعه‌ها", "الگو و دنبالهٔ حسابی و هندسی"],
+      "فصل ۲: مثلثات": ["نسبت‌های مثلثاتی زاویه‌های حاده", "دایرهٔ مثلثاتی", "روابط بین نسبت‌های مثلثاتی"],
+      "فصل ۳: توان‌های گویا و عبارت‌های جبری": ["ریشه و توان گویا", "اتحادها و تجزیه", "گویا کردن مخرج"],
+      "فصل ۴: معادله‌ها و نامعادله‌ها": ["معادلهٔ درجهٔ دوم و روش‌های حل", "سهمی و تعیین علامت", "نامعادله‌ها و قدرمطلق"],
+      "فصل ۵: تابع": ["مفهوم تابع و بازنمایی‌ها", "دامنه و برد تابع", "توابع خطی و درجهٔ دوم"],
+      "فصل ۶: شمارش، بدون شمردن": ["اصول شمارش (جمع و ضرب)", "جایگشت", "ترکیب"],
+      "فصل ۷: آمار و احتمال": ["گردآوری داده‌ها و نمودارها", "فضای نمونه‌ای و محاسبهٔ احتمال"]
+    },
+    "هندسه ۱": {
+      "فصل ۱: ترسیم‌های هندسی و استدلال": ["مکان هندسی و ترسیم‌ها", "استدلال استنتاجی", "هم‌نهشتی مثلث‌ها"],
+      "فصل ۲: قضیهٔ تالس، تشابه و کاربردها": ["نسبت و تناسب در هندسه", "قضیهٔ تالس و عکس آن", "تشابه مثلث‌ها"],
+      "فصل ۳: چندضلعی‌ها": ["ویژگی‌های زاویه‌ای چندضلعی‌ها", "چهارضلعی‌های خاص", "مساحت چندضلعی‌ها"],
+      "فصل ۴: تجسم فضایی": ["خط و صفحه در فضا", "حجم‌های هندسی (منشور، هرم، کره)"]
+    },
+    "فیزیک ۱": {
+      "فصل ۱: فیزیک و اندازه‌گیری": ["مدل‌سازی در فیزیک", "کمیت‌های اصلی و فرعی و تبدیل یکا", "چگالی و دقت اندازه‌گیری"],
+      "فصل ۲: ویژگی‌های فیزیکی مواد": ["حالت‌های ماده و نیروهای بین‌مولکولی", "فشار در شاره‌ها و لولهٔ یو شکل", "اصل پاسکال، ارشمیدس و برنولی"],
+      "فصل ۳: کار، انرژی و توان": ["انرژی جنبشی و قضیهٔ کار و انرژی", "کار نیروی وزن و انرژی پتانسیل", "پایستگی انرژی مکانیکی و توان"],
+      "فصل ۴: دما و گرما": ["دما و دماسنجی", "انبساط گرمایی", "گرما، ظرفیت گرمایی و تغییر حالت", "قانون اول ترمودینامیک"]
+    },
+    "شیمی ۱": {
+      "فصل ۱: کیهان زادگاه الفبای هستی": ["ایزوتوپ و جرم اتمی میانگین", "جدول تناوبی و مول", "طیف نشری خطی و آرایش الکترونی", "پیوند یونی و کووالانسی"],
+      "فصل ۲: ردپای گازها در زندگی": ["اجزای هوا و اکسایش", "ساختار لوئیس و استوکیومتری گازها", "اثر گلخانه‌ای و اوزون"],
+      "فصل ۳: آب، آهنگ زندگی": ["غلظت محلول‌ها (مولاریته و درصد جرمی)", "انحلال‌پذیری و نیروهای بین‌مولکولی", "خواص غیرعادی آب"]
+    },
+    "زیست‌شناسی ۱": {
+      "فصل ۱: دنیای زنده": ["ویژگی‌های جانداران و سطوح سازمان‌یابی", "مولکول‌های زیستی و یاخته"],
+      "فصل ۲: گوارش و جذب مواد": ["ساختار و عملکرد لولهٔ گوارش", "جذب مواد و تنظیم گوارش"],
+      "فصل ۳: تبادلات گازی": ["سازوکار دستگاه تنفس در انسان", "حمل گازها در خون"],
+      "فصل ۴: گردش مواد در بدن": ["قلب و چرخهٔ ضربان قلب", "رگ‌ها، خون و دستگاه لنفی"],
+      "فصل ۵: تنظیم اسمزی و دفع مواد زائد": ["ساختار کلیه و نفرون", "تشکیل ادرار و هم‌ایستایی"],
+      "فصل ۶: از یاخته تا گیاه": ["ویژگی‌های یاختهٔ گیاهی", "بافت‌ها و اندام‌های گیاهی"],
+      "فصل ۷: جذب و انتقال مواد در گیاهان": ["جذب آب و مواد معدنی در ریشه", "انتقال در آوندهای چوبی و آبکشی"]
+    }
+  }
+}
+
+// نگاشت (پایه، رشته، شناسهٔ درس) به کلیدهای کتاب درسی در CURRICULUM_TREE
+const SUBJECT_BOOK_KEYS = {
+  '10': {
+    math: 'ریاضی ۱',
+    geometry: 'هندسه ۱',
+    physics: 'فیزیک ۱',
+    chemistry: 'شیمی ۱',
+    biology: 'زیست‌شناسی ۱',
+  },
+  '11': {
+    calculus: 'حسابان ۱',
+    math: 'ریاضی ۲',
+    geometry: 'هندسه ۲',
+    statistics: 'آمار و احتمال',
+    physics: 'فیزیک ۲',
+    chemistry: 'شیمی ۲',
+    biology: 'زیست‌شناسی ۲',
+  },
+  '12': {
+    calculus: 'حسابان ۲',
+    math: 'ریاضی ۳',
+    geometry: 'هندسه ۳',
+    discrete: 'ریاضیات گسسته',
+    physics: 'فیزیک ۳',
+    chemistry: 'شیمی ۳',
+    biology: 'زیست‌شناسی ۳',
+  },
+}
+const GRADE_ID_TO_FA = { '10': 'دهم', '11': 'یازدهم', '12': 'دوازدهم', دهم: 'دهم', یازدهم: 'یازدهم', دوازدهم: 'دوازدهم' }
+
+const getSubjectChaptersMap = (grade, field, subjectId) => {
+  const isComprehensive = grade === 'comprehensive' || grade === 'جامع'
+  if (!isComprehensive) {
+    const gFa = GRADE_ID_TO_FA[grade] || 'دوازدهم'
+    const gKey = gFa === 'دهم' ? '10' : gFa === 'یازدهم' ? '11' : '12'
+    const bookKey = SUBJECT_BOOK_KEYS[gKey]?.[subjectId]
+    return (bookKey && CURRICULUM_TREE[gFa]?.[bookKey]) || {}
+  }
+  // در حالت «جامع»، فصول هر سه پایه برای آن درس تجمیع می‌شوند
+  const merged = {}
+  for (const [gKey, gFa] of [['10', 'دهم'], ['11', 'یازدهم'], ['12', 'دوازدهم']]) {
+    if (field === 'math' && subjectId === 'math' && gKey !== '10') continue
+    const bookKey = SUBJECT_BOOK_KEYS[gKey]?.[subjectId]
+    const chaptersObj = bookKey ? CURRICULUM_TREE[gFa]?.[bookKey] : null
+    if (!chaptersObj) continue
+    const multiGrade = ['geometry', 'physics', 'chemistry', 'biology', 'calculus'].includes(subjectId) || (field === 'tajrobi' && subjectId === 'math')
+    for (const [chTitle, subs] of Object.entries(chaptersObj)) {
+      const displayChapter = multiGrade ? `${bookKey} — ${chTitle}` : chTitle
+      merged[displayChapter] = subs
+    }
+  }
+  return merged
+}
+
+const SUBJECT_DIFFICULTY_OPTIONS = ['آسان', 'متوسط', 'سخت', 'کنکوری']
+
+// تبدیل ارقام انگلیسی/فارسی ورودی به عدد صحیح و نمایش فارسی در فیلدهای عددی
+const parseNumericInput = (raw, fallback = 1, min = 1, max = 20) => {
+  const ascii = String(raw ?? '')
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[^0-9]/g, '')
+  if (!ascii) return fallback
+  const n = Number.parseInt(ascii, 10)
+  if (Number.isNaN(n)) return fallback
+  return Math.max(min, Math.min(max, n))
 }
 
 const FIELD_LABELS = { math: 'ریاضی', tajrobi: 'تجربی' }
@@ -254,14 +358,15 @@ export default function ExamBuilder({ embedded = false }) {
   const [field, setField] = useState(loadField)                // math | tajrobi
   const [grade, setGradeState] = useState(loadGrade)           // 10 | 11 | 12 | comprehensive
   const [selectedSubjects, setSelectedSubjects] = useState(() => subjectsFor(loadField(), loadGrade()).map((x) => x.id))
-  // پیکربندیِ هر درس: تعداد سؤال + فصل‌های هدف (از درخت سرفصل‌ها)
+  // پیکربندیِ هر درس: تعداد سؤال + سطح سوالات + ریز‌مباحث هدف (از درخت سرفصل‌ها)
   const [subjectConfigs, setSubjectConfigs] = useState(() => {
     const init = {}
     subjectsFor(loadField(), loadGrade()).forEach((o) => {
-      init[o.id] = { count: 2, topics: [] }
+      init[o.id] = { count: 2, difficulty: 'متوسط', subTopics: [], topics: [] }
     })
     return init
   })
+  const [expandedChapters, setExpandedChapters] = useState({})
   const [aiPercentage, setAiPercentage] = useState(100) // درصد سؤالات تولیدی هوش مصنوعی؛ بقیه = بانک آزمون
   const [questionType, setQuestionType] = useState('mixed')
   const [customPrompt, setCustomPrompt] = useState('')
@@ -290,7 +395,7 @@ export default function ExamBuilder({ embedded = false }) {
     setSubjectConfigs((prev) => {
       const next = {}
       ids.forEach((id) => {
-        next[id] = prev[id] ?? { count: 2, topics: [] }
+        next[id] = prev[id] ?? { count: 2, difficulty: 'متوسط', subTopics: [], topics: [] }
       })
       return next
     })
@@ -329,21 +434,53 @@ export default function ExamBuilder({ embedded = false }) {
   }
   const updateSubjectCount = (id, raw) =>
     setSubjectConfigs((prev) => {
-      const n = Math.max(1, Math.min(20, Number.parseInt(raw, 10) || 1))
-      return { ...prev, [id]: { count: n, topics: prev[id]?.topics ?? [] } }
+      const cur = prev[id] ?? { count: 2, difficulty: 'متوسط', subTopics: [], topics: [] }
+      const n = parseNumericInput(raw, cur.count || 2, 1, 20)
+      return { ...prev, [id]: { ...cur, count: n } }
     })
-  const toggleSubjectTopic = (id, chapter) =>
+  const updateSubjectDifficulty = (id, diff) =>
     setSubjectConfigs((prev) => {
-      const cur = prev[id] ?? { count: 2, topics: [] }
-      const topics = cur.topics.includes(chapter) ? cur.topics.filter((t) => t !== chapter) : [...cur.topics, chapter]
-      return { ...prev, [id]: { count: cur.count, topics } }
+      const cur = prev[id] ?? { count: 2, difficulty: 'متوسط', subTopics: [], topics: [] }
+      return { ...prev, [id]: { ...cur, difficulty: diff } }
     })
-  // مجموع سؤالات از پیکربندیِ هر درس
-  const subjectConfigsPayload = selectedOptions.map((o) => ({
-    subject: o.id,
-    count: Math.max(1, Math.min(20, Number(subjectConfigs[o.id]?.count) || 2)),
-    topics: subjectConfigs[o.id]?.topics ?? [],
-  }))
+  const toggleChapterExpanded = (subjectId, chapterTitle) => {
+    const key = `${subjectId}::${chapterTitle}`
+    setExpandedChapters((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }))
+  }
+  const toggleSubTopic = (id, subTopicLabel) =>
+    setSubjectConfigs((prev) => {
+      const cur = prev[id] ?? { count: 2, difficulty: 'متوسط', subTopics: [], topics: [] }
+      const list = cur.subTopics ?? cur.topics ?? []
+      const nextSubs = list.includes(subTopicLabel)
+        ? list.filter((t) => t !== subTopicLabel)
+        : [...list, subTopicLabel]
+      return { ...prev, [id]: { ...cur, subTopics: nextSubs, topics: nextSubs } }
+    })
+  const toggleWholeChapter = (id, chapterTitle, subtopicsList) =>
+    setSubjectConfigs((prev) => {
+      const cur = prev[id] ?? { count: 2, difficulty: 'متوسط', subTopics: [], topics: [] }
+      const list = cur.subTopics ?? cur.topics ?? []
+      const chapterItems = subtopicsList.map((st) => `${chapterTitle} — ${st}`)
+      const allSelected = chapterItems.every((item) => list.includes(item))
+      const nextSubs = allSelected
+        ? list.filter((item) => !chapterItems.includes(item))
+        : [...list, ...chapterItems.filter((item) => !list.includes(item))]
+      return { ...prev, [id]: { ...cur, subTopics: nextSubs, topics: nextSubs } }
+    })
+
+  // مجموع سؤالات و پیکربندیِ هر درس برای ارسال به بک‌اند
+  const subjectConfigsPayload = selectedOptions.map((o) => {
+    const cfg = subjectConfigs[o.id] ?? { count: 2, difficulty: 'متوسط', subTopics: [], topics: [] }
+    const subs = cfg.subTopics ?? cfg.topics ?? []
+    return {
+      subject: o.id,
+      count: Math.max(1, Math.min(20, Number(cfg.count) || 2)),
+      difficulty: cfg.difficulty || 'متوسط',
+      subTopics: subs,
+      topics: subs,
+    }
+  })
+  const allSelectedSubTopics = subjectConfigsPayload.flatMap((c) => c.subTopics)
   const totalCount = subjectConfigsPayload.reduce((sum, c) => sum + c.count, 0)
 
   useEffect(() => {
@@ -391,6 +528,8 @@ export default function ExamBuilder({ embedded = false }) {
         grade,
         subjects: selectedSubjects,
         subject_configs: subjectConfigsPayload,
+        subTopics: allSelectedSubTopics,
+        ai_ratio: aiPercentage,
         ai_percentage: aiPercentage,
         topic: null,
         question_type: questionType,
@@ -649,58 +788,114 @@ export default function ExamBuilder({ embedded = false }) {
                     </p>
                   )}
                   {selectedOptions.map(({ id, label, Icon }) => {
-                    const cfg = subjectConfigs[id] ?? { count: 2, topics: [] }
-                    const chapters = CURRICULUM_TREE[label] ?? CURRICULUM_TREE[id] ?? []
+                    const cfg = subjectConfigs[id] ?? { count: 2, difficulty: 'متوسط', subTopics: [], topics: [] }
+                    const selectedSubs = cfg.subTopics ?? cfg.topics ?? []
+                    const chaptersMap = getSubjectChaptersMap(grade, field, id)
+                    const chapterEntries = Object.entries(chaptersMap)
                     return (
                       <fieldset key={id} className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <legend className="sr-only">{label}</legend>
-                          <p className="flex items-center gap-2 text-[13px] font-black text-brand-950">
+                          <p className="flex items-center gap-2 text-[14px] font-black text-brand-950">
                             <Icon className="h-5 w-5 text-brand-700" strokeWidth={1.8} />
                             {label}
                           </p>
-                          <div className="flex items-center gap-2">
-                            <label htmlFor={`count-${id}`} className="text-[10px] font-bold text-slate-500">تعداد سوال این درس</label>
-                            <input
-                              id={`count-${id}`}
-                              type="number"
-                              min={1}
-                              max={20}
-                              step={1}
-                              value={cfg.count}
-                              onChange={(e) => updateSubjectCount(id, e.target.value)}
-                              className="input w-20 px-3 py-2 text-center text-[13px] font-black tabular-nums"
-                              inputMode="numeric"
-                            />
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <label htmlFor={`diff-${id}`} className="text-[11px] font-bold text-slate-600">سطح سوالات</label>
+                              <select
+                                id={`diff-${id}`}
+                                value={cfg.difficulty || 'متوسط'}
+                                onChange={(e) => updateSubjectDifficulty(id, e.target.value)}
+                                className="input w-28 px-2.5 py-1.5 text-[12px] font-black text-brand-950"
+                              >
+                                {SUBJECT_DIFFICULTY_OPTIONS.map((dOpt) => (
+                                  <option key={dOpt} value={dOpt}>{dOpt}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <label htmlFor={`count-${id}`} className="text-[11px] font-bold text-slate-600">تعداد سوال این درس</label>
+                              <input
+                                id={`count-${id}`}
+                                type="text"
+                                inputMode="numeric"
+                                dir="ltr"
+                                value={toFarsiNumber(cfg.count)}
+                                onChange={(e) => updateSubjectCount(id, e.target.value)}
+                                className="input w-20 px-3 py-1.5 font-vazirmatn text-right text-[13px] font-black tabular-nums"
+                              />
+                            </div>
                           </div>
                         </div>
-                        {chapters.length > 0 && (
+
+                        {chapterEntries.length > 0 && (
                           <div className="mt-3">
-                            <p className="text-[10px] font-bold text-slate-500">فصل‌ها / مباحث هدف این درس</p>
-                            <div className="mt-1.5 max-h-36 space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
-                              {chapters.map((chapter) => {
-                                const on = cfg.topics.includes(chapter)
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] font-bold text-slate-600">فصل‌ها و ریز‌مباحث هدف (با باز کردن هر فصل، مباحث را انتخاب کنید)</p>
+                              {selectedSubs.length > 0 && (
+                                <span className="text-[10px] font-black text-emerald-700">{toFarsiNumber(selectedSubs.length)} مبحث انتخاب شد</span>
+                              )}
+                            </div>
+                            <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-white p-2.5">
+                              {chapterEntries.map(([chapterTitle, subtopics]) => {
+                                const expKey = `${id}::${chapterTitle}`
+                                const isExpanded = expandedChapters[expKey] ?? true
+                                const chapterKeys = subtopics.map((st) => `${chapterTitle} — ${st}`)
+                                const selectedInChapter = chapterKeys.filter((k) => selectedSubs.includes(k)).length
+                                const allInChapter = subtopics.length > 0 && selectedInChapter === subtopics.length
                                 return (
-                                  <label
-                                    key={chapter}
-                                    className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] leading-6 transition ${
-                                      on ? 'bg-brand-50 text-brand-900' : 'text-slate-600 hover:bg-slate-50'
-                                    }`}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={on}
-                                      onChange={() => toggleSubjectTopic(id, chapter)}
-                                      className="h-4 w-4 shrink-0 accent-emerald-600"
-                                    />
-                                    <span>{chapter}</span>
-                                  </label>
+                                  <div key={chapterTitle} className="rounded-xl border border-slate-100 bg-slate-50/60">
+                                    <div className="flex items-center justify-between gap-2 px-3 py-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleChapterExpanded(id, chapterTitle)}
+                                        className="flex flex-1 items-center gap-2 text-right text-[12px] font-black text-brand-950"
+                                      >
+                                        <ChevronDown className={`h-4 w-4 shrink-0 text-brand-700 transition-transform ${isExpanded ? 'rotate-0' : 'rotate-90'}`} />
+                                        <span>{toFarsiNumber(chapterTitle)}</span>
+                                        {selectedInChapter > 0 && (
+                                          <span className="mr-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                                            {toFarsiNumber(selectedInChapter)} از {toFarsiNumber(subtopics.length)}
+                                          </span>
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleWholeChapter(id, chapterTitle, subtopics)}
+                                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700"
+                                      >
+                                        {allInChapter ? 'لغو فصل' : 'انتخاب کل فصل'}
+                                      </button>
+                                    </div>
+                                    {isExpanded && (
+                                      <div className="grid gap-1.5 border-t border-slate-100 bg-white px-3 py-2 sm:grid-cols-2">
+                                        {subtopics.map((sub) => {
+                                          const fullKey = `${chapterTitle} — ${sub}`
+                                          const on = selectedSubs.includes(fullKey)
+                                          return (
+                                            <label
+                                              key={fullKey}
+                                              className={`flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] leading-6 transition ${
+                                                on ? 'bg-emerald-50 font-bold text-emerald-900 ring-1 ring-emerald-200' : 'text-slate-600 hover:bg-slate-50'
+                                              }`}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={on}
+                                                onChange={() => toggleSubTopic(id, fullKey)}
+                                                className="h-4 w-4 shrink-0 accent-emerald-600"
+                                              />
+                                              <span>{toFarsiNumber(sub)}</span>
+                                            </label>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
                                 )
                               })}
                             </div>
-                            {cfg.topics.length > 0 && (
-                              <p className="mt-1.5 text-[10px] font-bold text-brand-700">{toFarsiNumber(cfg.topics.length)} فصل انتخاب شد</p>
-                            )}
                           </div>
                         )}
                       </fieldset>
@@ -864,7 +1059,7 @@ export default function ExamBuilder({ embedded = false }) {
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                     <dt className="text-slate-500">منبع سؤالات</dt>
-                    <dd className="font-bold text-brand-950">{toFarsiNumber(aiPercentage)}٪ AI · {toFarsiNumber(100 - aiPercentage)}٪ بانک</dd>
+                    <dd className="font-bold text-brand-950">{toFarsiNumber(aiPercentage)}٪ هوش مصنوعی · {toFarsiNumber(100 - aiPercentage)}٪ بانک آزمون</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b border-dashed border-slate-100 pb-2">
                     <dt className="text-slate-500">نوع سؤالات</dt>
@@ -954,7 +1149,10 @@ export default function ExamBuilder({ embedded = false }) {
                         <div className="flex items-center gap-2">
                           <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-700 text-[12px] font-black text-white">{fmtFa(idx + 1)}</span>
                           {q.subject && (
-                            <span className="chip bg-sky-50 text-sky-800 ring-1 ring-sky-200">{q.subject}</span>
+                            <span className="chip bg-sky-50 text-sky-800 ring-1 ring-sky-200">{toFarsiNumber(q.subject)}</span>
+                          )}
+                          {q.difficulty && (
+                            <span className="chip bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200">سطح: {toFarsiNumber(q.difficulty)}</span>
                           )}
                           {q.source_tag && (
                             <span className="chip bg-amber-50 text-amber-800 ring-1 ring-amber-200" title="این تگ فقط در پیش‌نمایش دیده می‌شود و در PDF چاپ نمی‌شود">

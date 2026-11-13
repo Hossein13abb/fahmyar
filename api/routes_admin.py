@@ -30,6 +30,12 @@ from reports.session_status import (
     comprehension_status,
     needs_teacher_review,
 )
+from ai.exam_generator import (
+    DIFFICULTY_MAP_FA,
+    build_exam_preview_prompt,
+    persianize_json_values,
+    to_persian_numbers,
+)
 from ai.model_abstraction import get_router
 
 router = APIRouter(prefix="/api/teacher", tags=["teacher"])
@@ -349,7 +355,9 @@ KONKUR_PREVIEW_PROMPT = """شما «مؤلف ارشد سؤالات کنکوری�
 class SubjectConfigItem(BaseModel):
     subject: str = Field(min_length=1, max_length=40)
     count: int = Field(default=2, ge=1, le=20)
-    topics: list[str] = Field(default_factory=list, max_length=30)
+    difficulty: str = Field(default="متوسط", max_length=30)
+    subTopics: list[str] = Field(default_factory=list, max_length=60)
+    topics: list[str] = Field(default_factory=list, max_length=60)
 
 
 class GenerateExamPreviewRequest(BaseModel):
@@ -357,10 +365,12 @@ class GenerateExamPreviewRequest(BaseModel):
     grade: str = Field(pattern="^(10|11|12|comprehensive)$")
     subjects: list[str] = Field(default_factory=list, max_length=10)
     subject_configs: Optional[list[SubjectConfigItem]] = Field(default=None)
+    subTopics: list[str] = Field(default_factory=list, max_length=120)
+    ai_ratio: Optional[int] = Field(default=None, ge=0, le=100)
     ai_percentage: int = Field(default=100, ge=0, le=100)
     topic: Optional[str] = Field(default=None, max_length=300)
     question_type: str = Field(default="mixed", pattern="^(conceptual|recall|computational|problem|mixed)$")
-    difficulty: str = Field(default="medium", pattern="^(easy|medium|hard|challenging)$")
+    difficulty: str = Field(default="medium", pattern="^(easy|medium|hard|challenging|konkuri|آسان|متوسط|سخت|کنکوری)$")
     count: int = Field(default=10, ge=1, le=60)
     custom_prompt: str = Field(default="", max_length=600)
 
@@ -395,18 +405,20 @@ def _validate_preview_questions(data) -> list[dict]:
             ca = _LETTER_TO_INDEX.get(str(ca).strip().upper(), 0)
         if not 1 <= ca <= 4:
             continue
-        tag = str(item.get("source_tag") or "").strip()[:60] or "تألیفی AI"
-        explanation = str(item.get("explanation") or "").strip()
-        subject_label = str(item.get("subject") or "").strip()[:40]
+        tag = to_persian_numbers(str(item.get("source_tag") or "").strip()[:60] or "تألیفی AI")
+        explanation = to_persian_numbers(str(item.get("explanation") or "").strip())
+        subject_label = to_persian_numbers(str(item.get("subject") or "").strip()[:40])
+        diff_label = to_persian_numbers(str(item.get("difficulty") or "").strip()[:30])
         clean.append(
             {
                 "id": len(clean) + 1,
-                "text": text,
-                "options": options,
+                "text": to_persian_numbers(text),
+                "options": [to_persian_numbers(o) for o in options],
                 "correct_answer": ca,
                 "source_tag": tag,
                 "explanation": explanation,
                 "subject": subject_label,
+                "difficulty": diff_label,
             }
         )
     return clean
@@ -431,17 +443,26 @@ async def generate_exam_preview(
     if invalid:
         raise HTTPException(status_code=422, detail="درس انتخابی برای این رشته و پایه معتبر نیست.")
 
+    effective_ai_ratio = payload.ai_ratio if payload.ai_ratio is not None else payload.ai_percentage
     configs_normalized: list[dict] = []
+    aggregated_subtopics: list[str] = [str(t).strip() for t in (payload.subTopics or []) if str(t).strip()]
     if payload.subject_configs:
         for cfg in payload.subject_configs:
             if cfg.subject not in slug_map:
                 raise HTTPException(status_code=422, detail="درس انتخابی برای این رشته و پایه معتبر نیست.")
-            clean_topics = [str(t).strip() for t in (cfg.topics or []) if str(t).strip()]
+            raw_subs = list(cfg.subTopics or []) or list(cfg.topics or [])
+            clean_topics = [str(t).strip() for t in raw_subs if str(t).strip()]
+            for st in clean_topics:
+                if st not in aggregated_subtopics:
+                    aggregated_subtopics.append(st)
+            diff_fa = DIFFICULTY_MAP_FA.get(str(cfg.difficulty or "").strip(), "متوسط")
             configs_normalized.append(
                 {
                     "subject": cfg.subject,
                     "label": slug_map[cfg.subject],
                     "count": int(cfg.count),
+                    "difficulty": diff_fa,
+                    "subTopics": clean_topics,
                     "topics": clean_topics,
                 }
             )
@@ -454,23 +475,24 @@ async def generate_exam_preview(
     topic_text = (payload.topic or "").strip()
     if not topic_text and configs_normalized:
         per_subj_topics = [
-            f"{c['label']}: {'، '.join(c['topics'])}"
+            f"{c['label']} ({c['difficulty']}): {'، '.join(c['subTopics'])}"
             for c in configs_normalized
-            if c.get("topics")
+            if c.get("subTopics")
         ]
         if per_subj_topics:
             topic_text = " | ".join(per_subj_topics)[:300]
     grade_fa = GRADE_LABELS[payload.grade]
-    difficulty_label = DIFFICULTY_LABELS.get(payload.difficulty, payload.difficulty)
+    difficulty_label = DIFFICULTY_MAP_FA.get(payload.difficulty, DIFFICULTY_LABELS.get(payload.difficulty, payload.difficulty))
     qtype_label = QUESTION_TYPE_LABELS[payload.question_type]
 
-    prompt = KONKUR_PREVIEW_PROMPT.format(
+    prompt = build_exam_preview_prompt(
         count=effective_count,
         field_label=FIELD_LABELS[payload.field],
         subjects_slugs=subjects_slugs,
         subjects_labels=subjects_labels,
-        subject_configs_json=json.dumps(configs_normalized, ensure_ascii=False),
-        ai_percentage=payload.ai_percentage,
+        subject_configs=configs_normalized,
+        sub_topics=aggregated_subtopics,
+        ai_ratio=effective_ai_ratio,
         grade_label=grade_fa,
         topic=topic_text or "—",
         question_type_label=qtype_label,
@@ -496,22 +518,24 @@ async def generate_exam_preview(
         )
 
     return {
-        "questions": questions,
+        "questions": persianize_json_values(questions),
         "meta": {
             "field": payload.field,
-            "field_label": FIELD_LABELS[payload.field],
+            "field_label": to_persian_numbers(FIELD_LABELS[payload.field]),
             "grade": payload.grade,
-            "grade_label": grade_fa,
+            "grade_label": to_persian_numbers(grade_fa),
             "subjects": requested,
-            "subjects_labels": subject_labels,
-            "subject_label": subject_label,
-            "topic": topic_text,
+            "subjects_labels": [to_persian_numbers(lbl) for lbl in subject_labels],
+            "subject_label": to_persian_numbers(subject_label),
+            "topic": to_persian_numbers(topic_text),
+            "subTopics": [to_persian_numbers(st) for st in aggregated_subtopics],
             "question_type": payload.question_type,
-            "question_type_label": qtype_label,
+            "question_type_label": to_persian_numbers(qtype_label),
             "difficulty": payload.difficulty,
-            "difficulty_label": difficulty_label,
-            "subject_configs": configs_normalized,
-            "ai_percentage": payload.ai_percentage,
+            "difficulty_label": to_persian_numbers(difficulty_label),
+            "subject_configs": persianize_json_values(configs_normalized),
+            "ai_ratio": effective_ai_ratio,
+            "ai_percentage": effective_ai_ratio,
             "count_requested": effective_count,
             "count_returned": len(questions),
         },
@@ -537,7 +561,7 @@ class GenerateExamPdfRequest(BaseModel):
     subject_label: str = Field(default="", max_length=120)
     topic: str = Field(default="", max_length=140)
     duration_minutes: int = Field(default=90, ge=10, le=240)
-    difficulty: str = Field(default="medium", pattern="^(easy|medium|hard|challenging)$")
+    difficulty: str = Field(default="medium", pattern="^(easy|medium|hard|challenging|konkuri|آسان|متوسط|سخت|کنکوری)$")
     questions: list[KonkurQuestion] = Field(min_length=1, max_length=120)
 
 
@@ -582,7 +606,7 @@ def generate_exam_pdf(
         "Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote('آزمون-کنکوری-فهم‌یار.pdf')}",
         "Content-Length": str(len(pdf_bytes)),
         "X-Exam-Total-Questions": str(len(questions)),
-        "X-Exam-Difficulty": payload.difficulty,
+        "X-Exam-Difficulty": {"آسان": "easy", "متوسط": "medium", "سخت": "hard", "کنکوری": "challenging"}.get(payload.difficulty, payload.difficulty.encode("ascii", "ignore").decode("ascii") or "medium"),
     }
     return StreamingResponse(iter([pdf_bytes]), media_type="application/pdf", headers=headers)
 
