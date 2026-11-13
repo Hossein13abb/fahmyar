@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import client, { friendlyError } from '../api/client'
 import Badge from '../components/Badge'
+import MathText from '../components/MathText'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { toFarsiNumber } from '../utils/faNumbers'
 
@@ -419,9 +420,7 @@ function ExamReport({ report, mode, onBackToDashboard }) {
               <div className="px-4 py-3">
                 {q.question_text && (
                   <div className="math-content text-[12px] font-bold leading-7 text-slate-500">
-                    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
-                      {String(q.question_text || '')}
-                    </ReactMarkdown>
+                    <MathText content={q.question_text || ''} />
                   </div>
                 )}
                 {q.response !== undefined && (
@@ -433,9 +432,7 @@ function ExamReport({ report, mode, onBackToDashboard }) {
                   </details>
                 )}
                 <div className="math-content mt-2 border-r-2 border-brand-200 pr-3 text-[13px] leading-8 text-brand-950">
-                  <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
-                    {String(faText(q.qualitative_feedback, feedbackFallback(q.status)) || '')}
-                  </ReactMarkdown>
+                  <MathText content={faText(q.qualitative_feedback, feedbackFallback(q.status)) || ''} />
                 </div>
               </div>
             </article>

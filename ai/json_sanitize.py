@@ -85,7 +85,7 @@ def preprocess_latex_json(raw_text: str) -> str:
 
 
 def restore_latex_commands(obj: Any) -> Any:
-    """پس‌پردازندهٔ امن پس از `json.loads` برای تضمین وجود بک‌اسلش در دستورات LaTeX خروجی."""
+    """پس‌پردازندهٔ امن پس از `json.loads` برای تضمین وجود بک‌اسلش و `$` در دستورات LaTeX خروجی."""
     if isinstance(obj, str):
         if "<svg" in obj.lower():
             return obj
@@ -100,12 +100,20 @@ def restore_latex_commands(obj: Any) -> Any:
             r"\\\1{\2}",
             s,
         )
-        # تضمین وجود بک‌اسلش قبل از frac{ و sqrt{ و دستورات مشابه
+        # تضمین وجود بک‌اسلش قبل از frac{ و sqrt{ و vec{ و cos/sin/tan
         s = re.sub(
-            r"(?<![\\a-zA-Z])(frac|dfrac|tfrac|sqrt|binom|overbrace|underbrace|overline|underline|overrightarrow)\s*\{",
+            r"(?<![\\a-zA-Z])(frac|dfrac|tfrac|sqrt|vec|binom|overbrace|underbrace|overline|underline|overrightarrow)\s*\{",
             r"\\\1{",
             s,
         )
+        # اگر محیط ماتریس خارج از $$ ... $$ نوشته شده باشد، آن را درون $$ ... $$ بگذار
+        s = re.sub(
+            r"(?<!\$)\\begin\{([bpvBV]?matrix)\}([\s\S]*?)\\end\{\1\}(?!\$)",
+            r"$$\\begin{\1}\2\\end{\1}$$",
+            s,
+        )
+        # اگر توان منفی بدون آکولاد نوشته شده باشد (مانند ^-1 یا ^-۱)، درون آکولاد قرار بده تا در RTL معکوس نشود
+        s = re.sub(r"\^\s*(-[0-9۰-۹]+)", r"^{\1}", s)
         return s
     if isinstance(obj, list):
         return [restore_latex_commands(item) for item in obj]

@@ -94,11 +94,16 @@ JSON_LATEX_ESCAPING_RULE = (
 )
 
 LATEX_MATH_INSTRUCTION = (
-    "You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. "
-    "Wrap inline math in $...$ and block math/matrices in $$...$$. "
-    "DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. "
-    "For matrices, use $$ \\\\begin{bmatrix} ۱ & ۲ \\\\\\\\ ۳ & ۴ \\\\end{bmatrix} $$.\n"
-    "Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$."
+    "CRITICAL MATH FORMATTING RULE:\n"
+    "Every single mathematical symbol, formula, vector, power, matrix, variable, or inverse function "
+    "MUST be enclosed in inline math `$ ... $` or block math `$$ ... $$`.\n"
+    "Examples of CORRECT formatting:\n"
+    "- Inverse trig / functions: `$\\cos^{-1}\\left(\\frac{4}{9}\\right)$` (NOT `cos^-1(4/9)`)\n"
+    "- Matrix inverses & powers: `$T^{-1}$`, `$x^2$` (NOT `T^-1`)\n"
+    "- Vectors & subscripts: `$\\vec{n}_1 = (1, 2, 2)$` (NOT `n_1=(1,2,2)`)\n"
+    "- Matrices: `$$\\begin{bmatrix} 2 & 1 \\\\ 1 & 3 \\end{bmatrix}$$`\n"
+    "Never output raw LaTeX commands outside of `$` or `$$` delimiters!\n"
+    "DO NOT write text like 'x be tavan 2'. Even inside LaTeX blocks, use Persian numbers (۰۱۲۳۴۵۶۷۸۹) where appropriate, e.g., $۲x + ۵ = ۱۲$."
 )
 
 SVG_DIAGRAM_INSTRUCTION = (

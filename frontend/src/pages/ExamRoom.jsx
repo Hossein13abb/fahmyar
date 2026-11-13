@@ -17,6 +17,7 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import client, { friendlyError } from '../api/client'
 import LoadingSpinner from '../components/LoadingSpinner'
+import MathText from '../components/MathText'
 import { toFarsiNumber } from '../utils/faNumbers'
 
 const answersKey = (id) => `fahmyar_exam_${id}`
@@ -93,9 +94,7 @@ const renderQuestionText = (text) => {
   return blocks.map((b, bi) =>
     b.type === 'text' ? (
       <div key={bi} className="math-content whitespace-pre-line">
-        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
-          {String(b.content || '')}
-        </ReactMarkdown>
+        <MathText content={b.content || ''} />
       </div>
     ) : (
       <div key={bi} className="my-3 overflow-x-auto">
@@ -111,7 +110,7 @@ const renderQuestionText = (text) => {
             {b.rows.map((row, ri) => (
               <tr key={ri} className={ri % 2 ? 'bg-slate-50/60' : 'bg-white'}>
                 {row.map((cell, ci) => (
-                  <td key={ci} className="math-inline border border-brand-100 px-3 py-1.5 align-top text-brand-950"><ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>{String(cell || "")}</ReactMarkdown></td>
+                  <td key={ci} className="math-inline border border-brand-100 px-3 py-1.5 align-top text-brand-950"><MathText content={cell || ''} /></td>
                 ))}
               </tr>
             ))}

@@ -107,3 +107,14 @@ body {
   display: inline;
   margin: 0;
 }
+
+.dir-rtl {
+  direction: rtl;
+}
+.math-rendered > p {
+  margin: 0;
+}
+.math-inline .math-rendered > p {
+  display: inline;
+  margin: 0;
+}

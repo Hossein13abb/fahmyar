@@ -30,6 +30,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import MathText from '../components/MathText'
 import { toFarsiNumber } from '../utils/faNumbers'
 import client, { friendlyError } from '../api/client'
 
@@ -1219,9 +1220,7 @@ export default function ExamBuilder({ embedded = false }) {
                         </div>
                       </div>
                       <div className="math-content mt-3 text-[13px] font-bold leading-7 text-brand-950">
-                        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
-                          {String(q.text || '')}
-                        </ReactMarkdown>
+                        <MathText content={q.text || q.question_text || q.title || ''} />
                       </div>
                       {q.diagram_svg && (
                         <figure className="mt-3 overflow-hidden rounded-2xl border border-teal-200/70 bg-white p-3 shadow-inner">
@@ -1246,10 +1245,8 @@ export default function ExamBuilder({ embedded = false }) {
                               <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${correct ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                                 {fmtFa(oi + 1)}
                               </span>
-                              <div className="math-inline min-w-0">
-                                <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
-                                  {String(opt || '')}
-                                </ReactMarkdown>
+                              <div className="math-inline min-w-0 flex-1">
+                                <MathText content={opt || ''} />
                               </div>
                               {correct && <Check className="mr-auto h-4 w-4 shrink-0 self-center text-emerald-600" />}
                             </li>

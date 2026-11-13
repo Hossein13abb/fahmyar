@@ -72,7 +72,14 @@ _SYSTEM = r"""شما یک طراح سؤال تشخیصیِ خبره برای س�
   "mapped_misconceptions": ["بدفهمیِ هدف که این سؤال می‌تواند آشکارش کند"]
 }
 
-You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
+CRITICAL MATH FORMATTING RULE:
+Every single mathematical symbol, formula, vector, power, matrix, variable, or inverse function MUST be enclosed in inline math `$ ... $` or block math `$$ ... $$`.
+Examples of CORRECT formatting:
+- Inverse trig / functions: `$\cos^{-1}\left(\frac{4}{9}\right)$` (NOT `cos^-1(4/9)`)
+- Matrix inverses & powers: `$T^{-1}$`, `$x^2$` (NOT `T^-1`)
+- Vectors & subscripts: `$\vec{n}_1 = (1, 2, 2)$` (NOT `n_1=(1,2,2)`)
+- Matrices: `$$\begin{bmatrix} 2 & 1 \\ 1 & 3 \end{bmatrix}$$`
+Never output raw LaTeX commands outside of `$` or `$$` delimiters!
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
 CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash.
 CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):
@@ -151,7 +158,14 @@ def _stringify_item(item) -> str:
     return str(item or "").strip()
 
 
-_BOOKLET_PROMPT = r"""You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
+_BOOKLET_PROMPT = r"""CRITICAL MATH FORMATTING RULE:
+Every single mathematical symbol, formula, vector, power, matrix, variable, or inverse function MUST be enclosed in inline math `$ ... $` or block math `$$ ... $$`.
+Examples of CORRECT formatting:
+- Inverse trig / functions: `$\cos^{-1}\left(\frac{4}{9}\right)$` (NOT `cos^-1(4/9)`)
+- Matrix inverses & powers: `$T^{-1}$`, `$x^2$` (NOT `T^-1`)
+- Vectors & subscripts: `$\vec{n}_1 = (1, 2, 2)$` (NOT `n_1=(1,2,2)`)
+- Matrices: `$$\begin{bmatrix} 2 & 1 \\ 1 & 3 \end{bmatrix}$$`
+Never output raw LaTeX commands outside of `$` or `$$` delimiters!
 Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
 CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\$. Never use a single backslash.
 CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):

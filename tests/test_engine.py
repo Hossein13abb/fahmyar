@@ -505,3 +505,36 @@ def test_nezam_jadid_syllabus_and_latex_to_pdf_image():
 
     img_mat = latex_to_pdf_image(r"$$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$")
     assert isinstance(img_mat, RLImage)
+
+
+
+def test_critical_math_formatting_rule_and_pristine_json_latex():
+    from ai.exam_generator import build_exam_preview_prompt
+    from ai.json_sanitize import safe_parse_json
+
+    prompt = build_exam_preview_prompt(
+        count=2,
+        field_label="ریاضی و فیزیک",
+        subjects_slugs="geometry",
+        subjects_labels="هندسه ۳",
+        subject_configs=[{"subject": "geometry", "count": 2, "difficulty": "متوسط", "subTopics": []}],
+        sub_topics=[],
+        ai_ratio=50,
+        grade_label="دوازدهم",
+        topic="—",
+        question_type_label="نامشخص / ترکیبی",
+        difficulty_label="متوسط",
+        custom_prompt="—",
+    )
+    assert "CRITICAL MATH FORMATTING RULE:" in prompt
+    assert r"$\cos^{-1}\left(\frac{4}{9}\right)$" in prompt
+    assert r"$T^{-1}$" in prompt
+    assert r"$\vec{n}_1 = (1, 2, 2)$" in prompt
+
+    raw = r'[{"id": 1, "text": "مقدار $\cos^{-1}\left(\frac{4}{9}\right)$ و $T^-1$ و $\vec{n}_1$ در \begin{bmatrix} 2 & 1 \\ 1 & 3 \end{bmatrix} چیست؟"}]'
+    parsed = safe_parse_json(raw)
+    txt = parsed[0]["text"]
+    assert r"\cos^{-1}" in txt
+    assert r"\vec{n}_1" in txt
+    assert r"$$\begin{bmatrix} 2 & 1 \\ 1 & 3 \end{bmatrix}$$" in txt
+    assert "T^{-1}" in txt
