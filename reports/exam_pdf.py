@@ -246,6 +246,8 @@ class DottedLine(Flowable):
 class NumberedCanvas(canvas.Canvas):
     """کانواس دوگذری برای نوشتن «صفحه X از Y» در پاورقی همهٔ صفحات."""
 
+    footer_label = "آزمون کنکوری"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states: list[dict] = []
@@ -266,7 +268,7 @@ class NumberedCanvas(canvas.Canvas):
         self.saveState()
         self.setFont(FONT_REG, 8)
         self.setFillColor(SLATE_500)
-        text = reshaped(f"فهم‌یار · آزمون کنکوری — صفحهٔ {_fa(self._pageNumber)} از {_fa(total)}")
+        text = reshaped(f"فهم‌یار · {self.footer_label} — صفحهٔ {_fa(self._pageNumber)} از {_fa(total)}")
         self.drawCentredString(A4[0] / 2, 8 * mm, text)
         self.restoreState()
 

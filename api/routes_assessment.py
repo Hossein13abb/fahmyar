@@ -4,8 +4,10 @@ from __future__ import annotations
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from urllib.parse import quote
 
 import json
 from datetime import datetime
@@ -22,6 +24,8 @@ from models.question import QUESTION_TYPES, AssessmentSession, Question
 from models.user import User
 from reports.exam_report import build_exam_report
 from reports.report_generator import build_report
+from reports.report_pdf import build_report_pdf
+from reports.session_status import COMPREHENSION_LABELS, comprehension_status, is_exam_session
 
 router = APIRouter(prefix="/api", tags=["assessment"])
 
@@ -395,13 +399,6 @@ async def submit_answer(
     return result
 
 
-def _is_exam_session(session: AssessmentSession) -> bool:
-    for h in session.current_hypotheses or []:
-        if h.get("type") in ("exam_booklet", "exam_meta"):
-            return True
-    return any(entry.get("exam_type") for entry in (session.evidence_log or []))
-
-
 @router.get("/assess/{session_id}/report")
 def get_report(
     session_id: int,
@@ -413,7 +410,7 @@ def get_report(
         session = manager.get_session(session_id, user)
     except SessionError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    if _is_exam_session(session):
+    if is_exam_session(session):
         return build_exam_report(db, session)
     return build_report(db, session)
 
@@ -457,6 +454,84 @@ async def resume_session(
         "next_question": question_to_student_dict(next_question) if next_question else None,
         "message": "جلسه ادامه یافت.",
     }
+
+
+@router.get("/student/history")
+def get_student_history(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """تاریخچهٔ آزمون‌های دانش‌آموزِ لاگین‌شده — کیفی، بدون نمره/رتبه/درصد."""
+    if user.role != "student":
+        raise HTTPException(status_code=403, detail="این بخش مخصوص دانش‌آموزان است.")
+    sessions = (
+        db.query(AssessmentSession)
+        .filter(
+            AssessmentSession.student_id == user.id,
+            AssessmentSession.status.in_(("completed", "insufficient_evidence")),
+        )
+        .order_by(AssessmentSession.started_at.desc())
+        .all()
+    )
+    concept_ids = {s.concept_id for s in sessions if s.concept_id}
+    concepts = (
+        {c.id: c for c in db.query(Concept).filter(Concept.id.in_(concept_ids)).all()}
+        if concept_ids
+        else {}
+    )
+    items = []
+    for s in sessions:
+        concept = concepts.get(s.concept_id)
+        comprehension = comprehension_status(s)
+        items.append(
+            {
+                "session_id": s.id,
+                "concept_id": s.concept_id,
+                "concept_name": concept.name if concept else "نامشخص",
+                "subject": concept.subject if concept else None,
+                "grade": concept.grade if concept else None,
+                "exam_date": s.started_at.isoformat() if s.started_at else None,
+                "status": s.status,
+                "trigger_type": s.trigger_type,
+                "is_exam": is_exam_session(s),
+                "comprehension": comprehension,
+                "comprehension_label": COMPREHENSION_LABELS[comprehension],
+                "questions_answered": len(s.evidence_log or []),
+            }
+        )
+    return {"count": len(items), "history": items}
+
+
+@router.get("/assess/{session_id}/report-pdf")
+def download_report_pdf(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """دانلود «کارنامهٔ تحلیلی کیفی» — PDF راست‌چین؛ هیچ نمره/درصد/رتبه‌ای چاپ نمی‌شود."""
+    manager = SessionManager(db)
+    try:
+        session = manager.get_session(session_id, user)
+    except SessionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    student = db.query(User).filter(User.id == session.student_id).first()
+    if is_exam_session(session):
+        report = build_exam_report(db, session)
+    else:
+        report = build_report(db, session)
+    pdf_bytes = build_report_pdf(
+        student_name=(student.full_name if student else None) or (student.username if student else "دانش‌آموز"),
+        student_username=student.username if student else "",
+        student_grade=student.grade if student else None,
+        student_major=student.major if student else None,
+        report=report,
+    )
+    headers = {
+        "Content-Disposition": "attachment; filename=\"fahmyar-qualitative-report.pdf\"; filename*=UTF-8''" + quote("کارنامه-کیفی-فهم‌یار.pdf"),
+        "Content-Length": str(len(pdf_bytes)),
+        "X-Report-Session-Id": str(session.id),
+    }
+    return StreamingResponse(iter([pdf_bytes]), media_type="application/pdf", headers=headers)
 
 
 @router.get("/concepts/{subject}/{grade}")

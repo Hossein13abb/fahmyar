@@ -15,6 +15,8 @@ import {
   ScanSearch,
   FileText,
   Layers,
+  FileDown,
+  Loader2,
 } from 'lucide-react'
 import client, { friendlyError } from '../api/client'
 import Badge from '../components/Badge'
@@ -42,6 +44,126 @@ function SectionCard({ Icon, title, tone = 'brand', children, className = '' }) 
       </h2>
       <div className="mt-3">{children}</div>
     </section>
+  )
+}
+
+// ── دکمهٔ برجستهٔ «دانلود PDF کارنامه» — GET /api/assess/{session_id}/report-pdf ──
+function DownloadPdfButton({ sessionId }) {
+  const [downloading, setDownloading] = useState(false)
+  const download = async () => {
+    if (!sessionId) return
+    setDownloading(true)
+    try {
+      const { data } = await client.get(`/api/assess/${sessionId}/report-pdf`, {
+        responseType: 'blob',
+        timeout: 120000,
+      })
+      const url = URL.createObjectURL(data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'fahmyar-qualitative-report.pdf'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      let message = friendlyError(err)
+      try {
+        const blob = err?.response?.data
+        if (blob instanceof Blob) {
+          const parsed = JSON.parse(await blob.text())
+          if (typeof parsed?.detail === 'string') message = parsed.detail
+        }
+      } catch {
+        /* همان پیام عمومی نمایش داده می‌شود */
+      }
+      window.alert(message)
+    } finally {
+      setDownloading(false)
+    }
+  }
+  return (
+    <button
+      onClick={download}
+      disabled={downloading}
+      className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-[13px] font-black text-white shadow-lift transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-80"
+    >
+      {downloading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileDown className="h-5 w-5" />}
+      {downloading ? 'در حال ساخت PDF…' : 'دانلود PDF کارنامه'}
+    </button>
+  )
+}
+
+// ── فلش SVG به‌سمت پایین (وابسته به هیچ فونتی نیست) ──
+function DagArrow({ label }) {
+  return (
+    <div className="flex flex-col items-center gap-1 py-1" aria-hidden="true">
+      <svg width="180" height="46" viewBox="0 0 180 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="90" y1="2" x2="90" y2="28" stroke="#D97706" strokeWidth="2.5" strokeDasharray="5 5" strokeLinecap="round" />
+        <path d="M90 42 L78 24 L102 24 Z" fill="#D97706" />
+      </svg>
+      <span className="rounded-full bg-amber-100 px-3 py-0.5 text-[10px] font-black text-amber-800 ring-1 ring-amber-300">
+        {label}
+      </span>
+    </div>
+  )
+}
+
+// ── نمودار درختیِ ریشه‌یابی (Flowchart) — وابستگی پیش‌نیاز ← مفهوم هدف ──
+function RootCauseDag({ target, nodes }) {
+  const list = (Array.isArray(nodes) ? nodes : []).filter(Boolean)
+  if (list.length === 0) {
+    return (
+      <p className="flex items-center gap-2 text-[13px] font-bold text-emerald-800">
+        <CheckCircle2 className="h-5 w-5" /> الگوی بدفهمیِ ریشه‌دارِ تکرارشونده یافت نشد.
+      </p>
+    )
+  }
+  return (
+    <div role="img" aria-label={`نمودار وابستگی مفاهیم: ${toFarsiNumber(list.length)} ریشه به‌سمتِ ${target}`}>
+      {/* سطح ۱ — ریشه‌ها */}
+      <p className="text-[10px] font-black uppercase tracking-wide text-amber-700">سطح ۱ — گره‌های ریشهٔ خطا (پیش‌نیازهای ضعیف)</p>
+      <div className={`mt-2 grid gap-3 ${list.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+        {list.map((rc, i) => (
+          <div
+            key={i}
+            className="rounded-2xl border-2 border-amber-300/70 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-sm"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-[11px] font-black text-white">
+                {toFarsiNumber(i + 1)}
+              </span>
+              <p className="min-w-0 flex-1 text-[12px] font-black leading-6 text-amber-950">
+                {rc.concept_name || rc.area || 'عنوان ریشه ثبت نشد — معلم بررسی کند'}
+              </p>
+              {rc.cross_subject && (
+                <span className="chip bg-white text-amber-800 ring-1 ring-amber-300">بین‌درسی</span>
+              )}
+              {rc.status_label && (
+                <span className="chip bg-white text-amber-800 ring-1 ring-amber-300">{rc.status_label}</span>
+              )}
+            </div>
+            {rc.reasoning && <p className="mt-2 text-[11px] leading-6 text-amber-900/90">{rc.reasoning}</p>}
+          </div>
+        ))}
+      </div>
+
+      <DagArrow label="باعث اختلال در" />
+
+      {/* سطح ۲ — گرهٔ هدف */}
+      <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">سطح ۲ — گرهٔ هدف (مفهومِ دارای اختلال)</p>
+      <div className="mx-auto mt-2 max-w-md rounded-2xl border-2 border-emerald-600/60 bg-gradient-to-br from-emerald-600 to-teal-700 p-4 text-center shadow-lift">
+        <GitBranch className="mx-auto h-6 w-6 text-emerald-100" strokeWidth={1.8} />
+        <p className="mt-1.5 text-[14px] font-black text-white">{target}</p>
+        <p className="mt-1 text-[10px] font-bold leading-5 text-emerald-100/90">
+          ضعف‌های سطح ۱ همین‌جا خودشان را نشان می‌دهند؛ اصلاح هر گره، گرهٔ هدف را سبک‌تر می‌کند.
+        </p>
+      </div>
+
+      <p className="mt-3 text-center text-[10px] font-medium leading-5 text-slate-500">
+        جریان وابستگی: از پیش‌نیاز به‌سمتِ مفهوم هدف · این نمودار جایگزین نمرهٔ عددی نیست؛ فقط مسیرِ علّیِ خطا را نشان می‌دهد.
+      </p>
+    </div>
   )
 }
 
@@ -239,6 +361,7 @@ function ExamReport({ report, mode, onBackToDashboard }) {
           </div>
         </div>
         <div className="no-print flex shrink-0 flex-col gap-2">
+          <DownloadPdfButton sessionId={report.session_id} />
           <button onClick={() => window.print()} className="flex items-center justify-center gap-2 rounded-2xl bg-brand-700 px-5 py-3 text-[13px] font-black text-white shadow-card transition hover:bg-brand-800">
             <Printer className="h-5 w-5" />
             چاپ / دانلود گزارش
@@ -302,27 +425,9 @@ function ExamReport({ report, mode, onBackToDashboard }) {
         </div>
       </SectionCard>
 
-      {/* ── (ج) تحلیل ریشه‌ای بدفهمی‌ها ── */}
-      <SectionCard Icon={GitBranch} title="تحلیل ریشه‌ای بدفهمی‌ها" tone="amber">
-        {rootCauses.length === 0 ? (
-          <p className="flex items-center gap-2 text-[13px] font-bold text-emerald-800">
-            <CheckCircle2 className="h-5 w-5" /> الگوی بدفهمیِ ریشه‌دارِ تکرارشونده یافت نشد.
-          </p>
-        ) : (
-          <ol className="space-y-2">
-            {rootCauses.map((rc, i) => (
-              <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 p-4">
-                <p className="flex flex-wrap items-center gap-2 text-[13px] font-black text-amber-950">
-                  <span className="font-black text-amber-500">{toFarsiNumber(i + 1)}.</span> {rc.concept_name || rc.area || 'عنوان ریشه ثبت نشد — معلم بررسی کند'}
-                  {rc.cross_subject && (
-                    <span className="chip bg-amber-100 text-amber-800 ring-1 ring-amber-200">بین‌درسی</span>
-                  )}
-                </p>
-                {rc.reasoning && <p className="mt-1.5 pr-6 text-[12px] leading-7 text-amber-900/90">{rc.reasoning}</p>}
-              </li>
-            ))}
-          </ol>
-        )}
+      {/* ── (ج) تحلیل ریشه‌ای بدفهمی‌ها — گراف وابستگی مفاهیم (DAG) ── */}
+      <SectionCard Icon={GitBranch} title="تحلیل ریشه‌ای بدفهمی‌ها — گراف وابستگی مفاهیم" tone="amber">
+        <RootCauseDag target={report.concept_name ?? 'مفهوم هدف'} nodes={rootCauses} />
       </SectionCard>
 
       {/* ── (د) پیشنهادهای بهبود کیفی ── */}
@@ -422,7 +527,6 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
   const unclear = s['موارد هنوز روشن‌نشده'] ?? []
   const studentActions = s['پیشنهاد اقدام برای دانش‌آموز'] ?? []
   const teacherNotes = s['یادداشت برای معلم'] ?? []
-  const rootCauses = s['فرضیه‌های ریشهٔ خطا'] ?? []
   const propositionStatuses = report.proposition_statuses ?? {}
   const generatedAt = report.generated_at ? new Date(report.generated_at).toLocaleDateString('fa-IR', { dateStyle: 'long' }) : ''
 
@@ -443,6 +547,7 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
           </div>
         </div>
         <div className="no-print flex shrink-0 flex-col gap-2">
+          <DownloadPdfButton sessionId={report.session_id} />
           <button onClick={() => window.print()} className="flex items-center justify-center gap-2 rounded-2xl bg-brand-700 px-5 py-3 text-[13px] font-black text-white shadow-card transition hover:bg-brand-800">
             <Printer className="h-5 w-5" />
             چاپ / دانلود گزارش
@@ -517,18 +622,13 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
         )}
       </SectionCard>
 
-      {/* ── فرضیه‌های ریشهٔ خطا (مسیر B) ── */}
-      {rootCauses.length > 0 && (
-        <SectionCard Icon={GitBranch} title="فرضیه‌های ریشهٔ خطا" tone="amber">
-          <ul className="space-y-1.5">
-            {rootCauses.map((line, i) => (
-              <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 px-4 py-2.5 text-[12px] leading-6 text-amber-950">
-                {line}
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      )}
+      {/* ── فرضیه‌های ریشهٔ خطا (مسیر B) — گراف وابستگی مفاهیم (DAG) ── */}
+      <SectionCard Icon={GitBranch} title="فرضیه‌های ریشهٔ خطا — گراف وابستگی مفاهیم" tone="amber">
+        <RootCauseDag
+          target={report.concept_name ?? 'مفهوم هدف'}
+          nodes={Array.isArray(report.root_causes) ? report.root_causes : []}
+        />
+      </SectionCard>
 
       {/* ── پیشنهاد گام بعدی ── */}
       <div className={`grid gap-4 ${mode === 'teacher' ? 'lg:grid-cols-2' : ''}`}>

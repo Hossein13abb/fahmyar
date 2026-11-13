@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Loader2,
   ScrollText,
+  ListFilter,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import ExamBuilder from './ExamBuilder'
@@ -57,6 +58,7 @@ export default function SchoolStaffDashboard() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [needsReviewOnly, setNeedsReviewOnly] = useState(false)
 
   const loadResults = useCallback(async (showSpinner = false) => {
     if (showSpinner) setRefreshing(true)
@@ -76,6 +78,11 @@ export default function SchoolStaffDashboard() {
   useEffect(() => {
     loadResults()
   }, [loadResults])
+
+  const reviewCount = rows.filter((r) => r.needs_teacher_review || r.comprehension === 'remedial').length
+  const visibleRows = needsReviewOnly
+    ? rows.filter((r) => r.needs_teacher_review || r.comprehension === 'remedial')
+    : rows
 
   const statTiles = summary
     ? [
@@ -170,10 +177,24 @@ export default function SchoolStaffDashboard() {
                 <PenLine className="h-5 w-5 text-brand-700" />
                 <h2 className="text-[14px] font-black text-slate-800">نتایج واقعی دانش‌آموزان — بر پایهٔ آزمون‌های ثبت‌شده</h2>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> اتصال زنده به دیتابیس
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setNeedsReviewOnly((v) => !v)}
+                  aria-pressed={needsReviewOnly}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black ring-1 transition ${
+                    needsReviewOnly
+                      ? 'bg-amber-100 text-amber-900 ring-amber-300 shadow-soft'
+                      : 'border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                  }`}
+                >
+                  <ListFilter className="h-3.5 w-3.5" />
+                  فقط بدفهمی‌های شناسایی‌شده
+                  <span className="rounded-full bg-amber-600/90 px-1.5 text-[9px] font-black text-white">{toFarsiNumber(reviewCount)}</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => loadResults(true)}
@@ -204,6 +225,8 @@ export default function SchoolStaffDashboard() {
               </div>
             ) : rows.length === 0 ? (
               <p className="px-5 py-12 text-center text-[12px] font-bold text-slate-400">هنوز دانش‌آموزی در دیتابیس ثبت نشده است.</p>
+            ) : visibleRows.length === 0 ? (
+              <p className="px-5 py-12 text-center text-[12px] font-bold text-slate-500">هیچ دانش‌آموزِ دارای بدفهمیِ بازبین‌نشده‌ای میان نتایجِ ثبت‌شده نیست.</p>
             ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-right text-[12px]">
@@ -217,7 +240,7 @@ export default function SchoolStaffDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {rows.map((row, i) => {
+                  {visibleRows.map((row, i) => {
                     const chip = STATUS_CLS[row.comprehension] ?? STATUS_CLS.insufficient
                     const fullName = row.student?.full_name?.trim() || row.student?.username || '—'
                     const examDate = row.exam_date
@@ -282,7 +305,7 @@ export default function SchoolStaffDashboard() {
 
             <div className="border-t border-slate-100 px-5 py-3">
               <p className="text-[10px] font-medium leading-5 text-slate-400">
-                این جدول فقط وضعیت کیفیِ فهم را نشان می‌دهد؛ هیچ نمره، درصد یا رتبه‌ای نمایش داده نمی‌شود. «مشاهدهٔ کارنامه کیفی» دقیقاً همان کارنامهٔ تحلیلی کامل (همراه با گراف پیش‌نیازها) را باز می‌کند.
+                این جدول فقط وضعیت کیفیِ فهم را نشان می‌دهد؛ هیچ نمره، درصد یا رتبه‌ای نمایش داده نمی‌شود. «مشاهدهٔ کارنامه کیفی» دقیقاً همان کارنامهٔ تحلیلی کامل (همراه با گراف پیش‌نیازها) را باز می‌کند. با فعال‌کردن «فقط بدفهمی‌های شناسایی‌شده»، فقط دانش‌آموزان دارای شواهد NEEDS_REVIEW یا نیازمند آموزش جبرانی نمایش داده می‌شوند.
               </p>
             </div>
           </section>

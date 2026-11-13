@@ -186,7 +186,7 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
                 if q["status"] in (EvidenceStatus.UNCLEAR.value, EvidenceStatus.INSUFFICIENT_EVIDENCE.value)
             ] or ["موردِ مبهمی باقی نمانده است."],
         },
-        "exam_score_note": "⚠️ نمرهٔ آزمون — نه سنجش فهم",
+        "exam_score_note": "توجه: نمرهٔ آزمون — نه سنجش فهم. این کارنامه نمره/رتبه/درصد ندارد و فقط شواهدِ کیفی را ثبت می‌کند.",
         "generated_at": datetime.utcnow().isoformat(),
         # عمداً: هیچ نمره/رتبه/درصد/مقایسه‌ای در گزارش وجود ندارد
     }

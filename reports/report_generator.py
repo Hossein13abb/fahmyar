@@ -127,14 +127,28 @@ def build_report(db: Session, session: AssessmentSession) -> dict[str, Any]:
         f"«{prop}» ({STATUS_FA_SHORT[per_prop_status[prop]]})" for prop in unclear_items
     ] or ["موردِ مبهمی باقی نمانده است."]
 
-    # --- فرضیه‌های ریشهٔ خطا (مسیر B) ---
+    # --- فرضیه‌های ریشهٔ خطا (مسیر B) — ساختار‌یافته + خط متنی ---
+    _ROOT_STATUS_FA = {"pending": "بررسی‌نشده", "testing": "در حال بررسی", "supported": "تأییدشده",
+                       "likely_root_cause": "مشکوک به ریشهٔ خطا", "rejected": "رد شده"}
+    root_causes: list[dict[str, Any]] = []
     root_cause_lines: list[str] = []
     for hyp in session.current_hypotheses or []:
-        if hyp.get("type") == "root_cause":
-            mark = {"pending": "بررسی‌نشده", "testing": "در حال بررسی", "supported": "تأییدشده",
-                    "likely_root_cause": "مشکوک به ریشهٔ خطا", "rejected": "رد شده"}.get(hyp.get("status"), hyp.get("status"))
-            cross = " (بین‌درسی)" if hyp.get("cross_subject") else ""
-            root_cause_lines.append(f"{hyp.get('concept_name', hyp.get('concept_topic'))}{cross}: {mark}")
+        if hyp.get("type") != "root_cause":
+            continue
+        name = str(hyp.get("concept_name") or hyp.get("concept_topic") or "بدون عنوان")
+        status_raw = str(hyp.get("status") or "")
+        mark = _ROOT_STATUS_FA.get(status_raw, status_raw or "نامشخص")
+        cross = bool(hyp.get("cross_subject"))
+        reasoning = str(hyp.get("reason") or hyp.get("reasoning") or "").strip()
+        root_causes.append({
+            "concept_name": name,
+            "area": name,
+            "status": status_raw,
+            "status_label": mark,
+            "reasoning": reasoning or f"وضعیت بررسی: {mark}",
+            "cross_subject": cross,
+        })
+        root_cause_lines.append(f"{name}{' (بین‌درسی)' if cross else ''}: {mark}")
 
     # --- پیشنهاد اقدام ---
     student_actions: list[str] = []
@@ -202,8 +216,9 @@ def build_report(db: Session, session: AssessmentSession) -> dict[str, Any]:
             "یادداشت برای معلم": teacher_notes,
         },
         "proposition_statuses": per_prop_status,
+        "root_causes": root_causes,
         "needs_teacher_review": needs_teacher,
-        "exam_score_note": "⚠️ نمرهٔ آزمون — نه سنجش فهم",
+        "exam_score_note": "توجه: نمرهٔ آزمون — نه سنجش فهم. این کارنامه نمره/رتبه/درصد ندارد و فقط شواهدِ کیفی را ثبت می‌کند.",
         "generated_at": datetime.utcnow().isoformat(),
         # هیچ رتبه/درصد/مقایسه‌ای در خروجی وجود ندارد — عمداً
     }

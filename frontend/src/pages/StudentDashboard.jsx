@@ -21,6 +21,9 @@ import {
   ShieldCheck,
   Compass,
   BookOpenCheck,
+  ScrollText,
+  CalendarDays,
+  History,
 } from 'lucide-react'
 import client, { friendlyError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -34,6 +37,13 @@ const SUBJECTS = [
   { value: 'chemistry', label: 'شیمی', Icon: FlaskConical },
 ]
 const GRADES = [10, 11, 12]
+
+const HISTORY_CHIP = {
+  stable: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+  growing: 'bg-amber-50 text-amber-800 ring-amber-200',
+  remedial: 'bg-rose-50 text-rose-800 ring-rose-200',
+  insufficient: 'bg-slate-100 text-slate-600 ring-slate-200',
+}
 
 const HOW_STEPS = [
   { Icon: SearchCheck, title: '۱. دفترچهٔ ۹ سؤالی', text: 'از مفهومی تا نموداری — کل ابعاد فهم در یک آزمون.' },
@@ -62,6 +72,8 @@ export default function StudentDashboard() {
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [history, setHistory] = useState(null) // null = در حال بارگذاری | [] = خالی
+  const [historyError, setHistoryError] = useState('')
   const [started, setStarted] = useState(false) // false = صفحهٔ خوش‌آمد، true = جریان فهم‌سنجی
   const handleLogout = () => {
     logout()
@@ -93,6 +105,18 @@ export default function StudentDashboard() {
       .get('/api/concepts')
       .then(({ data }) => setAllConcepts(data.concepts ?? []))
       .catch(() => setAllConcepts([]))
+  }, [])
+
+  // بارگذاری تاریخچهٔ آزمون‌های خود دانش‌آموز — دادهٔ واقعی دیتابیس
+  useEffect(() => {
+    let alive = true
+    client
+      .get('/api/student/history')
+      .then(({ data }) => alive && setHistory(Array.isArray(data?.history) ? data.history : []))
+      .catch((err) => alive && setHistoryError(friendlyError(err)))
+    return () => {
+      alive = false
+    }
   }, [])
 
   const selectedConcept = useMemo(
@@ -422,6 +446,62 @@ export default function StudentDashboard() {
       </p>
         </>
       )}
+
+      {/* ── تاریخچهٔ آزمون‌های من — دادهٔ واقعی دیتابیس (GET /api/student/history) ── */}
+      <section className="card p-6 sm:p-7" aria-label="تاریخچهٔ آزمون‌های من">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
+            <History className="h-5 w-5 text-brand-700" /> تاریخچهٔ آزمون‌های من
+          </h2>
+          <span className="chip bg-brand-50 text-brand-800 ring-1 ring-brand-200">اتصال زنده به دیتابیس</span>
+        </div>
+        {historyError ? (
+          <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-bold text-amber-900" role="alert">{historyError}</p>
+        ) : history === null ? (
+          <div className="flex items-center justify-center gap-2 py-8 text-[12px] font-bold text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin text-brand-600" /> در حال دریافت تاریخچه…
+          </div>
+        ) : history.length === 0 ? (
+          <p className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-10 text-center text-[12px] font-bold leading-6 text-slate-400">
+            هنوز آزمونی ثبت نکرده‌ای؛<br />اولین فهم‌سنجی را همین‌جا شروع کن.
+          </p>
+        ) : (
+          <ul className="mt-4 grid gap-3 md:grid-cols-2">
+            {history.map((h) => (
+              <li
+                key={h.session_id}
+                className="flex flex-col rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:shadow-lift"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 text-[12px] font-black leading-6 text-brand-950">
+                    <span className="text-brand-600">{h.subject ? subjectFa(h.subject) : '—'}</span> · {h.concept_name}
+                  </span>
+                  <span className={`chip ring-1 ${HISTORY_CHIP[h.comprehension] ?? HISTORY_CHIP.insufficient}`}>
+                    {h.comprehension_label}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-medium text-slate-500">
+                  <span className="inline-flex items-center gap-1">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {h.exam_date
+                      ? new Date(h.exam_date).toLocaleDateString('fa-IR', { dateStyle: 'long' })
+                      : '—'}
+                  </span>
+                  <span>{toFarsiNumber(h.questions_answered)} پاسخ ثبت‌شده</span>
+                  <span>{h.is_exam ? 'آزمون جامع' : h.trigger_type === 'wrong_answer' ? 'مسیر پاسخ غلط' : 'انتخاب موضوع'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/report/${h.session_id}`)}
+                  className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-[11px] font-black text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100"
+                >
+                  <ScrollText className="h-4 w-4" /> مشاهدهٔ کارنامه
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   )
 }

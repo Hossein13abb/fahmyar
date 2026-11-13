@@ -23,8 +23,13 @@ from pydantic import BaseModel, Field
 import json
 import re
 
-from reports.report_generator import build_report, _aggregate_by_proposition, _final_prop_status
+from reports.report_generator import build_report
 from reports.exam_pdf import DIFFICULTY_LABELS, build_exam_pdf
+from reports.session_status import (
+    COMPREHENSION_LABELS,
+    comprehension_status,
+    needs_teacher_review,
+)
 from ai.model_abstraction import get_router
 
 router = APIRouter(prefix="/api/teacher", tags=["teacher"])
@@ -190,67 +195,6 @@ def concept_detail(
 # نتایج واقعی دانش‌آموزان (خروجی موتور تشخیص) — بدون هیچ دادهٔ Mock
 # ─────────────────────────────────────────────────────────────────────────────
 
-COMPREHENSION_LABELS = {
-    "stable": "تثبیت شده",
-    "growing": "در حال پرورش",
-    "remedial": "نیازمند آموزش جبرانی",
-    "insufficient": "شواهد ناکافی",
-}
-
-_CONFIRMING = (EvidenceStatus.CONFIRMED.value, EvidenceStatus.LIKELY_UNDERSTOOD.value)
-
-
-def _is_exam_session(session: AssessmentSession) -> bool:
-    return any(h.get("type") in ("exam_booklet", "exam_meta") for h in (session.current_hypotheses or [])) or any(
-        entry.get("exam_type") for entry in (session.evidence_log or [])
-    )
-
-
-def _comprehension_status(session: AssessmentSession) -> str:
-    """وضعیت درک دانش‌آموز در یک جلسهٔ تکمیل‌شده — بر پایهٔ خروجی موتور ECD."""
-    if session.status == "insufficient_evidence":
-        return "insufficient"
-    entries = session.evidence_log or []
-    if not entries:
-        return "insufficient"
-
-    if _is_exam_session(session):
-        statuses = []
-        for entry in entries:
-            evidence = entry.get("evidence") or []
-            status = evidence[0].get("status") if evidence else None
-            if status:
-                statuses.append(str(status).upper())
-    else:
-        agg = _aggregate_by_proposition(session)
-        statuses = [_final_prop_status(a["statuses"]) for a in agg.values()]
-
-    if not statuses:
-        return "insufficient"
-    if any(s == EvidenceStatus.NEEDS_REVIEW.value for s in statuses):
-        return "remedial"
-    if all(s in _CONFIRMING for s in statuses):
-        return "stable"
-    if any(s in _CONFIRMING for s in statuses):
-        return "growing"
-    if all(s == EvidenceStatus.INSUFFICIENT_EVIDENCE.value for s in statuses):
-        return "insufficient"
-    return "growing"
-
-
-def _needs_teacher_review(session: AssessmentSession) -> bool:
-    if _is_exam_session(session):
-        return any(
-            bool((entry.get("evidence") or [{}])[0].get("needs_teacher_review"))
-            for entry in (session.evidence_log or [])
-        )
-    return any(
-        ev.get("needs_teacher_review")
-        for entry in (session.evidence_log or [])
-        for ev in entry.get("evidence", [])
-    )
-
-
 @router.get("/student-results")
 def student_results(
     db: Session = Depends(get_db),
@@ -288,7 +232,7 @@ def student_results(
         latest = sessions[0] if sessions else None
         if latest is not None:
             concept = db.query(Concept).filter(Concept.id == latest.concept_id).first() if latest.concept_id else None
-            comprehension = _comprehension_status(latest)
+            comprehension = comprehension_status(latest)
             rows.append(
                 {
                     "student": student.to_public_dict(),
@@ -303,7 +247,7 @@ def student_results(
                     "questions_answered": len(latest.evidence_log or []),
                     "exam_date": latest.started_at.isoformat() if latest.started_at else None,
                     "completed_exams": completed,
-                    "needs_teacher_review": _needs_teacher_review(latest),
+                    "needs_teacher_review": needs_teacher_review(latest),
                 }
             )
         else:
