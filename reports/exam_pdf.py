@@ -130,98 +130,106 @@ def to_persian_numbers(text: Any) -> str:
     return str(text).translate(str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹'))
 
 
-def latex_to_persian_text(text: Any) -> str:
-    r"""پیش‌پردازندهٔ کامل تبدیل دستورات LaTeX (با یا بدون بک‌اسلش) به متن فارسیِ تمیز پیش از ارسال به PDF.
-
-    - حذف نویز علامت‌های دلار (`$\$`, `$$$`, `$$`, `$`)
-    - تبدیل درجه: `45^\circ` یا `45\circ` یا `45circ` -> `۴۵ درجه`
-    - تبدیل رادیکال: `\sqrt{7}` یا `sqrt{7}` -> `رادیکال(۷)`
-    - تبدیل بردار: `\vec{a}` یا `vec{a}` -> `بردار a`
-    - تبدیل کسر: `\frac{a}{b}` یا `frac{a}{b}` -> `(a / b)`
-    - تبدیل `\cos^{-1}` / `cos^{-1}` -> `کسینوس وارون` و `\theta` / `theta` -> `زاویه تتا`
-    - تبدیل ماتریس به `[ a , b | c , d ]` و ارقام به فارسی.
-    """
+def final_pdf_cleanup(text: Any) -> str:
+    """The 'Nuclear Option' to stop PDF text scrambling."""
     if not text:
         return ""
 
     s = str(text)
     s = s.replace("\x08", "\\b").replace("\x0c", "\\f")
 
-    # Remove weird dollar noise
-    s = re.sub(r"\$\\+\$|\$\\\$|\$\$\$|\$\$|\\+\$|\$", " ", s)
-
-    # Matrices: \begin{bmatrix} a & b \\ c & d \end{bmatrix} -> [ a , b | c , d ]
-    def clean_matrix(match: re.Match) -> str:
-        content = match.group(1)
-        content = content.replace("\\\\", " | ").replace("&", " , ")
-        content = re.sub(r"\s+", " ", content).strip()
+    # 1. Handle Matrices first (so inner & and \\ are converted before nuclear symbol strip)
+    def matrix_sub(m: re.Match) -> str:
+        content = m.group(1).replace("\\\\", " | ").replace("&", " , ")
         return f"[ {content} ]"
 
     s = re.sub(
-        r"(?:\\+)?\bbegin\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}(.*?)(?:\\+)?\bend\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}",
-        clean_matrix,
+        r"\\?begin\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}(.*?)\\?end\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}",
+        matrix_sub,
         s,
         flags=re.DOTALL,
     )
 
-    # Replace degrees: 45^\circ or 45\circ or 45circ -> ۴۵ درجه
-    s = re.sub(r"([\d۰-۹]+)\s*\^?\s*\{?\s*\\?(?:circ|degree)\b\}?", r"\1 درجه", s)
-    s = re.sub(r"\^?\s*\{?\s*\\(?:circ|degree)\b\}?", " درجه", s)
-
-    # Replace sqrt: \sqrt{7} or sqrt{7} -> رادیکال(۷)
-    s = re.sub(r"\\?sqrt\s*\[([^\[\]]+)\]\s*\{([^}]+)\}", r"رادیکال[\1](\2)", s)
-    s = re.sub(r"\\?sqrt\s*\{([^}]+)\}", r"رادیکال(\1)", s)
-
-    # Replace vec: \vec{a} or vec{a} -> بردار a
+    # 2. Translate Math to Persian Words
+    s = re.sub(r"([\d۰-۹]+)\s*\^?\s*\{?\s*\\?(?:circ|deg(?:ree)?)\b\}?", r"\1 درجه", s)
+    s = re.sub(r"\\?(?:circ|deg(?:ree)?)\b", " درجه ", s)
+    s = re.sub(r"\\?sqrt\s*\[([^\[\]]+)\]\s*\{([^}]+)\}", r"رادیکال \2", s)
+    s = re.sub(r"\\?sqrt\s*\{([^}]+)\}", r"رادیکال (\1)", s)
     s = re.sub(r"\\?(?:vec|overrightarrow)\s*\{([^}]+)\}", r"بردار \1", s)
-
-    # Replace frac: \frac{a}{b} or frac{a}{b} -> (a / b)
+    s = re.sub(r"\\?cos\s*\^?\s*\{?\s*-[1۱]\s*\}?", "کسینوس معکوس", s)
+    s = re.sub(r"\\?sin\s*\^?\s*\{?\s*-[1۱]\s*\}?", "سینوس معکوس", s)
+    s = re.sub(r"\\?tan\s*\^?\s*\{?\s*-[1۱]\s*\}?", "تانژانت معکوس", s)
     for _ in range(4):
-        next_s = re.sub(r"\\?(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"(\1 / \2)", s)
+        next_s = re.sub(r"\\?(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"(\1 به روی \2)", s)
         if next_s == s:
             break
         s = next_s
+    s = re.sub(r"\\?theta\b", "تتا", s)
+    s = re.sub(r"\\?alpha\b", "آلفا", s)
+    s = re.sub(r"\\?beta\b", "بتا", s)
+    s = re.sub(r"\\?pi\b", "پی", s)
+    s = re.sub(r"\\?(?:rightarrow|to)\b", " به سمت ", s)
+    s = re.sub(r"\\?infty\b", "بی‌نهایت", s)
+    s = re.sub(r"\\+times\b", " x ", s)
+    s = re.sub(r"\\+cdot\b", " · ", s)
+    s = re.sub(r"([a-zA-Z])\s*\^\s*\{?\s*-[1۱]\s*\}?", r"معکوس \1", s)
 
-    # Replace cos^-1 / sin^-1 / tan^-1 and theta
-    s = re.sub(r"\\?cos\s*\^\s*\{?\s*-[1۱]\s*\}?", "کسینوس وارون", s)
-    s = re.sub(r"\\?sin\s*\^\s*\{?\s*-[1۱]\s*\}?", "سینوس وارون", s)
-    s = re.sub(r"\\?tan\s*\^\s*\{?\s*-[1۱]\s*\}?", "تانژانت وارون", s)
-    s = re.sub(r"\\?theta\b", "زاویه تتا", s)
+    # Remove remaining unknown \commands before stripping symbols
+    s = re.sub(r"\\[a-zA-Z]+", " ", s)
 
-    # Common operators
-    s = re.sub(r"\\+times\b", "x", s)
-    s = re.sub(r"\\+cdot\b", "·", s)
-    s = re.sub(r"\\+div\b", "÷", s)
-    s = re.sub(r"\\+pm\b", "±", s)
-    s = re.sub(r"\\+(?:leq|le)\b", "≤", s)
-    s = re.sub(r"\\+(?:geq|ge)\b", "≥", s)
-    s = re.sub(r"\\+(?:neq|ne)\b", "≠", s)
-    s = re.sub(r"\\+approx\b", "≈", s)
-    s = re.sub(r"\\+(?:to|rightarrow)\b", "→", s)
-    s = re.sub(r"\\+Rightarrow\b", "⇒", s)
-    s = re.sub(r"\\+infty\b", "∞", s)
-    s = re.sub(r"\\+pi\b", "π", s)
-    s = re.sub(r"\\+alpha\b", "آلفا", s)
-    s = re.sub(r"\\+beta\b", "بتا", s)
-    s = re.sub(r"\\+Delta\b", "Δ", s)
-    s = re.sub(r"\\+(?:left|right)\b", "", s)
-    s = re.sub(r"\\+(?:text|textbf|mathrm|mathbf)\s*\{([^{}]*)\}", r"\1", s)
+    # 3. THE NUCLEAR STEP: Remove ALL remaining LaTeX/English symbols that cause bidi scrambling
+    # This removes \, {, }, ^, _, $, (, )
+    s = re.sub(r"[\$\\\{\}\^_\(\)]", " ", s)
 
-    s = s.replace("\\\\", " | ").replace("&", " , ")
-    s = re.sub(r"\\[a-zA-Z]+", "", s)
-    s = s.replace("\\", "")
-    s = re.sub(r"\^\{([^{}]+)\}", r"^\1", s)
-    s = re.sub(r"_\{([^{}]+)\}", r"_\1", s)
-
-    # Convert digits to Persian
+    # 4. Convert digits to Persian
     persian_digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
     s = s.translate(persian_digits)
 
-    return re.sub(r"[ \t]{2,}", " ", s).strip()
+    # 5. Final Polish: remove double spaces
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
-# نام مستعار برای سازگاری با فراخوانی‌های موجود
-clean_latex_for_pdf = latex_to_persian_text
+# نام‌های مستعار برای سازگاری با سایر بخش‌ها
+latex_to_persian_text = final_pdf_cleanup
+clean_latex_for_pdf = final_pdf_cleanup
+
+
+def get_pdf_safe_text(text: Any) -> str:
+    """Prepares text for ReportLab by cleaning, reshaping, and bidi-processing."""
+    if not text:
+        return ""
+    # Step A: Clean LaTeX and symbols FIRST
+    cleaned = final_pdf_cleanup(str(text))
+    # Step B: Reshape Persian characters
+    reshaped_str = arabic_reshaper.reshape(cleaned)
+    # Step C: Apply Bidi for RTL direction
+    return get_display(reshaped_str)
+
+
+def _fa(value: Any) -> str:
+    return to_persian_numbers(str(value))
+
+
+def _fa_date() -> str:
+    try:
+        import jdatetime
+
+        return to_persian_numbers(jdatetime.date.today().strftime("%Y/%m/%d"))
+    except Exception:
+        from datetime import date
+
+        return to_persian_numbers(date.today().strftime("%Y/%m/%d"))
+
+
+def prepare_farsi_text(text: str) -> str:
+    """متن فارسی را برای رندر در ReportLab با get_pdf_safe_text آماده می‌کند."""
+    return get_pdf_safe_text(text)
+
+
+def reshaped(text: Any) -> str:
+    """نام مستعار — همهٔ متون ReportLab از مسیر امن get_pdf_safe_text عبور می‌کنند."""
+    return get_pdf_safe_text(str(text or ""))
 
 
 _COMPLEX_LATEX_RE = re.compile(
@@ -404,7 +412,7 @@ def rtl_flowables(
     max_width_mm: float,
 ) -> list[Paragraph]:
     """متن فارسی را به خط‌های پاراگراف راست‌چین تبدیل می‌کند (امن برای Platypus)."""
-    text = clean_latex_for_pdf(text)
+    text = final_pdf_cleanup(text)
     font = style.fontName or FONT_REG
     size = style.fontSize
     # حاشیهٔ اطمینان: اندازه‌گیری ما با اندکی خطا نسبت به چینش داخلی ReportLab انجام می‌شود؛
@@ -892,16 +900,10 @@ def _instruction_box() -> Table:
 
 def _option_cell(text: str, index: int) -> list[Flowable]:
     label = OPTION_LETTERS[index]
-    raw_opt = str(text or "").strip()
-    math_imgs = _extract_complex_math_images(raw_opt, max_width_pt=72 * mm)
-    cleaned_opt = latex_to_persian_text(raw_opt)
-    flows: list[Flowable] = list(
-        rtl_flowables(f"{label}) {cleaned_opt}", _style(f"opt-{index}", fontSize=9.5, leading=18), 89 - 8)
+    cleaned_opt = final_pdf_cleanup(str(text or "").strip())
+    return list(
+        rtl_flowables(f"{label} - {cleaned_opt}", _style(f"opt-{index}", fontSize=9.5, leading=18), 89 - 8)
     )
-    for img in math_imgs:
-        flows.append(Spacer(1, 0.8 * mm))
-        flows.append(img)
-    return flows
 
 
 def _options_table(item: dict[str, Any]) -> Table:
@@ -929,14 +931,10 @@ def _options_table(item: dict[str, Any]) -> Table:
 
 
 def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowable]:
-    """سؤال کنکوری: سربرگ + متن + تصویر فرمول‌های پیچیده (در صورت وجود) + شکل SVG + چهار گزینه در دو ستون."""
+    """سؤال کنکوری: سربرگ + متن پاک‌سازی‌شده با final_pdf_cleanup/get_pdf_safe_text + شکل SVG + چهار گزینه."""
     story: list[Flowable] = [_question_header(item)]
-    raw_text = str(item.get("text", "") or "")
-    cleaned_text = latex_to_persian_text(raw_text)
+    cleaned_text = final_pdf_cleanup(item.get("text", "") or item.get("question_text", "") or item.get("title", ""))
     story += rtl_flowables(cleaned_text, _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
-    for math_img in _extract_complex_math_images(raw_text, max_width_pt=150 * mm):
-        story.append(Spacer(1, 1.2 * mm))
-        story.append(math_img)
     svg_flow = _svg_flowable(item.get("diagram_svg"))
     if svg_flow is not None:
         story.append(Spacer(1, 1.5 * mm))
@@ -953,18 +951,14 @@ def _answer_flow(item: dict[str, Any]) -> list[Flowable]:
     ca = int(item["correct_answer"])
     letter = OPTION_LETTERS[ca - 1]
     story: list[Flowable] = [_question_header(item, tag="کلید")]
-    cleaned_text = latex_to_persian_text(item.get("text", ""))
+    cleaned_text = final_pdf_cleanup(item.get("text", "") or item.get("question_text", "") or item.get("title", ""))
     preview = cleaned_text if len(cleaned_text) <= 150 else cleaned_text[:150] + "…"
     story += rtl_flowables(preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 178)
     story.append(Spacer(1, 1.5 * mm))
-    story += rtl_flowables(f"پاسخ صحیح: گزینهٔ {_fa(ca)} ({letter})", _style("ak-key", fontName=FONT_XBOLD, fontSize=11, textColor=BRAND_DARK, leading=20), 178)
-    raw_exp = (item.get("explanation") or "").strip()
-    explanation = latex_to_persian_text(raw_exp)
+    story += rtl_flowables(f"پاسخ صحیح: گزینهٔ {_fa(ca)} - {letter}", _style("ak-key", fontName=FONT_XBOLD, fontSize=11, textColor=BRAND_DARK, leading=20), 178)
+    explanation = final_pdf_cleanup((item.get("explanation") or "").strip())
     if explanation:
         story += rtl_flowables(explanation, _style("ak-a", fontSize=9, leading=18, textColor=colors.HexColor("#1F2937")), 178)
-        for math_img in _extract_complex_math_images(raw_exp, max_width_pt=140 * mm):
-            story.append(Spacer(1, 1.0 * mm))
-            story.append(math_img)
     else:
         story += rtl_flowables("استدلال تشریحی برای این سؤال در سامانه ثبت نشده است.", _style("ak-a-empty", fontSize=8.5, leading=17, textColor=SLATE_500), 178)
     story.append(Spacer(1, 4 * mm))

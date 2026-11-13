@@ -364,7 +364,7 @@ def test_clean_latex_for_pdf_and_svg_pdf_export(seeded):
     assert "[ " in cleaned and " ]" in cleaned
     assert " | " in cleaned
     assert ", " in cleaned
-    assert "(a / b)" in cleaned
+    assert "a به روی b" in cleaned
     assert " x " in cleaned
 
     client = TestClient(app)
@@ -462,8 +462,8 @@ def test_latex_to_persian_text_converter():
     assert "بردار a" in out
     assert "بردار AB" in out
     assert "۳۰ درجه" in out
-    assert "رادیکال(x)" in out
-    assert "(۱ / ۲)" in out
+    assert "رادیکال x" in out
+    assert "۱ به روی ۲" in out
     assert "[ ۱ , ۲ | ۳ , ۴ ]" in out
     assert "$" not in out
     assert "\\" not in out
@@ -557,10 +557,31 @@ def test_sanitize_json_backslash_and_dollar_noise():
 
     # PDF converter handles both escaped and unescaped commands + cos^{-1} + theta
     pdf_txt = latex_to_persian_text(r"$\$ sqrt{7} \$ و vec{a} و frac{1}{2} و \cos^{-1} و theta و 45^\circ")
-    assert "رادیکال(۷)" in pdf_txt
+    assert "رادیکال ۷" in pdf_txt
     assert "بردار a" in pdf_txt
-    assert "(۱ / ۲)" in pdf_txt
-    assert "کسینوس وارون" in pdf_txt
-    assert "زاویه تتا" in pdf_txt
+    assert "۱ به روی ۲" in pdf_txt
+    assert "کسینوس معکوس" in pdf_txt
+    assert "تتا" in pdf_txt
     assert "۴۵ درجه" in pdf_txt
     assert "$" not in pdf_txt
+
+
+
+def test_final_pdf_cleanup_and_get_pdf_safe_text():
+    from reports.exam_pdf import final_pdf_cleanup, get_pdf_safe_text
+
+    raw = r"مقدار $45^\circ$ و $\sqrt{7}$ و $\vec{a}$ و $\cos^{-1}(4/9)$ و $\frac{a}{b}$ و $\theta$ و $\rightarrow \infty$"
+    cleaned = final_pdf_cleanup(raw)
+    assert "۴۵ درجه" in cleaned
+    assert "رادیکال ۷" in cleaned
+    assert "بردار a" in cleaned
+    assert "کسینوس معکوس" in cleaned
+    assert "a به روی b" in cleaned
+    assert "تتا" in cleaned
+    assert "به سمت" in cleaned
+    assert "بی‌نهایت" in cleaned
+    for ch in ("$", "\\", "{", "}", "^", "_", "(", ")"):
+        assert ch not in cleaned
+
+    safe = get_pdf_safe_text(raw)
+    assert isinstance(safe, str) and len(safe) > 10
