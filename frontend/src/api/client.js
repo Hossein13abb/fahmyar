@@ -7,7 +7,7 @@ import axios from 'axios'
 
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '',
-  timeout: 60000, // فراخوانی مدل‌های AI می‌تواند چند ثانیه طول بکشد
+  timeout: 180000, // فراخوانی مدل‌های AI می‌تواند چند ثانیه طول بکشد
 })
 
 // پیوست خودکار توکن JWT به همهٔ درخواست‌ها

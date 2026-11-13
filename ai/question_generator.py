@@ -40,7 +40,7 @@ BEHAVIOR_FA = {
     "connect": "اتصال مفهوم به مفاهیم دیگر (بین‌درسی)",
 }
 
-_SYSTEM = """شما یک طراح سؤال تشخیصیِ خبره برای سیستم «فهم‌یار» هستید.
+_SYSTEM = r"""شما یک طراح سؤال تشخیصیِ خبره برای سیستم «فهم‌یار» هستید.
 تنها یک سؤال تشخیصی به زبان فارسی طراحی می‌کنید که هدفش سنجیدنِ فهمیدن است، نه حفظ کردن.
 
 قواعد قطعی و غیرقابل‌نقض:
@@ -69,7 +69,12 @@ _SYSTEM = """شما یک طراح سؤال تشخیصیِ خبره برای سی
   },
   "mapped_propositions": ["گزارهٔ ۱ که این سؤال می‌سنجد"],
   "mapped_misconceptions": ["بدفهمیِ هدف که این سؤال می‌تواند آشکارش کند"]
-}"""
+}
+
+You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
+Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
+CRITICAL: If the subject is Physics (فیزیک) or Geometry (هندسه), or involves kinematics, circuits, or geometric shapes, you MUST provide a valid, clean SVG diagram in the diagram_svg field. The SVG must use font-family='Vazirmatn, Arial' for texts, and all numbers inside <text> tags MUST be Persian digits. Do not use complex paths if simple rect/circle/line will do.
+"""
 
 
 def _build_prompt(
@@ -129,7 +134,11 @@ def _stringify_item(item) -> str:
     return str(item or "").strip()
 
 
-_BOOKLET_PROMPT = """شما «متخصص ارشد طراحی آزمون تشخیصی عمیق (Deep Diagnostic)» برای سیستم فهم‌یار هستید. برای مفهوم «{concept}» ({subject} — پایهٔ {grade}) یک دفترچهٔ آزمون تشخیصی ۹ سؤالی بسازید.
+_BOOKLET_PROMPT = r"""You MUST use LaTeX for ALL math equations, fractions, powers, and matrices. Wrap inline math in $...$ and block math/matrices in $$...$$. DO NOT write text like 'x be tavan 2'. Use standard LaTeX e.g., $x^2$. For matrices, use $$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$.
+Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
+CRITICAL: If the subject is Physics (فیزیک) or Geometry (هندسه), or involves kinematics, circuits, or geometric shapes, you MUST provide a valid, clean SVG diagram in the diagram_svg field. The SVG must use font-family='Vazirmatn, Arial' for texts, and all numbers inside <text> tags MUST be Persian digits. Do not use complex paths if simple rect/circle/line will do.
+
+شما «متخصص ارشد طراحی آزمون تشخیصی عمیق (Deep Diagnostic)» برای سیستم فهم‌یار هستید. برای مفهوم «{concept}» ({subject} — پایهٔ {grade}) یک دفترچهٔ آزمون تشخیصی ۹ سؤالی بسازید.
 
 هدف: سنجشِ **فهم عمیق** — نه حفظ کردن، نه به‌خاطرسپاری، نه سؤالِ قابل‌جستجوی گوگل. هر سؤال باید لایهٔ دومِ تفکر را بسنجد: دانش‌آموز باید استدلال کند، استدلالِ غلط را نقد کند، یا تناقض شناختی را حل کند.
 
@@ -209,22 +218,22 @@ _EN_WORD_RE = re.compile(r"[A-Za-z]{4,}")   # کلمهٔ انگلیسیِ واق
 _LATIN_RUN_RE = re.compile(r"[A-Za-z]+")
 
 
-def is_persian_text(text) -> bool:
-    """آیا متن، فارسی است؟ (فرمول‌ها/نمادهای علمی کوتاه مثل I = V/R استثنا هستند)
+_LATEX_BLOCK_RE = re.compile(r"\$\$[\s\S]*?\$\$|\$[^$]*\$|\\[A-Za-z]+(?:\{[^}]*\})?")
 
-    - حداقل یک حرف فارسی لازم است.
-    - هیچ کلمهٔ لاتینِ ۴+ حرفی مجاز نیست (یعنی جملهٔ انگلیسی رد می‌شود).
-    - حجم حروف لاتین نباید از حروف فارسی بیشتر باشد.
-    """
+
+def is_persian_text(text) -> bool:
+    """آیا متن، فارسی است؟ (فرمول‌های LaTeX مانند $...$ و $$...$$ و نمادهای علمی کوتاه استثنا هستند)"""
     s = str(text or "").strip()
     if not s:
         return False
+    # حذف بلوک‌های فرمول LaTeX پیش از بررسی کلمات انگلیسی
+    s_no_math = _LATEX_BLOCK_RE.sub(" ", s)
     fa = len(_FA_SCRIPT_RE.findall(s))
     if fa == 0:
         return False
-    if _EN_WORD_RE.search(s):
+    if _EN_WORD_RE.search(s_no_math):
         return False
-    latin = sum(len(m.group(0)) for m in _LATIN_RUN_RE.finditer(s))
+    latin = sum(len(m.group(0)) for m in _LATIN_RUN_RE.finditer(s_no_math))
     return latin <= fa
 
 

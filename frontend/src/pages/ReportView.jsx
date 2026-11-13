@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -273,7 +277,7 @@ const faAliasLookup = (text) => {
 }
 
 const latinHeavy = (text) => {
-  const s = String(text ?? '')
+  const s = String(text ?? '').replace(/\$\$[\s\S]*?\$\$|\$[^$]*\$|\\[A-Za-z]+/g, ' ')
   const fa = (s.match(_faDire) || []).length
   const en = (s.match(_enWord) || []).join('').length
   return en >= 8 && en > fa
@@ -414,7 +418,11 @@ function ExamReport({ report, mode, onBackToDashboard }) {
               </div>
               <div className="px-4 py-3">
                 {q.question_text && (
-                  <p className="text-[12px] font-bold leading-7 text-slate-500">{q.question_text}</p>
+                  <div className="math-content text-[12px] font-bold leading-7 text-slate-500">
+                    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
+                      {String(q.question_text || '')}
+                    </ReactMarkdown>
+                  </div>
                 )}
                 {q.response !== undefined && (
                   <details className="mt-2">
@@ -424,9 +432,11 @@ function ExamReport({ report, mode, onBackToDashboard }) {
                     </p>
                   </details>
                 )}
-                <p className="mt-2 border-r-2 border-brand-200 pr-3 text-[13px] leading-8 text-brand-950">
-                  {faText(q.qualitative_feedback, feedbackFallback(q.status))}
-                </p>
+                <div className="math-content mt-2 border-r-2 border-brand-200 pr-3 text-[13px] leading-8 text-brand-950">
+                  <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
+                    {String(faText(q.qualitative_feedback, feedbackFallback(q.status)) || '')}
+                  </ReactMarkdown>
+                </div>
               </div>
             </article>
           ))}

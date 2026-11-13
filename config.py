@@ -26,7 +26,7 @@ class Settings:
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-super-vl:free")
     OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     # مهلت پاسخ OpenRouter (ثانیه)
-    OPENROUTER_TIMEOUT_SECONDS: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "60"))
+    OPENROUTER_TIMEOUT_SECONDS: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "180"))
     # فاصله‌گذاری ملایم بین فراخوانی‌ها (ثانیه) — برای پلن‌های رایگان مفید است
     OPENROUTER_MIN_INTERVAL_SECONDS: float = float(os.getenv("OPENROUTER_MIN_INTERVAL_SECONDS", "1.0"))
     # اختیاری: شناساندن برنامه به OpenRouter (HTTP-Referer و X-Title)

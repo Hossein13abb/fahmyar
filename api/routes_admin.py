@@ -34,6 +34,7 @@ from ai.exam_generator import (
     DIFFICULTY_MAP_FA,
     build_exam_preview_prompt,
     persianize_json_values,
+    persianize_svg_texts,
     to_persian_numbers,
 )
 from ai.model_abstraction import get_router
@@ -409,6 +410,10 @@ def _validate_preview_questions(data) -> list[dict]:
         explanation = to_persian_numbers(str(item.get("explanation") or "").strip())
         subject_label = to_persian_numbers(str(item.get("subject") or "").strip()[:40])
         diff_label = to_persian_numbers(str(item.get("difficulty") or "").strip()[:30])
+        raw_svg = item.get("diagram_svg")
+        diagram_svg = None
+        if isinstance(raw_svg, str) and "<svg" in raw_svg.lower() and "</svg>" in raw_svg.lower():
+            diagram_svg = persianize_svg_texts(raw_svg.strip())
         clean.append(
             {
                 "id": len(clean) + 1,
@@ -419,6 +424,7 @@ def _validate_preview_questions(data) -> list[dict]:
                 "explanation": explanation,
                 "subject": subject_label,
                 "difficulty": diff_label,
+                "diagram_svg": diagram_svg,
             }
         )
     return clean
@@ -551,6 +557,7 @@ class KonkurQuestion(BaseModel):
     correct_answer: int = Field(ge=1, le=4)
     source_tag: str = Field(default="", max_length=60)
     explanation: str = Field(default="", max_length=1200)
+    diagram_svg: Optional[str] = Field(default=None, max_length=20000)
 
 
 class GenerateExamPdfRequest(BaseModel):

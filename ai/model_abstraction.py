@@ -219,7 +219,7 @@ class OpenRouterProvider(AIProvider):
         self.api_key = (raw_key or "").strip()
         self.model_name = (model_name if model_name is not None else settings.OPENROUTER_MODEL).strip() or "auto"
         self.base_url = settings.OPENROUTER_BASE_URL.rstrip("/")
-        self.timeout = settings.OPENROUTER_TIMEOUT_SECONDS
+        self.timeout = 180
         self.min_interval = float(getattr(settings, "OPENROUTER_MIN_INTERVAL_SECONDS", 0.0) or 0.0)
         self.site_url = (getattr(settings, "OPENROUTER_SITE_URL", "") or "").strip()
         self.app_name = (getattr(settings, "OPENROUTER_APP_NAME", "Fahmyar App") or "Fahmyar App").strip() or "Fahmyar App"
@@ -355,7 +355,7 @@ class OpenRouterProvider(AIProvider):
                 f"{self.base_url}/chat/completions",
                 headers=self._headers(),
                 json=payload,
-                timeout=self.timeout,
+                timeout=180,
             )
         except requests.RequestException as exc:
             raise AIProviderError(f"خطای شبکه در اتصال به OpenRouter (مدل {model}): {exc}", retryable=True) from exc
@@ -577,21 +577,21 @@ class MockProvider(AIProvider):
              "explanation": "بازِ مزدوج از حذف یک پروتون ساخته می‌شود؛ H2O با از دست دادن یک یون هیدروژن به OH- تبدیل می‌شود."},
         ],
         "calculus": [
-            {"text": "مشتق تابع y = x³ − 3x کدام است؟",
-             "options": ["y′ = 3x² − 3", "y′ = x² − 3", "y′ = 3x² + 3", "y′ = 3x − 3"], "correct_answer": 1,
-             "explanation": "طبق قاعدهٔ مشتقِ توان: مشتق x³ برابر 3x² و مشتق −3x برابر −3 است."},
-            {"text": "مقدار لگاریتم ۱۶ در پایه ۲ برابر است با:",
-             "options": ["۳", "۴", "۵", "۸"], "correct_answer": 2,
-             "explanation": "16 = 2 به توان 4 است؛ پس لگاریتم 16 در پایه 2 برابر 4 است."},
-            {"text": "دامنهٔ تابع f(x) = √(x − 1) کدام است؟",
-             "options": ["x ≥ 0", "x ≥ 1", "x > 1", "تمام اعداد حقیقی"], "correct_answer": 2,
-             "explanation": "زیرِ رادیکال باید نامنفی باشد: x − 1 ≥ 0 است؛ پس x ≥ 1."},
-            {"text": "حدِ (sin x) تقسیم بر x وقتی x به صفر میل می‌کند برابر است با:",
-             "options": ["۰", "۱", "∞", "تعریف‌ناپذیر"], "correct_answer": 2,
-             "explanation": "حدِ معروفِ تابعِ سینک؛ زیرا sin x در نزدیکی صفر تقریباً برابر x است."},
-            {"text": "اگر f(x) = x² مشتق‌پذیر باشد، مقدار f′(3) چقدر است؟",
-             "options": ["۳", "۶", "۹", "۲"], "correct_answer": 2,
-             "explanation": "f′(x) = 2x؛ پس f′(3) = 6."},
+            {"text": "مشتق تابع $y = x^۳ - ۳x$ کدام است؟",
+             "options": ["$y' = ۳x^۲ - ۳$", "$y' = x^۲ - ۳$", "$y' = ۳x^۲ + ۳$", "$y' = ۳x - ۳$"], "correct_answer": 1,
+             "explanation": "طبق قاعدهٔ مشتقِ توان: مشتق $x^۳$ برابر $۳x^۲$ و مشتق $-۳x$ برابر $-۳$ است."},
+            {"text": "مقدار $\\log_{۲}(۱۶)$ برابر است با:",
+             "options": ["$۳$", "$۴$", "$۵$", "$۸$"], "correct_answer": 2,
+             "explanation": "چون $۱۶ = ۲^۴$ است، پس $\\log_{۲}(۱۶) = ۴$ می‌باشد."},
+            {"text": "دامنهٔ تابع $f(x) = \\sqrt{x - ۱}$ کدام است؟",
+             "options": ["$x \\ge ۰$", "$x \\ge ۱$", "$x > ۱$", "تمام اعداد حقیقی"], "correct_answer": 2,
+             "explanation": "عبارت زیر رادیکال باید نامنفی باشد: $x - ۱ \\ge ۰ \\Rightarrow x \\ge ۱$."},
+            {"text": "مقدار $\\lim_{x \\to ۰} \\frac{\\sin x}{x}$ برابر است با:",
+             "options": ["$۰$", "$۱$", "$\\infty$", "تعریف‌ناپذیر"], "correct_answer": 2,
+             "explanation": "طبق قضیهٔ حد مثلثاتی، $\\lim_{x \\to ۰} \\frac{\\sin x}{x} = ۱$ است."},
+            {"text": "اگر $f(x) = x^۲ + ۲x - ۵$ باشد، مقدار $f'(۳)$ چقدر است؟",
+             "options": ["$۶$", "$۸$", "$۹$", "$۴$"], "correct_answer": 2,
+             "explanation": "داریم $f'(x) = ۲x + ۲$؛ بنابراین $f'(۳) = ۲(۳) + ۲ = ۸$."},
         ],
         "discrete": [
             {"text": "تعداد زیرمجموعه‌های ۴ عضوی از یک مجموعهٔ ۶ عضوی چندتاست؟",
@@ -611,9 +611,12 @@ class MockProvider(AIProvider):
              "explanation": "تساوی بازتابی و متقارن است؛ پادتقارنی نیست زیرا از a=b و b=a نمی‌توان نتیجه گرفت a=b>… به‌طور کلی تساوی معادلِ هر دو جهت است."},
         ],
         "geometry": [
-            {"text": "در مثلث قائم‌الزاویه‌ای، دو ضلع قائم ۳ و ۴ سانتی‌مترند. وتر چند سانتی‌متر است؟",
-             "options": ["۵", "۶", "۷", "√۷"], "correct_answer": 1,
-             "explanation": "طبق قضیهٔ فیثاغورس: 3² + 4² = 25 است؛ پس وتر = ۵."},
+            {"text": "دترمینان ماتریس $$\\begin{bmatrix} ۱ & ۲ \\\\ ۳ & ۴ \\end{bmatrix}$$ کدام است؟",
+             "options": ["$-۲$", "$۲$", "$۱۰$", "$-۱۰$"], "correct_answer": 1,
+             "explanation": "دترمینان ماتریس $۲ \\times ۲$ برابر است با $(۱ \\times ۴) - (۲ \\times ۳) = ۴ - ۶ = -۲$."},
+            {"text": "در مثلث قائم‌الزاویه‌ای، دو ضلع قائم $۳$ و $۴$ سانتی‌مترند. وتر چند سانتی‌متر است؟",
+             "options": ["$۵$", "$۶$", "$۷$", "$\\sqrt{۷}$"], "correct_answer": 1,
+             "explanation": "طبق قضیهٔ فیثاغورس: $۳^۲ + ۴^۲ = ۲۵ \\Rightarrow c = ۵$."},
             {"text": "مساحتِ دایره‌ای به شعاع ۲ سانتی‌متر چقدر است؟",
              "options": ["۲ پی", "۴ پی", "۶ پی", "پی"], "correct_answer": 2,
              "explanation": "مساحت دایره = پی ضربدر r² = پی ضربدر ۴ = ۴ پی."},
@@ -728,6 +731,28 @@ class MockProvider(AIProvider):
                 source_tag = "تألیفی AI" if i < ai_quota else bank_tags[(i - ai_quota) % len(bank_tags)]
             else:
                 source_tag = legacy_tags[i % len(legacy_tags)]
+            diagram_svg = None
+            if slug == "physics":
+                diagram_svg = (
+                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
+                    '<rect x="60" y="80" width="280" height="140" fill="none" stroke="black" stroke-width="2"/>'
+                    '<rect x="160" y="66" width="80" height="28" fill="white" stroke="black" stroke-width="2"/>'
+                    '<circle cx="200" cy="220" r="18" fill="white" stroke="black" stroke-width="2"/>'
+                    '<text x="200" y="42" font-family="Vazirmatn, Arial" font-size="13" text-anchor="middle">R = ۶ Ω</text>'
+                    '<text x="200" y="268" font-family="Vazirmatn, Arial" font-size="13" text-anchor="middle">V = ۱۲ V</text>'
+                    '</svg>'
+                )
+            elif slug == "geometry":
+                diagram_svg = (
+                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
+                    '<line x1="80" y1="220" x2="320" y2="220" stroke="black" stroke-width="2"/>'
+                    '<line x1="80" y1="220" x2="80" y2="80" stroke="black" stroke-width="2"/>'
+                    '<line x1="80" y1="80" x2="320" y2="220" stroke="black" stroke-width="2"/>'
+                    '<text x="200" y="255" font-family="Vazirmatn, Arial" font-size="13" text-anchor="middle">۴</text>'
+                    '<text x="48" y="155" font-family="Vazirmatn, Arial" font-size="13" text-anchor="middle">۳</text>'
+                    '<text x="220" y="135" font-family="Vazirmatn, Arial" font-size="13" text-anchor="middle">۵</text>'
+                    '</svg>'
+                )
             items.append({
                 "id": i + 1,
                 "text": str(text).translate(fa_digits),
@@ -737,6 +762,7 @@ class MockProvider(AIProvider):
                 "explanation": str(base["explanation"]).translate(fa_digits),
                 "subject": str(_subject_label(slug)).translate(fa_digits),
                 "difficulty": str(s_diff).translate(fa_digits),
+                "diagram_svg": diagram_svg,
             })
         return json.dumps(items, ensure_ascii=False)
 

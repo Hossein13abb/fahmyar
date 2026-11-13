@@ -26,6 +26,10 @@ import {
   CheckCircle2,
   RotateCcw,
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { toFarsiNumber } from '../utils/faNumbers'
 import client, { friendlyError } from '../api/client'
 
@@ -321,9 +325,9 @@ const DIFFICULTY_OPTIONS = [
 const DIFFICULTY_LABELS = Object.fromEntries(DIFFICULTY_OPTIONS.map((d) => [d.id, d.label]))
 
 const GEN_STEPS = [
-  'در حال طراحی سؤال‌های چهارگزینه‌ای…',
-  'در حال تنظیم دام‌های حلال هر سؤال…',
-  'در حال چینش دفترچه و کلید پاسخنامه…',
+  'در حال تولید، اعتبارسنجی و رسم اشکال هندسی... (این فرآیند ممکن است ۱ تا ۲ دقیقه زمان ببرد)',
+  'در حال طراحی فرمول‌های ریاضی (LaTeX) و دام‌های آموزشی هر سؤال…',
+  'در حال چینش دفترچه و کلید پاسخنامهٔ استاندارد…',
 ]
 
 const DRAFT_KEY = 'fahmyar_exam_drafts'
@@ -523,20 +527,24 @@ export default function ExamBuilder({ embedded = false }) {
     setGenStep(0)
     setGenerating(true)
     try {
-      const { data } = await client.post('/api/teacher/generate-exam-preview', {
-        field,
-        grade,
-        subjects: selectedSubjects,
-        subject_configs: subjectConfigsPayload,
-        subTopics: allSelectedSubTopics,
-        ai_ratio: aiPercentage,
-        ai_percentage: aiPercentage,
-        topic: null,
-        question_type: questionType,
-        difficulty,
-        count: totalCount,
-        custom_prompt: customPrompt.trim(),
-      })
+      const { data } = await client.post(
+        '/api/teacher/generate-exam-preview',
+        {
+          field,
+          grade,
+          subjects: selectedSubjects,
+          subject_configs: subjectConfigsPayload,
+          subTopics: allSelectedSubTopics,
+          ai_ratio: aiPercentage,
+          ai_percentage: aiPercentage,
+          topic: null,
+          question_type: questionType,
+          difficulty,
+          count: totalCount,
+          custom_prompt: customPrompt.trim(),
+        },
+        { timeout: 180000 },
+      )
       const list = Array.isArray(data?.questions) ? data.questions : []
       if (list.length === 0) {
         setNotice('⚠️ هوش مصنوعی سؤالِ معتبری برنگرداند؛ دوباره تلاش کنید.')
@@ -1192,7 +1200,19 @@ export default function ExamBuilder({ embedded = false }) {
                           </button>
                         </div>
                       </div>
-                      <p className="mt-3 text-[13px] font-bold leading-7 text-brand-950">{q.text}</p>
+                      <div className="math-content mt-3 text-[13px] font-bold leading-7 text-brand-950">
+                        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
+                          {String(q.text || '')}
+                        </ReactMarkdown>
+                      </div>
+                      {q.diagram_svg && (
+                        <figure className="mt-3 overflow-hidden rounded-2xl border border-teal-200/70 bg-white p-3 shadow-inner">
+                          <div
+                            className="mx-auto max-w-sm"
+                            dangerouslySetInnerHTML={{ __html: String(q.diagram_svg) }}
+                          />
+                        </figure>
+                      )}
                       <ol className="mt-3 grid gap-2 sm:grid-cols-2">
                         {(q.options || []).map((opt, oi) => {
                           const correct = oi === Number(q.correct_answer) - 1
@@ -1208,7 +1228,11 @@ export default function ExamBuilder({ embedded = false }) {
                               <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${correct ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                                 {fmtFa(oi + 1)}
                               </span>
-                              <span className="min-w-0">{opt}</span>
+                              <div className="math-inline min-w-0">
+                                <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
+                                  {String(opt || '')}
+                                </ReactMarkdown>
+                              </div>
                               {correct && <Check className="mr-auto h-4 w-4 shrink-0 self-center text-emerald-600" />}
                             </li>
                           )
@@ -1300,12 +1324,14 @@ export default function ExamBuilder({ embedded = false }) {
             <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 ring-1 ring-emerald-100">
               <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
             </span>
-            <h3 className="mt-5 text-lg font-black text-slate-800">در حال تولید پیش‌نمایش…</h3>
+            <h3 className="mt-5 text-base font-black leading-7 text-slate-800">
+              در حال تولید، اعتبارسنجی و رسم اشکال هندسی... (این فرآیند ممکن است ۱ تا ۲ دقیقه زمان ببرد)
+            </h3>
             <p className="mt-1.5 min-h-6 text-[12px] font-bold leading-6 text-emerald-700">{GEN_STEPS[genStep]}</p>
             <div className="mt-5 h-2.5 w-full overflow-hidden rounded-full bg-emerald-100">
               <div className="h-full w-1/3 animate-[genbar_1.15s_linear_infinite] rounded-full bg-gradient-to-l from-emerald-500 to-teal-500" />
             </div>
-            <p className="mt-3 text-[10px] font-medium text-slate-400">لطفاً صفحه را نبند؛ این کار چند لحظه طول می‌کشد.</p>
+            <p className="mt-3 text-[11px] font-medium text-slate-500">لطفاً صفحه را نبندید؛ سامانه در حال طراحی دقیق سؤالات و اشکال است.</p>
           </div>
         </div>
       )}

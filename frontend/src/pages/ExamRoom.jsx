@@ -11,6 +11,10 @@ import {
   RefreshCw,
   FileText,
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import client, { friendlyError } from '../api/client'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { toFarsiNumber } from '../utils/faNumbers'
@@ -88,7 +92,11 @@ const renderQuestionText = (text) => {
   flushBuf()
   return blocks.map((b, bi) =>
     b.type === 'text' ? (
-      <p key={bi} className="whitespace-pre-line">{b.content}</p>
+      <div key={bi} className="math-content whitespace-pre-line">
+        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>
+          {String(b.content || '')}
+        </ReactMarkdown>
+      </div>
     ) : (
       <div key={bi} className="my-3 overflow-x-auto">
         <table className="w-full border-collapse text-[13px] leading-7">
@@ -103,7 +111,7 @@ const renderQuestionText = (text) => {
             {b.rows.map((row, ri) => (
               <tr key={ri} className={ri % 2 ? 'bg-slate-50/60' : 'bg-white'}>
                 {row.map((cell, ci) => (
-                  <td key={ci} className="border border-brand-100 px-3 py-1.5 align-top text-brand-950">{cell}</td>
+                  <td key={ci} className="math-inline border border-brand-100 px-3 py-1.5 align-top text-brand-950"><ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }]]}>{String(cell || "")}</ReactMarkdown></td>
                 ))}
               </tr>
             ))}
@@ -140,7 +148,7 @@ export default function ExamRoom() {
     setError('')
     setErrorStatus(null)
     try {
-      const { data } = await client.get(`/api/assess/session/${sessionId}`)
+      const { data } = await client.get(`/api/assess/session/${sessionId}`, { timeout: 180000 })
       const list = Array.isArray(data?.questions) ? data.questions : []
       if (list.length === 0) {
         setQuestions([])
@@ -204,7 +212,7 @@ export default function ExamRoom() {
         question_id: q.id,
         response_text: String(answers[q.id] ?? '').trim(),
       }))
-      await client.post(`/api/assess/${sessionId}/submit-test`, { answers: payload })
+      await client.post(`/api/assess/${sessionId}/submit-test`, { answers: payload }, { timeout: 180000 })
       localStorage.removeItem(answersKey(sessionId))
       navigate(`/report/${sessionId}`, { replace: true })
     } catch (err) {
@@ -214,7 +222,7 @@ export default function ExamRoom() {
   }
 
   if (loading) {
-    return <LoadingSpinner label="در حال آماده‌سازی دفترچهٔ آزمون…" className="min-h-[22rem]" />
+    return <LoadingSpinner label="در حال تولید، اعتبارسنجی و رسم اشکال هندسی... (این فرآیند ممکن است ۱ تا ۲ دقیقه زمان ببرد)" className="min-h-[22rem]" />
   }
 
   if (error || !current) {

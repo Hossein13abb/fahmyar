@@ -138,11 +138,15 @@ export default function StudentDashboard() {
     setError('')
     try {
       // بدنه دقیقاً مطابق اسکیما: concept_id عدد صحیح + trigger_type ثابت
-      const { data } = await client.post('/api/assess/start', {
-        trigger_type: 'topic_selection',
-        concept_id: Number.parseInt(conceptId, 10),
-        wrong_answer: null,
-      })
+      const { data } = await client.post(
+        '/api/assess/start',
+        {
+          trigger_type: 'topic_selection',
+          concept_id: Number.parseInt(conceptId, 10),
+          wrong_answer: null,
+        },
+        { timeout: 180000 },
+      )
       const sessionId = data?.session_id ?? data?.session?.id
       if (!sessionId) throw new Error('شناسهٔ جلسه از سرور دریافت نشد.')
       navigate('/exam/' + sessionId, {
@@ -165,15 +169,19 @@ export default function StudentDashboard() {
     setSubmitting(true)
     setError('')
     try {
-      const { data } = await client.post('/api/assess/start', {
-        trigger_type: 'wrong_answer',
-        concept_id: Number.parseInt(wrongConceptId, 10),
-        wrong_answer: {
-          problem_text: problemText.trim(),
-          student_answer: wrongAnswer.trim(),
+      const { data } = await client.post(
+        '/api/assess/start',
+        {
+          trigger_type: 'wrong_answer',
           concept_id: Number.parseInt(wrongConceptId, 10),
+          wrong_answer: {
+            problem_text: problemText.trim(),
+            student_answer: wrongAnswer.trim(),
+            concept_id: Number.parseInt(wrongConceptId, 10),
+          },
         },
-      })
+        { timeout: 180000 },
+      )
       const sessionId = data?.session_id ?? data?.session?.id
       if (!sessionId) throw new Error('شناسهٔ جلسه از سرور دریافت نشد.')
       navigate('/exam/' + sessionId, {
@@ -420,6 +428,13 @@ export default function StudentDashboard() {
               شروع آزمون جامع تشخیصی
               <ArrowLeft className="h-5 w-5" />
             </button>
+          </div>
+        )}
+
+        {submitting && (
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-[13px] font-bold leading-7 text-emerald-900" role="status">
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-emerald-700" />
+            <span>در حال تولید، اعتبارسنجی و رسم اشکال هندسی... (این فرآیند ممکن است ۱ تا ۲ دقیقه زمان ببرد)</span>
           </div>
         )}
 

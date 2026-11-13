@@ -86,3 +86,24 @@ body {
   from { transform: translateX(220%); }
   to { transform: translateX(-340%); }
 }
+
+/* استایل فرمول‌ها و ماتریس‌های ریاضی (KaTeX) در محیط راست‌به‌چپ فارسی */
+.katex {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-size: 1.05em;
+}
+.katex-display {
+  direction: ltr;
+  unicode-bidi: isolate;
+  margin: 0.65rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.math-content > p {
+  margin: 0;
+}
+.math-inline > p {
+  display: inline;
+  margin: 0;
+}
