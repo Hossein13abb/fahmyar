@@ -80,10 +80,10 @@ BANNED TOPICS: You are strictly forbidden from generating questions about the fo
 - Integrals (انتگرال) in Hesaban.
 Do NOT use these concepts under any circumstances.
 SVGs are OPTIONAL. Set `diagram_svg` to `null` if the question can be solved without a picture (e.g., standard algebra, matrices). NEVER attempt to draw precise intersecting coordinates (like a line tangent to a circle) because your coordinate math will be wrong. Only draw simple block diagrams, circuits, or abstract isolated shapes. If you are unsure about the visual alignment, return `null`.
-DIFFICULTY CALIBRATION:
-- آسان (Easy): Direct formula application, single-step calculation.
-- متوسط (Medium): Requires 2 steps, basic conceptual understanding.
-- سخت (Hard): Requires synthesizing multiple concepts, deep analysis, or has a hidden trap. DO NOT label a plug-and-chug question as Hard.
+STRICT DIFFICULTY CALIBRATION:
+- آسان (Easy): Any question requiring direct substitution into a known formula (e.g., dot product for angle between vectors, single-step vector math). NEVER label a plug-and-chug question as Hard.
+- متوسط (Medium): Questions requiring 2 steps or basic concept connection.
+- سخت (Hard): Questions requiring deep multi-step synthesis or hidden traps.
 """
 
 
@@ -152,10 +152,10 @@ BANNED TOPICS: You are strictly forbidden from generating questions about the fo
 - Integrals (انتگرال) in Hesaban.
 Do NOT use these concepts under any circumstances.
 SVGs are OPTIONAL. Set `diagram_svg` to `null` if the question can be solved without a picture (e.g., standard algebra, matrices). NEVER attempt to draw precise intersecting coordinates (like a line tangent to a circle) because your coordinate math will be wrong. Only draw simple block diagrams, circuits, or abstract isolated shapes. If you are unsure about the visual alignment, return `null`.
-DIFFICULTY CALIBRATION:
-- آسان (Easy): Direct formula application, single-step calculation.
-- متوسط (Medium): Requires 2 steps, basic conceptual understanding.
-- سخت (Hard): Requires synthesizing multiple concepts, deep analysis, or has a hidden trap. DO NOT label a plug-and-chug question as Hard.
+STRICT DIFFICULTY CALIBRATION:
+- آسان (Easy): Any question requiring direct substitution into a known formula (e.g., dot product for angle between vectors, single-step vector math). NEVER label a plug-and-chug question as Hard.
+- متوسط (Medium): Questions requiring 2 steps or basic concept connection.
+- سخت (Hard): Questions requiring deep multi-step synthesis or hidden traps.
 
 شما «متخصص ارشد طراحی آزمون تشخیصی عمیق (Deep Diagnostic)» برای سیستم فهم‌یار هستید. برای مفهوم «{concept}» ({subject} — پایهٔ {grade}) یک دفترچهٔ آزمون تشخیصی ۹ سؤالی بسازید.
 

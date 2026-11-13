@@ -364,7 +364,7 @@ def test_clean_latex_for_pdf_and_svg_pdf_export(seeded):
     assert "[ " in cleaned and " ]" in cleaned
     assert " | " in cleaned
     assert ", " in cleaned
-    assert "(a/b)" in cleaned
+    assert "(a / b)" in cleaned
     assert " x " in cleaned
 
     client = TestClient(app)
@@ -442,7 +442,7 @@ def test_prompt_rules_and_swallowed_backslash_recovery():
     assert "معادله بیضی" in prompt
     assert "انتگرال" in prompt
     assert "SVGs are OPTIONAL." in prompt
-    assert "DIFFICULTY CALIBRATION:" in prompt
+    assert "STRICT DIFFICULTY CALIBRATION:" in prompt
 
     # حتی اگر بک‌اسلشِ begin{bmatrix} یا frac{ بلعیده شده باشد، پیش‌پردازنده آن را احیا می‌کند
     swallowed = '[{"id": 1, "text": "$$begin{bmatrix} ۱ & ۲ \\\\ ۳ & ۴ end{bmatrix}$$ و $frac{۱}{۲} + sqrt{x}$"}]'
@@ -451,3 +451,21 @@ def test_prompt_rules_and_swallowed_backslash_recovery():
     assert r"\end{bmatrix}" in parsed[0]["text"]
     assert r"\frac{۱}{۲}" in parsed[0]["text"]
     assert r"\sqrt{x}" in parsed[0]["text"]
+
+
+
+def test_latex_to_persian_text_converter():
+    from reports.exam_pdf import latex_to_persian_text
+
+    raw = r"اگر زاویه بین $\vec{a}$ و $\vec{AB}$ برابر $30^\circ$ باشد و $\sqrt{x} = \frac{1}{2}$ و $$\begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix}$$ باشد:"
+    out = latex_to_persian_text(raw)
+    assert "بردار a" in out
+    assert "بردار AB" in out
+    assert "۳۰ درجه" in out
+    assert "رادیکال(x)" in out
+    assert "(۱ / ۲)" in out
+    assert "[ ۱ , ۲ | ۳ , ۴ ]" in out
+    assert "$" not in out
+    assert "\\" not in out
+    assert "vec" not in out
+    assert "circ" not in out

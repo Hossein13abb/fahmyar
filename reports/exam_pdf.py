@@ -118,17 +118,16 @@ def to_persian_numbers(text: Any) -> str:
     return str(text).translate(str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹'))
 
 
-def clean_latex_for_pdf(text: Any) -> str:
-    r"""پاک‌سازی فرمول‌های LaTeX ویژهٔ خروجی PDF (ReportLab).
+def latex_to_persian_text(text: Any) -> str:
+    r"""پیش‌پردازندهٔ کامل تبدیل دستورات LaTeX به متن فارسیِ تمیز پیش از ارسال به arabic_reshaper و bidi.
 
-    این تابع فقط هنگام تولید PDF اجرا می‌شود و متن خام LaTeX را به فرمت خوانا تبدیل می‌کند:
-    - حذف تمام علامت‌های `$`
-    - تبدیل `\begin{bmatrix}` یا `\begin{pmatrix}` به `[ `
-    - تبدیل `\end{bmatrix}` یا `\end{pmatrix}` به ` ]`
-    - تبدیل `&` به `, `
-    - تبدیل `\\` (سطر جدید ماتریس) به ` | `
-    - تبدیل `\frac{a}{b}` به `(a/b)`
-    - تبدیل `\times` به `x`
+    جلوگیری از وارونه‌شدن دستورات LaTeX (مانند `\vec{a}` یا `30^\circ`) توسط الگوریتم دوجهته (BiDi):
+    1. درجه: `30^\circ` یا `\circ` -> `۳۰ درجه`
+    2. بردار: `\vec{a}` -> `بردار a`
+    3. کسر: `\frac{a}{b}` -> `(a / b)`
+    4. رادیکال: `\sqrt{x}` -> `رادیکال(x)`
+    5. ماتریس: `\begin{bmatrix} a & b \\ c & d \end{bmatrix}` -> `[ a , b | c , d ]`
+    6. حذف `$` و تگ‌های ناشناختهٔ LaTeX و تبدیل ارقام به فارسی.
     """
     if text is None:
         return ""
@@ -136,60 +135,83 @@ def clean_latex_for_pdf(text: Any) -> str:
     if not s:
         return ""
 
-    # احیای کاراکترهای کنترلی احتمالی
+    # احیای کاراکترهای کنترلی احتمالی (\b و \f)
     s = s.replace("\x08", "\\b").replace("\x0c", "\\f")
 
-    # ۱) محیط‌های ماتریسی (bmatrix, pmatrix, vmatrix, matrix)
-    s = re.sub(r"(?:\\+)?\bbegin\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}", "[ ", s)
-    s = re.sub(r"(?:\\+)?\bend\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}", " ]", s)
+    # 1. Degrees: 30^\circ or 30^{\circ} or \degree -> ۳۰ درجه
+    s = re.sub(r"([\d۰-۹]+)\s*\^?\s*\{?\s*\\+(?:circ|degree)\s*\}?", r"\1 درجه", s)
+    s = re.sub(r"\^?\s*\{?\s*\\+(?:circ|degree)\s*\}?", " درجه", s)
 
-    # ۲) کسرها: \frac{a}{b} -> (a/b) (با پشتیبانی از کسرهای تودرتو)
+    # 2. Vectors: \vec{a} or \vec{b} or \overrightarrow{AB} -> بردار a
+    s = re.sub(r"\\+(?:vec|overrightarrow)\s*\{([a-zA-Z])\}", r"بردار \1", s)
+    s = re.sub(r"\\+(?:vec|overrightarrow)\s*\{([^}]+)\}", r"بردار \1", s)
+
+    # 3. Fractions: \frac{a}{b} -> (a / b) (با پشتیبانی از کسرهای تودرتو)
     for _ in range(4):
-        new_s = re.sub(r"(?:\\+)?(?:d|t)?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}", r"(\1/\2)", s)
-        if new_s == s:
+        next_s = re.sub(r"\\+(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"(\1 / \2)", s)
+        if next_s == s:
             break
-        s = new_s
+        s = next_s
 
-    # ۳) رادیکال و ضرب و نمادهای رایج ریاضی
-    s = re.sub(r"(?:\\+)?sqrt\s*\[([^\[\]]*)\]\s*\{([^{}]*)\}", r"√[\1](\2)", s)
-    s = re.sub(r"(?:\\+)?sqrt\s*\{([^{}]*)\}", r"√(\1)", s)
-    s = re.sub(r"(?:\\+)?times\b", "x", s)
-    s = re.sub(r"(?:\\+)?cdot\b", "·", s)
-    s = re.sub(r"(?:\\+)?div\b", "÷", s)
-    s = re.sub(r"(?:\\+)?pm\b", "±", s)
-    s = re.sub(r"(?:\\+)?(?:leq|le)\b", "≤", s)
-    s = re.sub(r"(?:\\+)?(?:geq|ge)\b", "≥", s)
-    s = re.sub(r"(?:\\+)?(?:neq|ne)\b", "≠", s)
-    s = re.sub(r"(?:\\+)?approx\b", "≈", s)
-    s = re.sub(r"(?:\\+)?(?:to|rightarrow)\b", "→", s)
-    s = re.sub(r"(?:\\+)?Rightarrow\b", "⇒", s)
-    s = re.sub(r"(?:\\+)?infty\b", "∞", s)
-    s = re.sub(r"(?:\\+)?pi\b", "π", s)
-    s = re.sub(r"(?:\\+)?alpha\b", "α", s)
-    s = re.sub(r"(?:\\+)?beta\b", "β", s)
-    s = re.sub(r"(?:\\+)?gamma\b", "γ", s)
-    s = re.sub(r"(?:\\+)?delta\b", "δ", s)
-    s = re.sub(r"(?:\\+)?Delta\b", "Δ", s)
-    s = re.sub(r"(?:\\+)?theta\b", "θ", s)
-    s = re.sub(r"(?:\\+)?lambda\b", "λ", s)
-    s = re.sub(r"(?:\\+)?(?:left|right)\b", "", s)
-    s = re.sub(r"(?:\\+)?(?:text|textbf|mathrm|mathbf)\s*\{([^{}]*)\}", r"\1", s)
+    # 4. Square Roots: \sqrt{x} -> رادیکال(x)
+    s = re.sub(r"\\+sqrt\s*\[([^\[\]]+)\]\s*\{([^}]+)\}", r"رادیکال[\1](\2)", s)
+    s = re.sub(r"\\+sqrt\s*\{([^}]+)\}", r"رادیکال(\1)", s)
 
-    # ۴) تبدیل جداکنندهٔ سطر ماتریس (\\) به ` | ` و ستون (&) به `, `
-    s = s.replace("\\\\", " | ")
-    s = s.replace("&", ", ")
+    # 5. Matrices: \begin{bmatrix} a & b \\ c & d \end{bmatrix} -> [ a , b | c , d ]
+    def clean_matrix(match: re.Match) -> str:
+        content = match.group(1)
+        content = content.replace("\\\\", " | ").replace("&", " , ")
+        content = re.sub(r"\s+", " ", content).strip()
+        return f"[ {content} ]"
 
-    # ۵) ساده‌سازی توان و اندیس مانند x^{2} -> x^2
+    s = re.sub(
+        r"(?:\\+)?\bbegin\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}(.*?)(?:\\+)?\bend\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}",
+        clean_matrix,
+        s,
+        flags=re.DOTALL,
+    )
+
+    # نمادهای رایج ریاضی پیش از حذف تگ‌های باقی‌مانده
+    s = re.sub(r"\\+times\b", "x", s)
+    s = re.sub(r"\\+cdot\b", "·", s)
+    s = re.sub(r"\\+div\b", "÷", s)
+    s = re.sub(r"\\+pm\b", "±", s)
+    s = re.sub(r"\\+(?:leq|le)\b", "≤", s)
+    s = re.sub(r"\\+(?:geq|ge)\b", "≥", s)
+    s = re.sub(r"\\+(?:neq|ne)\b", "≠", s)
+    s = re.sub(r"\\+approx\b", "≈", s)
+    s = re.sub(r"\\+(?:to|rightarrow)\b", "→", s)
+    s = re.sub(r"\\+Rightarrow\b", "⇒", s)
+    s = re.sub(r"\\+infty\b", "∞", s)
+    s = re.sub(r"\\+pi\b", "π", s)
+    s = re.sub(r"\\+alpha\b", "آلفا", s)
+    s = re.sub(r"\\+beta\b", "بتا", s)
+    s = re.sub(r"\\+theta\b", "تتا", s)
+    s = re.sub(r"\\+Delta\b", "Δ", s)
+    s = re.sub(r"\\+(?:left|right)\b", "", s)
+    s = re.sub(r"\\+(?:text|textbf|mathrm|mathbf)\s*\{([^{}]*)\}", r"\1", s)
+
+    # در صورتی که ماتریس از قبل باز شده یا \\ و & باقی مانده باشد
+    s = s.replace("\\\\", " | ").replace("&", " , ")
+
+    # 6. Remove inline math delimiters $ ... $
+    s = s.replace("\\$", "").replace("$", "")
+
+    # 7. Clean up remaining escaped backslashes or unknown latex tags
+    s = re.sub(r"\\[a-zA-Z]+", "", s)
+    s = s.replace("\\", "")
     s = re.sub(r"\^\{([^{}]+)\}", r"^\1", s)
     s = re.sub(r"_\{([^{}]+)\}", r"_\1", s)
 
-    # ۶) حذف تمام علامت‌های `$`
-    s = s.replace("\\$", "").replace("$", "")
+    # 8. Convert digits to Persian digits
+    persian_digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+    s = s.translate(persian_digits)
 
-    # پاک‌سازی فاصله‌های تکراری
-    s = re.sub(r"[ \t]{2,}", " ", s).strip()
-    return s
+    return re.sub(r"[ \t]{2,}", " ", s).strip()
 
+
+# نام مستعار برای سازگاری با فراخوانی‌های موجود
+clean_latex_for_pdf = latex_to_persian_text
 
 
 def _fa(value: Any) -> str:
@@ -208,11 +230,11 @@ def _fa_date() -> str:
 
 
 def prepare_farsi_text(text: str) -> str:
-    """متن فارسی را برای رندر در ReportLab آماده می‌کند (ارقام فارسی + اتصال حروف + ترتیب دیداری RTL)."""
+    """متن فارسی را برای رندر در ReportLab آماده می‌کند (پاک‌سازی LaTeX + ارقام فارسی + اتصال حروف + ترتیب دیداری RTL)."""
     if not text:
         return ""
-    text = to_persian_numbers(str(text))
-    return get_display(arabic_reshaper.reshape(text))
+    cleaned = latex_to_persian_text(str(text))
+    return get_display(arabic_reshaper.reshape(cleaned))
 
 
 def reshaped(text: Any) -> str:
@@ -485,7 +507,15 @@ def _question_header(item: dict[str, Any], tag: str = "سؤال") -> Paragraph:
         borderPadding=5,
         borderRadius=3,
     )
-    return Paragraph(_esc_xml(reshaped(f"{tag} {_fa(item['order'])}")), style)
+    head_parts = [f"{tag} {_fa(item['order'])}"]
+    if tag == "سؤال":
+        subj = str(item.get("subject") or "").strip()
+        diff = str(item.get("difficulty") or "").strip()
+        if subj:
+            head_parts.append(subj)
+        if diff:
+            head_parts.append(f"سطح: {DIFFICULTY_LABELS.get(diff, diff)}")
+    return Paragraph(_esc_xml(reshaped(" · ".join(head_parts))), style)
 
 # ---------------------------------------------------------------------------
 # انتخاب سؤال‌ها

@@ -24,7 +24,7 @@ import json
 import re
 
 from reports.report_generator import build_report
-from reports.exam_pdf import DIFFICULTY_LABELS, build_exam_pdf, clean_latex_for_pdf
+from reports.exam_pdf import DIFFICULTY_LABELS, build_exam_pdf, clean_latex_for_pdf, latex_to_persian_text
 from reports.session_status import (
     COMPREHENSION_LABELS,
     comprehension_status,
@@ -555,6 +555,8 @@ class KonkurQuestion(BaseModel):
     correct_answer: int = Field(ge=1, le=4)
     source_tag: str = Field(default="", max_length=60)
     explanation: str = Field(default="", max_length=1200)
+    difficulty: Optional[str] = Field(default="", max_length=40)
+    subject: Optional[str] = Field(default="", max_length=60)
     diagram_svg: Optional[str] = Field(default=None, max_length=20000)
 
 
@@ -587,10 +589,12 @@ def generate_exam_pdf(
         questions.append(
             {
                 "order": i,
-                "text": clean_latex_for_pdf(q.text.strip()),
-                "options": [clean_latex_for_pdf(str(o).strip()) for o in q.options],
+                "text": latex_to_persian_text(q.text.strip()),
+                "options": [latex_to_persian_text(str(o).strip()) for o in q.options],
                 "correct_answer": int(q.correct_answer),
-                "explanation": clean_latex_for_pdf((q.explanation or "").strip()),
+                "explanation": latex_to_persian_text((q.explanation or "").strip()),
+                "difficulty": (q.difficulty or "").strip(),
+                "subject": (q.subject or "").strip(),
                 "diagram_svg": q.diagram_svg,
             }
         )

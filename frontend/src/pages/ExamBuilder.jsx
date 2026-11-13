@@ -568,6 +568,10 @@ export default function ExamBuilder({ embedded = false }) {
 
   // ── ویرایش لیست سؤال‌ها ──
   const removeQuestion = (id) => setQuestions((prev) => prev.filter((q) => q.id !== id))
+  const updateQuestionDifficulty = (index, newDifficulty) =>
+    setQuestions((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, difficulty: newDifficulty } : item)),
+    )
   const moveQuestion = (index, delta) =>
     setQuestions((prev) => {
       const target = index + delta
@@ -602,6 +606,9 @@ export default function ExamBuilder({ embedded = false }) {
             correct_answer: q.correct_answer,
             source_tag: q.source_tag || '',
             explanation: q.explanation || '',
+            difficulty: q.difficulty || 'متوسط',
+            subject: q.subject || '',
+            diagram_svg: q.diagram_svg || null,
           })),
         },
         { responseType: 'blob', timeout: 180000 },
@@ -1159,9 +1166,20 @@ export default function ExamBuilder({ embedded = false }) {
                           {q.subject && (
                             <span className="chip bg-sky-50 text-sky-800 ring-1 ring-sky-200">{toFarsiNumber(q.subject)}</span>
                           )}
-                          {q.difficulty && (
-                            <span className="chip bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200">سطح: {toFarsiNumber(q.difficulty)}</span>
-                          )}
+                          <label className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-black text-emerald-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100">
+                            <span>سطح:</span>
+                            <select
+                              aria-label={`تغییر سطح سختی سؤال ${fmtFa(idx + 1)}`}
+                              value={['آسان', 'متوسط', 'سخت', 'کنکوری'].includes(q.difficulty) ? q.difficulty : 'متوسط'}
+                              onChange={(e) => updateQuestionDifficulty(idx, e.target.value)}
+                              className="cursor-pointer bg-transparent font-black text-emerald-900 focus:outline-none"
+                            >
+                              <option value="آسان">آسان</option>
+                              <option value="متوسط">متوسط</option>
+                              <option value="سخت">سخت</option>
+                              {q.difficulty === 'کنکوری' && <option value="کنکوری">کنکوری</option>}
+                            </select>
+                          </label>
                           {q.source_tag && (
                             <span className="chip bg-amber-50 text-amber-800 ring-1 ring-amber-200" title="این تگ فقط در پیش‌نمایش دیده می‌شود و در PDF چاپ نمی‌شود">
                               {q.source_tag}

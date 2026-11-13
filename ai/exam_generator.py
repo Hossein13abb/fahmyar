@@ -109,11 +109,12 @@ SVG_DIAGRAM_INSTRUCTION = (
 )
 
 DIFFICULTY_CALIBRATION_INSTRUCTION = (
-    "DIFFICULTY CALIBRATION:\n"
-    "- آسان (Easy): Direct formula application, single-step calculation.\n"
-    "- متوسط (Medium): Requires 2 steps, basic conceptual understanding.\n"
-    "- سخت (Hard): Requires synthesizing multiple concepts, deep analysis, or has a hidden trap. "
-    "DO NOT label a plug-and-chug question as Hard."
+    "STRICT DIFFICULTY CALIBRATION:\n"
+    "- آسان (Easy): Any question requiring direct substitution into a known formula "
+    "(e.g., dot product for angle between vectors, single-step vector math). "
+    "NEVER label a plug-and-chug question as Hard.\n"
+    "- متوسط (Medium): Questions requiring 2 steps or basic concept connection.\n"
+    "- سخت (Hard): Questions requiring deep multi-step synthesis or hidden traps."
 )
 
 
