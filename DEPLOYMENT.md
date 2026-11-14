@@ -23,13 +23,18 @@ docker run -d -p 8000:8000 --name fahmyar fahmyar:latest
 
 ---
 
-## چرا Dockerfile سه مرحله دارد
+## چرا Dockerfile دو مرحله دارد
 
 ```
 frontend-build   node:20   →  /build/dist   (باندل Vite: index.html + print.html)
-pdf-browser      python    →  Chromium + کتابخانه‌های سیستمی + پکیج‌ها
-runtime          python    →  کد + باندل + مرورگر، بدون npm و node_modules
+runtime          python    →  کد + باندل + Chromium، بدون npm و node_modules
 ```
+
+نسخهٔ اول سه مرحله بود و کتابخانه‌های سیستمی را بین دو مرحلهٔ پایتونی کپی
+می‌کرد. همان کپی، build را روی معماری‌های مختلف می‌شکست (مسیر
+`/usr/lib/x86_64-linux-gnu` روی arm64 وجود ندارد و `TARGETARCH` مقدار `amd64`
+می‌دهد نه `x86_64`). حذف آن مرحله، هم تصویر را ساده‌تر کرد و هم مسئله را از
+ریشه برداشت.
 
 موتور PDF آزمون، صفحهٔ `frontend/dist/print.html` را در Chromium باز می‌کند
 تا سند را با همان کامپوننت‌های پیش‌نمایش رندر کند. پس **باندل فرانت‌اند بخشی
