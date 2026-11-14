@@ -18,7 +18,7 @@ from __future__ import annotations
 import datetime
 from typing import Any, Dict, List, Optional
 
-from .capture import CaptureError, capture_exam
+from .capture import CaptureError, capture_exam, check_prerequisites
 from .packer import pdf_from_images
 
 __all__ = ["build_exam_pdf_browser", "BrowserRenderError", "build_payload"]
@@ -129,7 +129,19 @@ def build_exam_pdf_browser(
 ) -> bytes:
     """Render the exam in Chromium and return PDF bytes."""
     if not questions:
-        raise BrowserRenderError("no questions supplied")
+        raise BrowserRenderError("no questions supplied", reason="no_questions")
+
+    # Check every precondition up front: fixing them one error at a time is a
+    # miserable experience, so one message lists all of them.
+    state = check_prerequisites()
+    if not state["ok"]:
+        lines = []
+        for problem in state["problems"]:
+            lines.append(f"• {problem['message']}\n  درمان: {problem['fix']}")
+        raise BrowserRenderError(
+            "موتور تولید PDF آماده نیست:\n" + "\n".join(lines),
+            reason=state["problems"][0]["code"],
+        )
 
     payload = build_payload(
         title=title,

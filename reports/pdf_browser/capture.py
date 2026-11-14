@@ -97,8 +97,7 @@ def bundle_diagnosis() -> str:
     """Explain *why* the bundle is unusable, in terms an operator can act on.
 
     Returns an empty string when the bundle is fine.  The text is surfaced
-    verbatim in the API error, so it names the exact missing path and the exact
-    command that produces it.
+    verbatim in the API error, so it names the exact missing path.
     """
     entry = DIST_DIR / PRINT_ENTRY
     assets = DIST_DIR / "assets"
@@ -122,17 +121,76 @@ def bundle_diagnosis() -> str:
 
 
 def browser_available() -> bool:
-    """True if Playwright and a Chromium build are usable on this host."""
+    """True if the playwright package and a Chromium build are both usable."""
+    return check_prerequisites()["ok"]
+
+
+def check_prerequisites() -> dict:
+    """Report every precondition of the PDF engine at once.
+
+    A user fixing one missing piece at a time gets one obscure error after
+    another.  This returns the whole picture so a single message can list
+    everything that is wrong and the exact command that fixes each part.
+
+    Keys: ``ok`` (bool) and ``problems`` (list of dicts with ``code``,
+    ``message`` and ``fix``).
+    """
+    problems: list[dict] = []
+
+    # 1. the built frontend bundle
+    diagnosis = bundle_diagnosis()
+    if diagnosis:
+        problems.append(
+            {
+                "code": "bundle_missing",
+                "message": diagnosis,
+                "fix": "cd frontend && npm install && npm run build",
+            }
+        )
+
+    # 2. the playwright package
     try:
-        from playwright.sync_api import sync_playwright
+        from importlib.metadata import version as _pkg_version
+
+        _pkg_version("playwright")
+        have_pkg = True
     except Exception:
-        return False
-    try:
-        with sync_playwright() as p:
-            exe = p.chromium.executable_path
-            return bool(exe) and Path(exe).exists()
-    except Exception:
-        return False
+        have_pkg = False
+
+    if not have_pkg:
+        problems.append(
+            {
+                "code": "playwright_missing",
+                "message": (
+                    "پکیج playwright نصب نیست؛ موتور تولید PDF با مرورگر کار می‌کند."
+                ),
+                "fix": "pip install -r requirements.txt",
+            }
+        )
+    else:
+        # 3. the browser binary (only meaningful if the package is present)
+        try:
+            from playwright.sync_api import sync_playwright
+
+            with sync_playwright() as p:
+                exe = p.chromium.executable_path
+            have_browser = bool(exe) and Path(exe).exists()
+        except Exception:
+            have_browser = False
+
+        if not have_browser:
+            problems.append(
+                {
+                    "code": "chromium_missing",
+                    "message": (
+                        "باینری Chromium نصب نیست. پکیج playwright تنها کد "
+                        "پایتون است؛ مرورگر جداگانه دانلود می‌شود."
+                    ),
+                    "fix": "python -m playwright install chromium",
+                }
+            )
+
+    return {"ok": not problems, "problems": problems}
 
 
 # ---------------------------------------------------------------------------

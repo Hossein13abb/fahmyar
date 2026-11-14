@@ -15,7 +15,7 @@ Entry point kept stable for callers::
 from __future__ import annotations
 
 from .build import build_exam_pdf_browser, BrowserRenderError
-from .capture import CaptureError, browser_available
+from .capture import CaptureError, browser_available, check_prerequisites
 from .packer import pdf_from_images
 
 __all__ = [
@@ -23,5 +23,6 @@ __all__ = [
     "BrowserRenderError",
     "CaptureError",
     "browser_available",
+    "check_prerequisites",
     "pdf_from_images",
 ]
