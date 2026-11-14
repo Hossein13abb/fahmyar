@@ -1086,3 +1086,38 @@ def test_flat_option_becomes_real_matrix():
     # مواردی که نباید تغییر کنند
     for keep in ("$x$", "میانگین ۴، ۷", "۱، ۲"):
         assert repair_flat_option(keep) == keep, keep
+
+
+def test_operand_operator_expression_is_math_without_signal_chars():
+    r"""عبارتی مثلِ ``(A+B)۲-A۲-B۲`` باید ریاضی شناخته شود.
+
+    این عبارت هیچ‌یک از نشانه‌های ``_MATH_SIGNAL_RE`` (``^ _ = < > |``) را ندارد
+    و هیچ واژهٔ دوحرفی‌ای هم در آن نیست؛ بنابراین پیش‌تر ``_looks_math`` آن را رد
+    می‌کرد و کلِ عبارت به متنِ تخت تبدیل می‌شد. کاربر عیناً
+    ``(A+B)۲-A۲-B۲`` را در PDF می‌دید.
+    """
+    from reports.pdf_text_flow import has_math, split_math_segments
+
+    text = "حاصل‌جمع تمام درایه‌های (A+B)۲-A۲-B۲ کدام است؟"
+    assert has_math(text)
+    maths = [s[1] for s in split_math_segments(text) if s[0] == "math"]
+    assert maths == ["(A+B)۲-A۲-B۲"], maths
+
+    # ولی واژه‌های خط‌تیره‌دارِ فارسی نباید ریاضی شوند
+    for plain in ("سود-زیان این معامله چقدر است؟", "بیش-کم در جدول مشخص است"):
+        assert not has_math(plain), plain
+
+
+def test_attached_digit_becomes_power():
+    r"""رقمِ چسبیده به حرف یا پرانتز باید توان شود، نه زیرنویس.
+
+    مدل به‌جای ``(A+B)^۲`` رشتهٔ ``(A+B)۲`` تولید می‌کند؛ بدونِ این اصلاح
+    رقم به‌شکلِ چسبیده رندر می‌شد و معنای توان را نمی‌رساند.
+    """
+    from reports.math_renderer import normalize_latex
+
+    assert normalize_latex("(A+B)۲-A۲-B۲") == r"(A+B)^{۲}-A^{۲}-B^{۲}"
+    assert normalize_latex("A۲+B۲") == r"A^{۲}+B^{۲}"
+    # نباید چیزی که توان نیست را خراب کند
+    assert normalize_latex("x^2") == "x^2"
+    assert normalize_latex("۲x") == "۲x"

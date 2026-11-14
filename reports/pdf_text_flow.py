@@ -97,6 +97,19 @@ _MATH_CHARS = (
     "\u066B\u066C\u00D7\u00F7\u221A\u2264\u2265\u2260\u00B1"
 )
 _MATH_SIGNAL_RE = re.compile(r"[\\^_=<>|]")
+
+#: قاعدهٔ «ساختاری»: یک عبارتِ ریاضی از «عملگرها» و «عملوندها» ساخته می‌شود.
+#:
+#: چرا لازم است؟ ``(A+B)۲-A۲-B۲`` هیچ‌یک از نشانه‌های ``_MATH_SIGNAL_RE`` را ندارد
+#: (نه ``^``، نه ``=``) و هیچ واژهٔ دوحرفی هم در آن نیست؛ پس ``_looks_math`` آن را
+#: رد می‌کرد و کلِ عبارت به متنِ تخت تبدیل می‌شد — دانش‌آموز ``(A+B)۲-A۲-B۲``
+#: می‌دید، در حالی که باید ``(A+B)^۲ - A^۲ - B^۲`` رندر می‌شد.
+#:
+#: عملوند: رقم/ارقامِ فارسی، یک حرفِ تنها، گروهِ پرانتزی، توان
+_OPERAND = r"(?:[A-Za-z]|[0-9]|[\u06F0-\u06F9]+|\([^()]*\)|[A-Za-z]\s*\^\s*[0-9\u06F0-\u06F9]+)"
+#: عملگر: جمع، تفریق، ضرب، تقسیم، تساوی، ضربدر/تقسیم علامتی
+_MATH_OPERATOR = r"[+\-*/=×÷·]"
+_OPERAND_OP_RE = re.compile(rf"{_OPERAND}(?:\s*{_MATH_OPERATOR}\s*{_OPERAND})+")
 _FUNC_CALL_RE = re.compile(r"^[A-Za-z]\s*\(\s*[^()]{0,30}\)$")
 _MATH_CANDIDATE_RE = re.compile(rf"[{_MATH_CHARS}]+(?:\s+[{_MATH_CHARS}]+)*")
 
@@ -120,6 +133,9 @@ def _looks_math(group_text: str) -> bool:
         ):
             return True
     if _MATH_SIGNAL_RE.search(g):
+        return True
+    # عبارتِ ساختاری مثلِ «(A+B)۲-A۲-B۲» یا «x+y» (بدونِ نشانه‌های بالا)
+    if _OPERAND_OP_RE.search(g):
         return True
     if _FUNC_CALL_RE.match(g) or _COORD_CALL_RE.match(g):
         return True
