@@ -380,6 +380,107 @@ def _png_size(data: bytes) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 # رندر یک عبارت
 # ---------------------------------------------------------------------------
+def _render_cases_png(
+    body: str,
+    font_size: float,
+    dpi: int,
+    color: str,
+    prefix: str = "",
+    suffix: str = "",
+) -> Optional[RenderedMath]:
+    r"""دستگاهِ معادلات (``\begin{cases}``) — آکولادِ واقعی در سمتِ راست.
+
+    mathtext محیطِ ``cases`` را می‌شناسد ولی به‌شکلِ یک شیءِ ۲۶×۲۶ رندر می‌کند و
+    سطرها روی هم می‌افتند؛ ``array`` هم در این نسخه پشتیبانی نمی‌شود. پس مثلِ
+    ماتریس، خودمان سطرها را می‌چینیم و تنها تفاوت، کشیدنِ یک آکولادِ بلند در
+    سمتِ راستِ عبارت است (جهتِ RTL: ورودیِ دستگاه از راست خوانده می‌شود).
+    """
+    if not _HAS_MATPLOTLIB or plt is None:
+        return None
+    rows = _split_matrix_rows(body)
+    if not rows:
+        return None
+    # یک ستون: هر سطر یک معادله است
+    cells = [_to_latin_digits(r.strip()) for r in rows if r.strip()]
+    if not cells:
+        return None
+
+    cell_h = font_size * 1.55
+    pad = font_size * 0.55
+    brace_w = font_size * 0.62
+
+    # Measure the widest row with the real mathtext metrics instead of guessing
+    # from character count — the guess put the brace on top of the equations.
+    from matplotlib.mathtext import MathTextParser
+
+    parser = MathTextParser("path")
+    max_w = 1.0
+    for cell in cells:
+        try:
+            parsed = parser.parse(f"${cell}$", dpi=72, prop=FontProperties(size=font_size))
+            # "path" backend returns a VectorParse; older backends return a tuple
+            w_px = float(getattr(parsed, "width", None) if not isinstance(parsed, tuple) else parsed[0])
+            max_w = max(max_w, w_px)
+        except Exception:
+            max_w = max(max_w, len(cell) * font_size * 0.62)
+
+    content_w = max_w
+    total_h = cell_h * len(cells) + pad
+    total_w = content_w + brace_w * 3.0 + 2 * pad
+
+    fig = plt.figure(figsize=(total_w / 72.0, total_h / 72.0), dpi=dpi)
+    try:
+        fig.patch.set_alpha(0.0)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.set_axis_off()
+        ax.set_xlim(0, total_w)
+        ax.set_ylim(0, total_h)
+
+        for i, cell in enumerate(cells):
+            y = total_h - pad - cell_h * (i + 0.72)
+            try:
+                ax.text(
+                    pad + brace_w, y, f"${cell}$",
+                    fontsize=font_size, color=color,
+                    ha="left", va="baseline",
+                )
+            except Exception:
+                ax.text(pad + brace_w, y, cell, fontsize=font_size, color=color,
+                        ha="left", va="baseline")
+
+        # آکولادِ بلند در سمت راست
+        from matplotlib.patches import PathPatch
+        from matplotlib.path import Path as MplPath
+        bx = total_w - pad          # brace lives in its own column at the right
+        top = total_h - pad * 0.5
+        bot = pad * 0.5
+        mid = (top + bot) / 2.0
+        verts = [
+            (bx, top), (bx - brace_w * 0.75, top), (bx - brace_w * 0.30, top - (top - bot) * 0.2),
+            (bx - brace_w * 0.30, mid + (top - mid) * 0.10),
+            (bx - brace_w * 0.95, mid),
+            (bx - brace_w * 0.30, mid - (mid - bot) * 0.10),
+            (bx - brace_w * 0.30, bot + (top - bot) * 0.2), (bx - brace_w * 0.75, bot), (bx, bot),
+        ]
+        codes = [MplPath.MOVETO, MplPath.CURVE3, MplPath.CURVE3,
+                 MplPath.LINETO, MplPath.CURVE3,
+                 MplPath.LINETO, MplPath.CURVE3, MplPath.CURVE3, MplPath.MOVETO]
+        ax.add_patch(PathPatch(MplPath(verts, codes), fill=False, edgecolor=color, lw=max(0.7, font_size * 0.075)))
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=dpi, transparent=True, pad_inches=0)
+        plt.close(fig)
+        data = buf.getvalue()
+        w_pt, h_pt = _png_size(data)
+        return RenderedMath(png=data, width=w_pt * (72.0 / dpi), height=h_pt * (72.0 / dpi), depth=h_pt * (72.0 / dpi) * 0.30)
+    except Exception:
+        try:
+            plt.close(fig)
+        except Exception:
+            pass
+        return None
+
+
 def render_math_png(
     latex_str: Any,
     font_size: float = 10.5,
@@ -392,6 +493,16 @@ def render_math_png(
     raw = str(latex_str or "").strip()
     if not raw:
         return None
+
+    # دستگاهِ معادلات مسیر اختصاصی دارد (آکولادِ واقعی)
+    _cases = re.search(r"\\?(?:begin)\s*\{\s*cases\s*\}", raw)
+    if _cases:
+        _m = _MATRIX_ENV_RE.search(raw)
+        if _m:
+            prefix, _env, body, suffix = _split_matrix_affixes(raw)
+            rendered = _render_cases_png(body, font_size, dpi, color, prefix=prefix, suffix=suffix)
+            if rendered is not None:
+                return rendered
 
     # ماتریس‌ها مسیر جداگانه دارند
     if _MATRIX_ENV_RE.search(raw):

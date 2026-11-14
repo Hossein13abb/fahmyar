@@ -64,20 +64,15 @@ from reportlab.platypus import (
 from models.concept import Concept
 from models.question import Question
 from reports.math_renderer import render_latex_to_image
-from reports.pdf_text_flow import (  # noqa: F401  (بازصادراتِ قراردادی)
-    OptionsRow,
-    build_mixed_flowables,
-    has_math,
-    math_paragraph_flowables,
-    parse_mixed_text_and_math,
-)
 from ai.json_sanitize import repair_flat_matrices, repair_flat_option
-from reports.math_inline import (  # noqa: F401  (تزریقِ درون‌خطیِ <img/>)
-    build_mixed_math_flowables,
-    build_mixed_math_text,
-    release_temp_files,
-    render_math_to_file,
+from reports.pdf_content_parser import Segment, has_math, split_math_segments
+from reports.pdf_text_flow_v2 import (  # noqa: F401  (بازصادراتِ قراردادی)
+    MathRichBlock,
+    OptionsRow,
+    math_paragraph_flowables,
+    simple_text_flowables,
 )
+from reports import pdf_math, pdf_layout
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FONT_DIR = BASE_DIR / "assets" / "fonts"
@@ -212,14 +207,19 @@ def final_pdf_cleanup(text: Any) -> str:
             break
         s = next_s
     s = re.sub(r"\\?(?:left|right)\b", "", s)
-    s = re.sub(r"\\?(?:circ|degree)\b", "°", s)
-    s = re.sub(r"\\?(?:times|cdot)\b", "×", s)
-    s = re.sub(r"\\?(?:neq|ne)\b", "≠", s)
-    s = re.sub(r"\\?(?:leq|le)\b", "≤", s)
-    s = re.sub(r"\\?(?:geq|ge)\b", "≥", s)
-    s = re.sub(r"\\?(?:rightarrow|to)\b", "→", s)
-    s = re.sub(r"\\?infty\b", "∞", s)
-    s = re.sub(r"\\?(?:alpha|beta|gamma|theta|lambda|mu|pi|sigma|omega)\b", "", s)
+    # NOTE: the backslash is REQUIRED here.  With an optional backslash these
+    # rules also matched plain English words: "multi-page" -> "multi-pa≥",
+    # because "ge" is a word-final sequence.  Same trap for "colony" (\lo? no —
+    # "ne"), "angle" (\le), "hotel" (	o).  A bare command is handled upstream
+    # by the content parser, which turns it into a rendered image.
+    s = re.sub(r"\\(?:circ|degree)\b", "°", s)
+    s = re.sub(r"\\(?:times|cdot)\b", "×", s)
+    s = re.sub(r"\\(?:neq|ne)\b", "≠", s)
+    s = re.sub(r"\\(?:leq|le)\b", "≤", s)
+    s = re.sub(r"\\(?:geq|ge)\b", "≥", s)
+    s = re.sub(r"\\(?:rightarrow|to)\b", "→", s)
+    s = re.sub(r"\\infty\b", "∞", s)
+    s = re.sub(r"\\(?:alpha|beta|gamma|theta|lambda|mu|pi|sigma|omega)\b", "", s)
 
     # 3. توان و اندیس: پیش از حذفِ نشانه‌ها، ``x^2`` را به ``x۲`` تبدیل کن، نه ``x ۲``
     #    (در غیرِ این صورت ``x^2 + y^2`` در fallback به «x ۲ + y ۲» تبدیل می‌شد).
@@ -901,36 +901,66 @@ def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowab
     # کرده باشد؛ در آن حالت هیچ LaTeX‌ای برای رندر باقی نمی‌ماند و دانش‌آموز
     # «A=۱،۰،۱،۱،۰،۰،۱،۰،۱» می‌دید. این‌جا بازسازی می‌شود.
     raw_text = repair_flat_matrices(str(raw_text))
-    story += rtl_flowables(raw_text, _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
+    # Layered assembly: the header must not be orphaned, but a long question is
+    # allowed to flow.  KeepTogether on the whole block used to strand ~40% of
+    # a page whenever a question was slightly too tall.  See pdf_layout.
+    header = story                      # _question_header output
+    body = rtl_flowables(raw_text, _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
+
+    extra: list[Flowable] = []
     svg_flow = _svg_flowable(item.get("diagram_svg"))
     if svg_flow is not None:
-        story.append(Spacer(1, 1.5 * mm))
-        story.append(svg_flow)
-    story.append(Spacer(1, 1.5 * mm))
-    story.append(_options_table(item))
-    story.append(Spacer(1, 4.5 * mm))
-    # سؤال هرگز بین دو صفحه تکه نمی‌شود (سربرگ تنها در پایین صفحه نمی‌ماند)
-    return [KeepTogether(story)]
+        extra.append(Spacer(1, 1.5 * mm))
+        extra.append(svg_flow)
+    extra.append(Spacer(1, 1.5 * mm))
+
+    return pdf_layout.question_story(
+        header=header,
+        body=body,
+        extra=extra,
+        options=[_options_table(item)],
+        tail=[Spacer(1, 4.5 * mm)],
+    )
 
 
 def _answer_flow(item: dict[str, Any]) -> list[Flowable]:
     """بلوکِ کلیدِ هر سؤال — شماره، گزینهٔ صحیح (با حرف)، استدلال کوتاه؛ بدون هیچ تگ منبعی."""
     ca = int(item["correct_answer"])
     letter = OPTION_LETTERS[ca - 1]
-    story: list[Flowable] = [_question_header(item, tag="کلید")]
     raw_text = str(item.get("text") or item.get("question_text") or item.get("title") or "")
     # پیش‌نمایش کوتاه اما با فرمول‌های تصویری (بدون تبدیل متنیِ «به روی»)
     preview = raw_text if len(raw_text) <= 160 else raw_text[:157] + "…"
-    story += rtl_flowables(preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 178)
-    story.append(Spacer(1, 1.5 * mm))
-    story += rtl_flowables(f"پاسخ صحیح: گزینهٔ {_fa(ca)} - {letter}", _style("ak-key", fontName=FONT_XBOLD, fontSize=11, textColor=BRAND_DARK, leading=20), 178, render_math=False)
+
+    preview_flow = rtl_flowables(
+        preview, _style("ak-prev", fontSize=9, leading=17, textColor=SLATE_600), 178
+    )
+    key_flow = rtl_flowables(
+        f"پاسخ صحیح: گزینهٔ {_fa(ca)} - {letter}",
+        _style("ak-key", fontName=FONT_XBOLD, fontSize=11, textColor=BRAND_DARK, leading=20),
+        178,
+        render_math=False,
+    )
     raw_explanation = (item.get("explanation") or "").strip()
     if raw_explanation:
-        story += rtl_flowables(raw_explanation, _style("ak-a", fontSize=9, leading=18, textColor=colors.HexColor("#1F2937")), 178)
+        expl_flow = rtl_flowables(
+            raw_explanation,
+            _style("ak-a", fontSize=9, leading=18, textColor=colors.HexColor("#1F2937")),
+            178,
+        )
     else:
-        story += rtl_flowables("استدلال تشریحی برای این سؤال در سامانه ثبت نشده است.", _style("ak-a-empty", fontSize=8.5, leading=17, textColor=SLATE_500), 178)
-    story.append(Spacer(1, 4 * mm))
-    return [KeepTogether(story)]
+        expl_flow = rtl_flowables(
+            "استدلال تشریحی برای این سؤال در سامانه ثبت نشده است.",
+            _style("ak-a-empty", fontSize=8.5, leading=17, textColor=SLATE_500),
+            178,
+        )
+
+    return pdf_layout.answer_story(
+        header=[_question_header(item, tag="کلید")],
+        preview=preview_flow,
+        key=[Spacer(1, 1.5 * mm), *key_flow],
+        explanation=expl_flow,
+        tail=[Spacer(1, 4 * mm)],
+    )
 
 
 def _correction_flow(items: list[dict[str, Any]]) -> list[Flowable]:
@@ -1051,9 +1081,21 @@ def build_exam_pdf(
 
     # ── جدول پاسخنامه (گزیدهٔ ۱ تا ۴) ──
     story.append(Spacer(1, 1 * mm))
-    story.append(_section_banner("جدول پاسخنامهٔ دانش‌آموز", accent=colors.HexColor("#0EA5E9"), bg=colors.HexColor("#F0F9FF"), fg=colors.HexColor("#0C4A6E")))
-    story.append(Spacer(1, 3 * mm))
-    story.append(_answer_sheet_table(questions))
+    _sheet_banner = _section_banner(
+        "جدول پاسخنامهٔ دانش‌آموز",
+        accent=colors.HexColor("#0EA5E9"),
+        bg=colors.HexColor("#F0F9FF"),
+        fg=colors.HexColor("#0C4A6E"),
+    )
+    # The answer sheet is a compact grid; splitting it leaves a 7-row sliver
+    # plus a mostly blank page.  Banner + grid are measured together so the
+    # heading can never be stranded at the foot of the previous page.
+    _sheet = _answer_sheet_table(questions)
+    story.append(
+        pdf_layout.guard_group(
+            [_sheet_banner, Spacer(1, 3 * mm), _sheet], width=_CONTENT_WIDTH_PT
+        )
+    )
 
     # ── بخش ۲ (صفحهٔ آخر) — پاسخنامهٔ کلید آزمون ──
     story.append(PageBreak())

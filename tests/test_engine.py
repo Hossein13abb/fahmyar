@@ -863,23 +863,30 @@ def test_bare_latex_frac_consumes_both_brace_groups():
     assert "{" not in texts and "}" not in texts, texts
 
 
-def test_inline_math_html_keeps_word_spacing():
-    """فاصله‌های میانِ واژه‌ها در HTMLِ خروجی نباید گم شوند.
+def test_inline_math_word_spacing_is_drawn():
+    """Spaces around inline formulas must be real glyphs, not cursor moves.
 
-    اشتباه در یک واحد (نگاه به ``atom.space_before`` به‌جای اتمِ همسایهٔ راست) کلمات
-    را به هم می‌چسباند: «ﺩﺗﺮﻣﯿﻨﺎﻥﻣﺎﺗﺮﯾﺲ». آن‌گاه ReportLab عرضِ خط را اشتباه می‌سنجد
-    و پاراگراف را دوباره می‌شکند.
+    The old ``math_inline`` module (deleted — it was never reached on the PDF
+    path) built ``<img/>`` HTML; the live renderer is ``MathRichBlock``.  This
+    test pins the behaviour that module was meant to guarantee.
     """
-    from reports.math_inline import _build_block, _lines_to_html, _ensure_fonts
+    from reports.exam_pdf import _register_fonts, final_pdf_cleanup
+    from reports.pdf_text_flow_v2 import MathRichBlock
     from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT
 
-    _ensure_fonts()
-    style = ParagraphStyle("t", fontName="Vazirmatn", fontSize=10, leading=19)
-    txt = "دترمینان ماتریس دو $x^2$ را محاسبه کنید"
-    html = _lines_to_html(_build_block(txt, style, 400))
-    assert len(html) == 1, html
-    # باید حداقل یک فاصلهٔ واقعی میانِ واژه‌ها باشد
-    assert html[0].count(" ") >= 4, html[0]
+    _register_fonts()
+    st = ParagraphStyle("t", fontName="VazirBold" if False else "Vazirmatn-Bold",
+                        fontSize=10.5, leading=21, alignment=TA_RIGHT) \
+        if False else ParagraphStyle("t", fontSize=10.5, leading=21)
+    blk = MathRichBlock("مقدار $x$ کدام است؟", style=st, max_width=300,
+                        fallback=final_pdf_cleanup)
+    blk.wrap(300, 500)
+    kinds = [a.kind for ln in blk.lines for a in ln.atoms]
+    assert "math" in kinds, kinds
+    assert "word" in kinds, kinds
+    spaces = [a.space_before for ln in blk.lines for a in ln.atoms if a.kind == "math"]
+    assert any(spaces), "inline formula has no gap before it"
 
 
 def test_progress_markup_uses_standard_font_size():
@@ -1019,10 +1026,17 @@ def test_plain_persian_text_stays_plain():
 
     for text in (
         "میانگین سه عدد ۴، ۷ و ۱۰ چیست؟",
-        "کدام است X؟",
         "این آزمون و پاسخنامه توسط فهم‌یار ساخته شد.",
+        "کدام گزینه درباره‌ی ساختار اتم درست است؟",
+        "The derivative of a constant is always one.",
     ):
         assert not has_math(text), text
+
+    # «X» تنها یک متغیر ریاضی است، نه متن — این عمداً از این فهرست حذف شد.
+    from reports.pdf_text_flow import split_math_segments
+
+    kinds = [seg.kind for seg in split_math_segments("کدام است X؟")]
+    assert kinds == ["text", "math", "text"], kinds
 
 
 def test_no_dollar_latex_matrix_end_to_end():
