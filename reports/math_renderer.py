@@ -168,7 +168,36 @@ def _to_latin_digits(text: str) -> str:
 # ---------------------------------------------------------------------------
 # رسم ماتریس‌ها (mathtext از bmatrix پشتیبانی نمی‌کند)
 # ---------------------------------------------------------------------------
-def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: str) -> Optional[RenderedMath]:
+def _split_matrix_affixes(raw: str) -> tuple:
+    r"""پیشوند و پسوندِ دورِ ماتریس را جدا می‌کند.
+
+    رندرکنندهٔ ماتریس فقط ``\begin{bmatrix}...\end{bmatrix}`` را می‌گیرد و پیش‌تر
+    **هر چیزِ دیگری را بی‌صدا دور می‌ریخت**؛ نتیجه این بود که ``$A=\begin{bmatrix}...``
+    به تصویری از ماتریسِ خالی از «A=» تبدیل می‌شد و دانش‌آموز ``۱،۰،۱`` می‌دید.
+
+    خروجی: ``(prefix, env, body, suffix)`` — اگر ماتریسی نبود، ``(raw, "", "", "")``.
+    """
+    s = str(raw or "").strip()
+    if s.startswith("$"):
+        s = s[1:]
+    if s.endswith("$"):
+        s = s[:-1]
+    s = s.strip()
+    m = _MATRIX_ENV_RE.search(s)
+    if not m:
+        return (s, "", "", "")
+    return (s[: m.start()].strip(), m.group(1), m.group(2), s[m.end() :].strip())
+
+
+def _render_matrix_png(
+    env: str,
+    body: str,
+    font_size: float,
+    dpi: int,
+    color: str,
+    prefix: str = "",
+    suffix: str = "",
+) -> Optional[RenderedMath]:
     r"""رندرِ ماتریس با ابعادِ **دقیقاً متناسب با اندازهٔ فونت**.
 
     چرا این‌قدر روی ابعاد حساسیم؟
@@ -192,6 +221,14 @@ def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: s
     if not rows:
         return None
     grid = [[c.strip() for c in re.split(r"(?<!\\)&", r)] for r in rows]
+    # matplotlib mathtext با بعضی fontset‌ها گلیفِ ارقامِ فارسی (U+06F0..U+06F9) را
+    # ندارد و به‌جای رقم، «نمادِ ساختگی» (یک نقطه) می‌کشد. چون همهٔ ارقامِ داخلِ
+    # ریاضی از نظرِ شکلِ نهایی لاتین رندر می‌شوند، این‌جا به لاتین تبدیل می‌کنیم تا
+    # هیچ سلولی به نقطه تبدیل نشود. (نسخهٔ فارسیِ همان ارقام همچنان در متنِ
+    # فارسیِ اطرافِ فرمول دیده می‌شود.)
+    grid = [[_to_latin_digits(c) for c in row] for row in grid]
+    prefix = _to_latin_digits(prefix)
+    suffix = _to_latin_digits(suffix)
     nrows = max(len(grid), 1)
     ncols = max((len(r) for r in grid), default=1)
     fig = None
@@ -201,7 +238,9 @@ def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: s
         cell_w = fs * 2.1          # عرضِ هر خانه (جا برای «−۱۲»)
         cell_h = fs * 1.00         # ارتفاعِ هر سطر — هم‌تراز با LaTeX واقعی
         pad = fs * 0.18            # حاشیهٔ بیرونی
-        fig_w_pt = ncols * cell_w + 2 * pad
+        prefix_w = (fs * 0.80 * len(prefix) + fs * 0.55) if prefix else 0.0
+        suffix_w = (fs * 0.80 * len(suffix) + fs * 0.55) if suffix else 0.0
+        fig_w_pt = ncols * cell_w + 2 * pad + prefix_w + suffix_w
         fig_h_pt = nrows * cell_h + 2 * pad
         fig = plt.figure(figsize=(fig_w_pt / 72.0, fig_h_pt / 72.0), dpi=dpi)
         fig.patch.set_alpha(0.0)
@@ -214,7 +253,7 @@ def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: s
             baseline = fig_h_pt - pad - (ri + 0.80) * cell_h
             for ci in range(ncols):
                 cell_tex = (row[ci].strip().strip("$").strip() if ci < len(row) else "") or "0"
-                cx = pad + ci * cell_w + cell_w / 2.0
+                cx = pad + suffix_w + ci * cell_w + cell_w / 2.0
                 try:
                     ax.text(
                         cx,
@@ -245,7 +284,10 @@ def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: s
         bot = pad * 0.55
         arm = min(cell_w * 0.34, pad + cell_w * 0.30)
         lw = max(1.0, fs * 0.11)
-        lx, rx = pad * 0.55, fig_w_pt - pad * 0.55
+        # در خواندنِ راست‌به‌چپ، «A=» پیش از ماتریس می‌آید؛ بنابراین در تصویر
+        # (که چپ‌به‌راست است) «A=» در سمتِ **راست** و ماتریس سمتِ چپِ آن می‌نشیند.
+        lx = pad * 0.55 + suffix_w
+        rx = fig_w_pt - pad * 0.55 - prefix_w
 
         if bracket in "[(":
             right = "]" if bracket == "[" else ")"
@@ -258,6 +300,33 @@ def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: s
         elif bracket == "{":
             ax.plot([lx + arm, lx, lx, lx + arm], [top, top - (top - bot) * 0.08, bot + (top - bot) * 0.08, bot],
                     color=color, lw=lw, solid_capstyle="butt")
+
+        # پیشوند/پسوندِ متنیِ کنارِ ماتریس  (A= ، \det A = ، \right] …)
+        # در RTL، پیشوند در سمتِ راستِ ماتریس می‌نشیند.
+        mid_y = fig_h_pt / 2.0
+        if prefix:
+            # «A=» باید سمتِ **راستِ** ماتریس بیاید: در خواندنِ راست‌به‌چپ، انتساب
+            # پیش از ماتریس می‌آید، پس در تصویر (LTR) در سمتِ راست می‌نشیند و
+            # براکتِ راستِ ماتریس بلافاصله پس از آن قرار می‌گیرد.
+            ax.text(
+                fig_w_pt - pad * 0.55,
+                mid_y - fs * 0.35,
+                f"${prefix}$",
+                size=fs,
+                ha="right",
+                va="baseline",
+                color=color,
+            )
+        if suffix:
+            ax.text(
+                pad * 0.55,
+                mid_y - fs * 0.35,
+                f"${suffix}$",
+                size=fs,
+                ha="left",
+                va="baseline",
+                color=color,
+            )
 
         buf = io.BytesIO()
         fig.savefig(buf, format="png", dpi=dpi, transparent=True)
@@ -315,9 +384,9 @@ def render_math_png(
         return None
 
     # ماتریس‌ها مسیر جداگانه دارند
-    m_mat = _MATRIX_ENV_RE.search(raw)
-    if m_mat:
-        return _render_matrix_png(m_mat.group(1), m_mat.group(2), font_size, dpi, color)
+    if _MATRIX_ENV_RE.search(raw):
+        prefix, env_name, body, suffix = _split_matrix_affixes(raw)
+        return _render_matrix_png(env_name, body, font_size, dpi, color, prefix=prefix, suffix=suffix)
 
     expr = normalize_latex(raw)
     if not expr:

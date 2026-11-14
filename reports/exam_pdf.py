@@ -71,6 +71,7 @@ from reports.pdf_text_flow import (  # noqa: F401  (بازصادراتِ قرا�
     math_paragraph_flowables,
     parse_mixed_text_and_math,
 )
+from ai.json_sanitize import repair_flat_matrices
 from reports.math_inline import (  # noqa: F401  (تزریقِ درون‌خطیِ <img/>)
     build_mixed_math_flowables,
     build_mixed_math_text,
@@ -887,7 +888,7 @@ def _options_table(item: dict[str, Any]) -> "OptionsRow":
        پیش‌فرضِ ``Frame``). پیش‌تر این‌جا ``178mm`` = ``504.57pt`` داده می‌شد که
        ۱۲ پوینت از کادر بیرون می‌زد و ردیفِ گزینه‌ها سرریز می‌کرد.
     """
-    opts = list(item["options"])
+    opts = [repair_flat_matrices(str(o)) for o in item["options"]]
     cells = [(_option_text(opts[i], i), _option_style(i)) for i in range(4)]
     return OptionsRow(cells, width=_CONTENT_WIDTH_PT, fallback=final_pdf_cleanup)
 
@@ -896,6 +897,10 @@ def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowab
     """سؤال کنکوری: سربرگ + متن با فرمول‌های تصویری (fallback: final_pdf_cleanup) + شکل SVG + چهار گزینه."""
     story: list[Flowable] = [_question_header(item)]
     raw_text = item.get("text") or item.get("question_text") or item.get("title") or ""
+    # آخرین خطِ دفاع: مدل (یا کلاینت) ممکن است ماتریس را به لیستِ ویرگول‌دار تخت
+    # کرده باشد؛ در آن حالت هیچ LaTeX‌ای برای رندر باقی نمی‌ماند و دانش‌آموز
+    # «A=۱،۰،۱،۱،۰،۰،۱،۰،۱» می‌دید. این‌جا بازسازی می‌شود.
+    raw_text = repair_flat_matrices(str(raw_text))
     story += rtl_flowables(raw_text, _style("q-text", fontSize=10.5, leading=21, fontName=FONT_BOLD), 178)
     svg_flow = _svg_flowable(item.get("diagram_svg"))
     if svg_flow is not None:

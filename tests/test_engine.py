@@ -889,3 +889,76 @@ def test_progress_markup_uses_standard_font_size():
     src = Path("frontend/src/pages/ExamBuilder.jsx").read_text(encoding="utf-8")
     assert "text-lg font-bold text-slate-700" in src
     assert "text-3xl font-black" not in src
+
+
+# ---------------------------------------------------------------------------
+# رگرسیون: باگِ «ماتریس به لیستِ ویرگول‌دار تخت تبدیل شده» (گزارش کاربر)
+# ---------------------------------------------------------------------------
+def test_flat_matrix_is_rebuilt_from_comma_list():
+    """مدل گاهی ماتریس را به لیستِ ویرگول‌دار تخت می‌کند؛ باید بازسازی شود.
+
+    پیش‌تر متنِ ``A=۱،۰،۱،۱،۰،۰،۱،۰،۱`` در PDF عیناً چاپ می‌شد، چون هیچ
+    ``\\begin{bmatrix}``ای باقی نمانده بود که matplotlib رندرش کند.
+    """
+    from ai.json_sanitize import repair_flat_matrices
+
+    out = repair_flat_matrices(
+        "اگر A=۱،۰،۱،۱،۰،۰،۱،۰،۱ و B=۳،۵،۴ و X=x،y،z باشد، مقدار x^2+y^2+z^2 کدام است؟"
+    )
+    assert r"\begin{bmatrix}" in out
+    assert out.count(r"\end{bmatrix}") == 3          # هر سه ماتریس بازسازی شد
+    # ماتریس ۳×۳ باید دو جداکنندهٔ سطر داشته باشد
+    assert out.count(r" \\ ") >= 2
+
+
+def test_flat_matrix_repair_leaves_normal_lists_alone():
+    """لیست‌های معمولیِ فارسی (میانگینِ چند عدد) نباید ماتریس شوند."""
+    from ai.json_sanitize import repair_flat_matrices
+
+    for text in (
+        "میانگین سه عدد ۴، ۷ و ۱۰ چیست؟",
+        "مخرج برابر ۲، ۴، ۶، ۸ است",
+        "گزینه‌ها ۱، ۲، ۳ و ۴ هستند",
+    ):
+        assert repair_flat_matrices(text) == text, text
+
+
+def test_matrix_render_keeps_prefix_and_has_no_placeholder_cells():
+    r"""``A=\begin{bmatrix}…`` نباید «A=» را دور بریزد و نه سلول‌ها را به نقطه تبدیل کند.
+
+    دو باگِ واقعی که این تست از بازگشتشان جلوگیری می‌کند:
+
+    1. رندرکنندهٔ ماتریس فقط ``\begin{bmatrix}…\end{bmatrix}`` را می‌گرفت و
+       پیشوند را بی‌صدا حذف می‌کرد ⇒ دانش‌آموز به‌جای ``A=`` فقط ماتریس می‌دید.
+    2. matplotlib با ``fontset="cm"/"stix"`` گلیفِ ارقامِ فارسی ندارد و به‌جای
+       رقم «نمادِ ساختگی» (یک نقطه) می‌کشد ⇒ ماتریسِ پر از نقطه.
+    """
+    from reports.math_renderer import _split_matrix_affixes, render_math_png
+
+    latex = r"A=\begin{bmatrix} ۱ & ۰ & ۱ \\ ۱ & ۰ & ۰ \\ ۱ & ۰ & ۱ \end{bmatrix}"
+    prefix, env, body, suffix = _split_matrix_affixes(latex)
+    assert prefix == "A=", prefix
+    assert env == "bmatrix"
+    assert "&" in body
+
+    img = render_math_png(latex, font_size=10.5, dpi=300)
+    assert img is not None
+    # پیشوند «A=» عرض را افزایش می‌دهد؛ بدونِ آن ۲×۲ کوچک‌تر است.
+    bare = render_math_png(
+        r"\begin{bmatrix} ۱ & ۰ & ۱ \\ ۱ & ۰ & ۰ \\ ۱ & ۰ & ۱ \end{bmatrix}",
+        font_size=10.5,
+        dpi=300,
+    )
+    assert img.width > bare.width + 10, (img.width, bare.width)
+
+    # هیچ سلولی نباید به «نمادِ ساختگی» تبدیل شود: تصویر باید پیکسلِ کافی داشته باشد.
+    try:
+        import io as _io
+
+        from PIL import Image
+
+        with Image.open(_io.BytesIO(img.png)) as im:
+            opaque = sum(1 for p in im.convert("RGBA").getdata() if p[3] > 10)
+    except Exception:
+        return  # PIL نبود — بررسی بصری در E2E انجام می‌شود
+    assert opaque > 2000, f"too few opaque pixels: {opaque} (placeholder glyphs?)"

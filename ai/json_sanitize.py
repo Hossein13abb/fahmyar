@@ -55,6 +55,102 @@ def _clean_dollar_noise(text: str) -> str:
     return s
 
 
+# ---------------------------------------------------------------------------
+# ترمیمِ ماتریس‌هایی که مدل به لیستِ ویرگول‌دار تخت کرده است
+# ---------------------------------------------------------------------------
+#: دامنهٔ «سلول»: عدد (لاتین یا فارسی) یا یک حرف/متغیرِ تک‌حرفی
+_NUM_CELL = r"[\-−+]?\s*(?:[0-9۰-۹]+(?:\.[0-9۰-۹]+)?|[a-zA-Z])"
+_FA_COMMA = "\u060c"
+_CELL_SEP_RE = re.compile(rf"\s*[{_FA_COMMA},]\s*")
+_FLAT_LIST_RE = re.compile(rf"{_NUM_CELL}(?:{_CELL_SEP_RE.pattern}{_NUM_CELL})+")
+#: «A=» یا «X =» یا «B_1=» که بلافاصله پیش از لیست می‌آید
+_ASSIGN_LHS_RE = re.compile(r"([A-Za-z][A-Za-z0-9_]{0,4})\s*=\s*$")
+
+
+def _matrix_dims(n: int) -> list[tuple[int, int]]:
+    """همهٔ ابعادِ ممکنِ ``r×c`` برای ``r*c == n``."""
+    return [(r, n // r) for r in range(1, n + 1) if n % r == 0]
+
+
+def _guess_matrix_dims(n: int, prefer_column: bool) -> tuple[int, int]:
+    """حدسِ ابعادِ ماتریس از تعدادِ سلول‌ها.
+
+    اولویت: مربع‌ترین شکل، سپس — اگر بردارِ ستونی محتمل‌تر است — بلندترین.
+    برای ``n=9`` نتیجه ``۳×۳`` و برای ``n=3`` نتیجه ``۳×۱`` (بردارِ ستونی) است.
+    """
+    dims = _matrix_dims(n)
+    if not dims:
+        return (1, n)
+    dims.sort(key=lambda rc: (abs(rc[0] - rc[1]), -rc[1] if prefer_column else rc[1]))
+    return dims[0]
+
+
+def repair_flat_matrices(text: str) -> str:
+    r"""ماتریسِ تخت‌شده را به ``$\begin{bmatrix}...\end{bmatrix}$`` برمی‌گرداند.
+
+    **چرا لازم است؟** وقتی مدل به‌جای
+    ``$A=\begin{bmatrix} 1 & 0 & 1 \\ ... \end{bmatrix}$``
+    رشتهٔ ``A=۱،۰،۱،۱،۰،۰،۱،۰،۱`` تولید می‌کند، هیچ نشانی از ماتریس در متن
+    باقی نمی‌ماند؛ در نتیجه نه matplotlib چیزی برای رندر دارد و نه ``final_pdf_cleanup``
+    کاری جز رها کردنِ همان لیستِ ویرگول‌دار می‌تواند بکند — و دانش‌آموز
+    ``A=۱،۰،۱،۱،۰،۰،۱،۰،۱`` می‌بیند.
+
+    **شرطِ امنیت:** فقط لیست‌هایی بازسازی می‌شوند که:
+
+    1. طولشان عددِ مرکب باشد (۳، ۴، ۶، ۸، ۹، ۱۲، ۱۶ …) — نه ۲، ۵، ۷، ۱۰، ۱۱
+       که ابعادِ ماتریسیِ معقولی ندارند،
+    2. و بلافاصله پیش از آن‌ها یک انتسابِ ``حرف =`` باشد (``A=``، ``X=``، ``B_1=``).
+
+    با این دو شرط، عبارت‌هایی مثل «میانگینِ ۴، ۷ و ۱۰» یا «۲، ۴، ۶، ۸» دست‌نخورده
+    می‌مانند.
+    """
+    if not text or not isinstance(text, str):
+        return text
+    # اگر متن از قبل ماتریسِ واقعی دارد، دست نزن (ممکن است چند ماتریس باشد؛
+    # بازسازی فقط برای لیست‌های تخت است و با بودنِ bmatrix هم بی‌خطر است)
+    out = []
+    pos = 0
+    for m in _FLAT_LIST_RE.finditer(text):
+        cells = [c.strip() for c in _CELL_SEP_RE.split(m.group(0)) if c.strip()]
+        n = len(cells)
+        # طول‌های ۱ و ۲ هرگز ماتریس نیستند (۲ فقط ۱×۲/۲×۱ دارد و شبیه «۴، ۷» است).
+        # از ۳ به بالا با انتسابِ «حرف =» ماتریس در نظر گرفته می‌شود؛ بردارِ ستونی
+        # (۳×۱ ، ۴×۱ ، ۵×۱) در کتاب‌های درسی رایج است.
+        if n < 3 or len(_matrix_dims(n)) < 2:
+            continue
+        lhs = _ASSIGN_LHS_RE.search(text[: m.start()])
+        if not lhs:
+            continue
+        # ابعاد: مربع‌ترین شکل اگر موجود باشد، وگرنه بردارِ ستونی (n×۱).
+        # ماتریسِ سطریِ ۱×n در کتاب‌های درسی معنا ندارد و شبیه «۴، ۷، ۱۰» است.
+        dims = _matrix_dims(n)
+        cols = n
+        for r, c in sorted(dims, key=lambda rc: (abs(rc[0] - rc[1]), rc[1])):
+            if r >= 2:
+                cols = c
+                rows = r
+                break
+        else:
+            cols, rows = n, 1
+        if rows < 2:
+            continue
+        grid = [cells[r * cols : (r + 1) * cols] for r in range(rows)]
+        body = r" \\ ".join(" & ".join(row) for row in grid)
+        head = text[pos : m.start()]
+        # «حرف =»ی که در انتهای متنِ قبلی نشسته، به درون فرمول منتقل می‌شود.
+        # (offset نسبت به ابتدای head حساب می‌شود، وگرنه «B=» دوبار چاپ می‌شد)
+        rel = lhs.start() - pos
+        if 0 <= rel <= len(head):
+            head = head[:rel]
+        out.append(head)
+        out.append("$" + lhs.group(1) + r"=\begin{bmatrix}" + body + r"\end{bmatrix}$")
+        pos = m.end()
+    if not out:
+        return text
+    out.append(text[pos:])
+    return "".join(out)
+
+
 def restore_latex_commands(obj: Any) -> Any:
     """پس‌پردازندهٔ امن پس از `json.loads` برای تضمین سلامت دستورات LaTeX و علامت‌های `$`."""
     if isinstance(obj, str):
@@ -87,6 +183,9 @@ def restore_latex_commands(obj: Any) -> Any:
 
         # اطمینان از وجود آکولاد دور توان‌های منفی مانند ^-1 یا ^-۱
         s = re.sub(r"\^\s*(-[0-9۰-۹]+)", r"^{\1}", s)
+
+        # ماتریس‌هایی را که مدل به لیستِ ویرگول‌دار تخت کرده است بازسازی کن
+        s = repair_flat_matrices(s)
         return s
     if isinstance(obj, list):
         return [restore_latex_commands(item) for item in obj]
