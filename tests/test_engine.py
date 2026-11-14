@@ -1121,3 +1121,22 @@ def test_attached_digit_becomes_power():
     # نباید چیزی که توان نیست را خراب کند
     assert normalize_latex("x^2") == "x^2"
     assert normalize_latex("۲x") == "۲x"
+
+
+def test_unicode_minus_and_superscript_survive():
+    r"""مدل‌های زبانی شکل‌های یونیکدِ عملگر را هم تولید می‌کنند.
+
+    ``U+2212`` (منفیِ ریاضی) و ``²`` (بالانویسِ U+00B2) باید مثلِ ``-`` و
+    ``^2`` رفتار کنند. وقتی در ``_MATH_CHARS`` نبودند عبارت از سرِ همان کاراکتر
+    می‌شکست و بقیهٔ عبارت متنِ تخت می‌شد — دقیقاً همان چیزی که کاربر دید.
+    """
+    from reports.pdf_text_flow import has_math, split_math_segments
+
+    for expr in ("(A+B)۲\u2212A۲\u2212B۲", "(A+B)²-A²-B²", "۳x\u2212۲y"):
+        sent = f"اگر {expr} باشد، حاصل کدام است؟"
+        assert has_math(sent), expr
+        maths = [s[1] for s in split_math_segments(sent) if s[0] == "math"]
+        assert expr in maths, (expr, maths)
+
+    # و دوباره: خط تیرهٔ فارسی نباید ریاضی شود
+    assert not has_math("سود-زیان این معامله چقدر است؟")
