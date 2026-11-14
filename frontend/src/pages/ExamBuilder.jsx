@@ -643,15 +643,22 @@ export default function ExamBuilder({ embedded = false }) {
       setPdfUrl(URL.createObjectURL(data))
       setNotice('✓ PDF نهایی ساخته شد؛ تگ منابع در آن چاپ نشده است.')
     } catch (error) {
+      /* درخواست با responseType:'blob' است، پس بدنهٔ خطا هم Blob می‌آید.
+         friendlyError برای Blob چیزی نمی‌فهمد و به پیام عمومی می‌افتد؛ پس
+         ابتدا Blob را باز می‌کنیم. detail می‌تواند رشته باشد (اعتبارسنجی
+         FastAPI) یا شیءی با message و reason (خطای موتور PDF) — هر دو
+         خوانده می‌شوند تا علت واقعی به کاربر برسد، نه «خطایی رخ داد». */
       let message = friendlyError(error)
       try {
         const blob = error?.response?.data
         if (blob instanceof Blob) {
           const parsed = JSON.parse(await blob.text())
-          if (typeof parsed?.detail === 'string') message = parsed.detail
+          const detail = parsed?.detail
+          if (typeof detail === 'string') message = detail
+          else if (typeof detail?.message === 'string') message = detail.message
         }
       } catch {
-        /* همان پیام عمومی نمایش داده می‌شود */
+        /* بدنهٔ خطا JSON نبود؛ همان پیام عمومی می‌ماند */
       }
       setNotice(`⚠️ ${message}`)
     } finally {
