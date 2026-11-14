@@ -113,9 +113,41 @@ def _wrap_bare_math(chunk: str) -> List[Segment]:
     return out
 
 
+#: کاراکترهای کنترلی‌ای که ``json.loads`` روی «\\b» و «\\f» تولید می‌کند.
+#: اگر احیا نشوند، ``\begin`` به ``egin`` و ``\frac`` به ``rac`` تبدیل می‌شود.
+_CONTROL_REPAIRS = (
+    ("\x08", "\\b"),
+    ("\x0c", "\\f"),
+    ("\x07", "\\a"),
+    ("\x0b", "\\v"),
+    ("\r", " "),
+    ("\t", " "),
+)
+
+
+def repair_control_chars(text: str) -> str:
+    r"""بازگرداندن بک‌اسلش‌هایی که ``json.loads`` خورده است.
+
+    JSON یک escape معتبر برای ``\b`` و ``\f`` دارد؛ بنابراین رشتهٔ ``"\\begin"``
+    به ``"\x08egin"`` و ``"\\frac"`` به ``"\x0crac"`` تبدیل می‌شود. با بازگرداندن
+    این دو کاراکتر، دستور اصلی دقیقاً احیا می‌شود (``\x08`` → ``\\b`` و ``\x0c`` → ``\\f``).
+    """
+    if not text:
+        return ""
+    out = str(text)
+    if "\x08" in out:
+        out = out.replace("\x08", "\\b")
+    if "\x0c" in out:
+        out = out.replace("\x0c", "\\f")
+    for bad, good in (("\x07", "\\a"), ("\x0b", "\\v"), ("\r", " "), ("\t", " ")):
+        if bad in out:
+            out = out.replace(bad, good)
+    return out
+
+
 def split_math_segments(text: Any) -> List[Segment]:
     """متن را به قطعه‌های ``("text", s)`` و ``("math", latex, display)`` می‌شکند."""
-    raw = str(text or "")
+    raw = repair_control_chars(str(text or ""))
     if not raw.strip():
         return []
 

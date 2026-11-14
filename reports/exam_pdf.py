@@ -156,14 +156,29 @@ def final_pdf_cleanup(text: Any) -> str:
     # احیای کاراکترهای کنترلی‌ای که JSON خورده است (\b در \begin و \f در \frac)
     s = s.replace("\x08", r"\b").replace("\x0c", r"\f")
 
-    # 1. ماتریس‌ها: سلول‌ها با « | » و « , » تا ساختار دوبعدی خوانا بماند
+    # 1. ماتریس‌ها: در حالت fallback تنها سلول‌ها را با «،» جدا می‌کنیم.
+    #    هرگز رشتهٔ براکتیِ «[ ۲ , ۱ | -۱ , ۰ ]» ساخته نمی‌شود؛ چون مسیر اصلی
+    #    همیشه ماتریس را با matplotlib به تصویر واقعی تبدیل می‌کند و این تابع
+    #    فقط آخرین سنگر برای متنِ بدونِ فرمول است.
     def matrix_sub(m: re.Match) -> str:
-        content = m.group(1).replace(r"\\", " | ").replace("&", " , ")
-        return f"[ {content} ]"
+        rows = [r.strip() for r in re.split(r"\\\\|\\cr\b|\r?\n", m.group(1)) if r.strip()]
+        cells = []
+        for row in rows:
+            cells.extend(c.strip() for c in re.split(r"(?<!\\)&", row) if c.strip())
+        return " ، ".join(cells)
 
     s = re.sub(
-        r"\\?begin\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}(.*?)\\?end\s*\{(?:[bpvBV]?matrix|array|cases|aligned)\}",
+        r"\\?begin\s*\{\s*(?:small|big|Big|bigg|Bigg)?[bpvBVs]?matrix\*?\s*\}"
+        r"(.*?)"
+        r"\\?end\s*\{\s*(?:small|big|Big|bigg|Bigg)?[bpvBVs]?matrix\*?\s*\}",
         matrix_sub,
+        s,
+        flags=re.DOTALL,
+    )
+    # محیط‌های array/cases هم فقط محتوایشان نگه داشته می‌شود
+    s = re.sub(
+        r"\\?begin\s*\{(?:array|cases|aligned)\}\{?[clr|]*\}?(.*?)\\?end\s*\{(?:array|cases|aligned)\}",
+        lambda m: " ، ".join(c for c in re.split(r"&|\\\\", m.group(1)) if c.strip()),
         s,
         flags=re.DOTALL,
     )

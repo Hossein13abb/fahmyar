@@ -48,10 +48,27 @@ _EN_DIGITS = "0123456789"
 
 # محیط‌های «ماتریس‌گونه» که mathtext از آن‌ها پشتیبانی نمی‌کند
 _MATRIX_ENV_RE = re.compile(
-    r"\\+begin\s*\{([bpvBV]?matrix|array|cases|aligned|gathered|split)\*?\}"
+    r"\\+begin\s*\{\s*((?:small|big|Big|bigg|Bigg)?[bpvBVs]?matrix|array|cases|aligned|gathered|split)\*?\s*\}"
     r"([\s\S]*?)"
-    r"\\+end\s*\{([bpvBV]?matrix|array|cases|aligned|gathered|split)\*?\}"
+    r"\\+end\s*\{\s*((?:small|big|Big|bigg|Bigg)?[bpvBVs]?matrix|array|cases|aligned|gathered|split)\*?\s*\}"
 )
+
+#: جداکننده‌های سطر در محیط‌های ماتریسی — هر شکلی که JSON/مدل تولید کند
+_ROW_SEP_RE = re.compile(r"\\\\|\\cr\b|\\newline\b|\r?\n")
+
+
+def _split_matrix_rows(body: str) -> list:
+    r"""بدنهٔ ماتریس را به سطرها می‌شکند.
+
+    JSON ممکن است جداکنندهٔ سطر (``\\`` در LaTeX) را به یک بک‌اسلش، ``\cr``،
+    یا خط جدید تبدیل کرده باشد؛ همهٔ این‌ها پذیرفته می‌شوند تا ماتریسِ ۲×۲
+    به‌اشتباه در یک سطر ادغام نشود.
+    """
+    text = body
+    # حذف مشخصهٔ ستون‌های array مثل {cc}
+    text = re.sub(r"^\s*\{[clr|]{1,}\}", "", text)
+    rows = [r.strip() for r in _ROW_SEP_RE.split(text)]
+    return [r for r in rows if r.strip()]
 
 # دستورات پشتیبانی‌نشده در mathtext → معادل یا حذف
 # (کلید: الگوی regex، مقدار: جایگزین)
@@ -107,7 +124,16 @@ class RenderedMath:
 # ---------------------------------------------------------------------------
 def normalize_latex(latex_str: Any) -> str:
     """عبارت LaTeX را برای mathtext آماده می‌کند (بدون ``$``)."""
-    raw = str(latex_str or "").replace("\x08", r"\b").replace("\x0c", r"\f").strip()
+    raw = (
+        str(latex_str or "")
+        .replace("\x08", "\\b")
+        .replace("\x0c", "\\f")
+        .replace("\x07", "\\a")
+        .replace("\x0b", "\\v")
+        .replace("\r", " ")
+        .replace("\t", " ")
+        .strip()
+    )
     expr = raw.strip()
     while expr.startswith("$$") and expr.endswith("$$") and len(expr) > 4:
         expr = expr[2:-2].strip()
@@ -145,8 +171,7 @@ def _to_latin_digits(text: str) -> str:
 def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: str) -> Optional[RenderedMath]:
     if not _HAS_MATPLOTLIB or plt is None:
         return None
-    body_clean = re.sub(r"\{[clr]\}", "", body)  # ستون‌های array
-    rows = [r.strip() for r in re.split(r"\\\\", body_clean) if r.strip()]
+    rows = _split_matrix_rows(body)
     if not rows:
         return None
     grid = [[c.strip() for c in re.split(r"(?<!\\)&", r)] for r in rows]
@@ -176,8 +201,13 @@ def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: s
                 except Exception:
                     ax.text(ci + 0.5, y, cell_tex, size=font_size, ha="center", va="center", color=color)
         # کمانه‌ها / براکت‌ها
-        bracket = "[" if "bmatrix" in env else ("(" if "pmatrix" in env else ("|" if "vmatrix" in env else ""))
-        if "cases" in env:
+        env_l = (env or "").lower()
+        bracket = (
+            "["
+            if "bmatrix" in env_l
+            else ("(" if "pmatrix" in env_l else ("|" if "vmatrix" in env_l else ""))
+        )
+        if "cases" in (env or "").lower():
             bracket = "{"
         bar = 0.10
         if bracket in "[(":

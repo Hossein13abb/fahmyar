@@ -365,9 +365,12 @@ def test_clean_latex_for_pdf_and_svg_pdf_export(seeded):
         r"دترمینان $$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$$ و $\frac{a}{b} \times ۲$ چیست؟"
     )
     assert "$" not in cleaned
-    assert "[ " in cleaned and " ]" in cleaned
-    assert " | " in cleaned
-    assert ", " in cleaned
+    # ماتریس هرگز به رشتهٔ براکتیِ «[ ۲ , ۱ | -۱ , ۰ ]» تبدیل نمی‌شود
+    assert "[ " not in cleaned
+    assert " | " not in cleaned
+    assert "," not in cleaned
+    for cell in ("۱", "۲", "۳", "۴"):
+        assert cell in cleaned
     assert "a/b" in cleaned            # کسر به «a/b» ساده می‌شود، نه «a به روی b»
     assert "×" in cleaned              # \times به نماد × تبدیل می‌شود
     # هیچ ترجمهٔ کلمه‌ای انجام نمی‌شود
@@ -474,7 +477,10 @@ def test_latex_to_persian_text_converter():
     assert "۳۰" in out
     assert "x" in out
     assert "۱/۲" in out
-    assert "[ ۱ , ۲ | ۳ , ۴ ]" in out
+    # ماتریس به رشتهٔ براکتی تبدیل نمی‌شود (فقط سلول‌ها با «،» جدا می‌شوند)
+    assert "[ " not in out
+    assert " | " not in out
+    assert "۱ ، ۲ ، ۳ ، ۴" in out
     assert "$" not in out
     assert "\\" not in out
     assert "vec" not in out
@@ -695,3 +701,77 @@ def test_ai_prompt_requires_persian_digits_inside_math():
     )
     assert "PERSIAN DIGITS INSIDE MATH (VISUAL RENDERER REQUIREMENT)" in prompt
     assert "۵" in prompt and "۱۴" in prompt
+
+
+def test_matrix_row_separator_variants_all_render():
+    """جداکنندهٔ سطرِ ماتریس ممکن است \\\\، \\cr، یا خط جدید باشد — هیچ‌کدام نباید
+    ماتریس ۲×۲ را به یک سطر ادغام کند یا به رشتهٔ براکتی falback بیندازد."""
+    from reports.math_renderer import _MATRIX_ENV_RE, _split_matrix_rows, render_math_png
+
+    cases = [
+        r"\begin{bmatrix} 2 & 1 \\ -1 & 0 \end{bmatrix}",   # استاندارد
+        r"\begin{bmatrix} 2 & 1 \cr -1 & 0 \end{bmatrix}",  # \cr
+        "\\begin{bmatrix} 2 & 1 \n -1 & 0 \\end{bmatrix}",  # خط جدید
+        r"\begin{bmatrix}{cc} 2 & 1 \\ -1 & 0 \end{bmatrix}",  # مشخصهٔ ستون
+        r"\begin{smallmatrix} 2 & 1 \\ -1 & 0 \end{smallmatrix}",
+        r"\begin{Bmatrix} 2 & 1 \\ -1 & 0 \end{Bmatrix}",
+        r"\begin{pmatrix} 2 & 1 \\ -1 & 0 \end{pmatrix}",
+        r"\begin{bmatrix} ۲ & ۱ \\ -۱ & ۰ \end{bmatrix}",   # ارقام فارسی
+    ]
+    for latex in cases:
+        m = _MATRIX_ENV_RE.search(latex)
+        assert m is not None, latex
+        assert len(_split_matrix_rows(m.group(2))) == 2, latex
+        img = render_math_png(latex, font_size=10.5)
+        assert img is not None, latex
+        # ماتریس ۲×۲ باید بلندتر از یک سطرِ تخت باشد
+        assert img.height > 30, f"{latex} → {img.width}x{img.height} (rows collapsed)"
+
+    # ۳×۳
+    m3 = _MATRIX_ENV_RE.search(r"\begin{bmatrix} 1 & 0 & 0 \\ 0 & 1 & 0 \\ 0 & 0 & 1 \end{bmatrix}")
+    assert len(_split_matrix_rows(m3.group(2))) == 3
+
+
+def test_fallback_never_emits_bracket_matrix_string():
+    """حتی اگر رندر تصویری شکست بخورد، خروجی متنی نباید «[ ۲ , ۱ | -۱ , ۰ ]» باشد."""
+    from reports.exam_pdf import final_pdf_cleanup
+
+    out = final_pdf_cleanup(r"دترمینان $\begin{bmatrix} 2 & 1 \\ -1 & 0 \end{bmatrix}$ کدام است؟")
+    assert "[ " not in out
+    assert " | " not in out
+    assert "," not in out          # کامای لاتین
+    assert "بmatrix" not in out
+    assert "begin" not in out
+    for cell in ("۲", "۱", "۰"):
+        assert cell in out
+
+
+def test_json_control_chars_in_latex_are_recovered():
+    """json.loads رشتهٔ "\\begin" را به \\x08egin و "\\frac" را به \\x0crac تبدیل می‌کند."""
+    from reports.pdf_text_flow import repair_control_chars, split_math_segments
+
+    assert "\\begin" in repair_control_chars("$\x08egin{bmatrix} ۱ \\end{bmatrix}$")
+    assert "\\frac" in repair_control_chars("$\x0crac{۱}{۲}$")
+
+    segs = [s for s in split_math_segments("حاصل $\x0crac{۱}{۲}+\\sqrt{۷}$") if s[0] == "math"]
+    assert segs and "\\frac" in segs[0][1]
+
+    # ورودی سالم نباید دستکاری شود
+    healthy = r"$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$"
+    assert repair_control_chars(healthy) == healthy
+
+
+def test_progress_percent_curve_is_monotonic_and_bounded():
+    """شمارندهٔ پیشرفت: از ۵٪ تا سقف ۹۵٪، بدون پرش به ۱۰۰٪ پیش از پایان کار."""
+    DURATION_MS = 40_000
+
+    def at(ms: float) -> int:
+        ratio = min(ms / DURATION_MS, 1)
+        eased = 1 - (1 - ratio) ** 2.2
+        return min(95, round(5 + eased * 90))
+
+    assert at(0) == 5
+    assert at(DURATION_MS) == 95
+    assert at(120_000) == 95           # هرگز به ۱۰۰ نمی‌رسد مگر پاسخ واقعی برسد
+    values = [at(ms) for ms in range(0, 60_000, 180)]
+    assert all(b >= a for a, b in zip(values, values[1:])), "should be monotonic"

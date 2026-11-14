@@ -325,12 +325,6 @@ const DIFFICULTY_OPTIONS = [
 ]
 const DIFFICULTY_LABELS = Object.fromEntries(DIFFICULTY_OPTIONS.map((d) => [d.id, d.label]))
 
-const GEN_STEPS = [
-  'در حال تولید، اعتبارسنجی و رسم اشکال هندسی... (این فرآیند ممکن است ۱ تا ۲ دقیقه زمان ببرد)',
-  'در حال طراحی فرمول‌های ریاضی (LaTeX) و دام‌های آموزشی هر سؤال…',
-  'در حال چینش دفترچه و کلید پاسخنامهٔ استاندارد…',
-]
-
 const DRAFT_KEY = 'fahmyar_exam_drafts'
 
 const fmtFa = (n) => toFarsiNumber(Number(n).toLocaleString('fa-IR'))
@@ -391,7 +385,7 @@ export default function ExamBuilder({ embedded = false }) {
   const [questions, setQuestions] = useState([])
   const [generating, setGenerating] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const [genStep, setGenStep] = useState(0)
+  const [progressPercent, setProgressPercent] = useState(0)
   const [pdfUrl, setPdfUrl] = useState(null)
   const [notice, setNotice] = useState('')
   const [drafts, setDrafts] = useState(loadDrafts)             // پیش‌نویس‌های قدیمی (فقط مشاهده/حذف)
@@ -488,9 +482,19 @@ export default function ExamBuilder({ embedded = false }) {
   const allSelectedSubTopics = subjectConfigsPayload.flatMap((c) => c.subTopics)
   const totalCount = subjectConfigsPayload.reduce((sum, c) => sum + c.count, 0)
 
+  // شمارندهٔ درصدیِ پیشرفت: از ۵٪ آرام تا ۹۵٪ در حدود ۴۰ ثانیه
   useEffect(() => {
     if (!generating) return undefined
-    const t = window.setInterval(() => setGenStep((s) => (s + 1) % GEN_STEPS.length), 750)
+    setProgressPercent(5)
+    const startedAt = Date.now()
+    const DURATION_MS = 40_000
+    const t = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt
+      // منحنی نرم (ease-out): سرعت اولیه بالا، سپس کندتر تا سقف ۹۵٪
+      const ratio = Math.min(elapsed / DURATION_MS, 1)
+      const eased = 1 - Math.pow(1 - ratio, 2.2)
+      setProgressPercent(Math.min(95, Math.round(5 + eased * 90)))
+    }, 180)
     return () => window.clearInterval(t)
   }, [generating])
 
@@ -549,8 +553,10 @@ export default function ExamBuilder({ embedded = false }) {
       const list = Array.isArray(data?.questions) ? data.questions : []
       if (list.length === 0) {
         setNotice('⚠️ هوش مصنوعی سؤالِ معتبری برنگرداند؛ دوباره تلاش کنید.')
+        setProgressPercent(0)
         return
       }
+      setProgressPercent(100)
       setQuestions(list)
       setStep('preview')
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -562,6 +568,7 @@ export default function ExamBuilder({ embedded = false }) {
         /* همان پیام عمومی نمایش داده می‌شود */
       }
       setNotice(`⚠️ ${message}`)
+      setProgressPercent(0)
     } finally {
       setGenerating(false)
     }
@@ -1342,9 +1349,22 @@ export default function ExamBuilder({ embedded = false }) {
             <h3 className="mt-5 text-base font-black leading-7 text-slate-800">
               در حال تولید، اعتبارسنجی و رسم اشکال هندسی... (این فرآیند ممکن است ۱ تا ۲ دقیقه زمان ببرد)
             </h3>
-            <p className="mt-1.5 min-h-6 text-[12px] font-bold leading-6 text-emerald-700">{GEN_STEPS[genStep]}</p>
-            <div className="mt-5 h-2.5 w-full overflow-hidden rounded-full bg-emerald-100">
-              <div className="h-full w-1/3 animate-[genbar_1.15s_linear_infinite] rounded-full bg-gradient-to-l from-emerald-500 to-teal-500" />
+            <div className="mt-4 flex items-baseline justify-center gap-1" aria-live="polite">
+              <span className="text-4xl font-black tabular-nums text-emerald-700">{toFarsiNumber(progressPercent)}</span>
+              <span className="text-xl font-black text-emerald-700">٪</span>
+            </div>
+            <div
+              className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-emerald-100"
+              role="progressbar"
+              aria-valuenow={progressPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="درصد پیشرفت تولید آزمون"
+            >
+              <div
+                className="h-full rounded-full bg-gradient-to-l from-emerald-500 to-teal-500 transition-[width] duration-200 ease-out"
+                style={{ width: `${progressPercent}%` }}
+              />
             </div>
             <p className="mt-3 text-[11px] font-medium text-slate-500">لطفاً صفحه را نبندید؛ سامانه در حال طراحی دقیق سؤالات و اشکال است.</p>
           </div>
