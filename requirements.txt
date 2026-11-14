@@ -7,16 +7,13 @@ google-generativeai>=0.5.4
 python-dotenv>=1.0
 PyJWT>=2.8
 # پایگاه‌داده — SQLite (داخل پایتون) به‌همراه SQLAlchemy به‌عنوان ORM
-# PDF فارسی آزمون (دفترچهٔ سؤالات + پاسخنامهٔ تشریحی) — ReportLab (Pure Python؛ بدون DLL/GTK — مناسب ویندوز)
-# چینش راست‌به‌چپ و اتصال حروف فارسی با arabic-reshaper و python-bidi انجام می‌شود
+# PDF — تنها بسته‌بندیِ تصویرهای ضبط‌شده توسط Chromium؛ هیچ متنی در ReportLab چیده نمی‌شود
 reportlab>=4
 arabic-reshaper>=3
 python-bidi>=0.4
 jdatetime>=5
+# موتور رندر PDF آزمون: Chromium واقعی که صفحهٔ چاپ React را عکس می‌گیرد
+playwright>=1.40
 # تست
 pytest>=8.0
 httpx>=0.27
-svglib>=1.5.1
-# رندر واقعی فرمول‌های ریاضی (کسر/رادیکال/ماتریس) به تصویر PNG برای ReportLab
-matplotlib>=3.8.0
-pillow>=10.0

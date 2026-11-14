@@ -1,0 +1,395 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   print.css — استایلِ انحصاریِ خروجی چاپ/PDF.
+
+   این فایل *فقط* در نقطهٔ ورودِ print بارگذاری می‌شود (print.html)، نه در اپ
+   اصلی. پس هر تغییری در آن، پیش‌نمایش کاربر را دست نمی‌زند و بالعکس. تفاوت‌های
+   دیداریِ PDF پشت همین حالت می‌ماند، همان‌طور که خواسته شده است.
+
+   نکته: MathText کلاسِ `font-vazirmatn` را روی خودش می‌گذارد و Tailwind در
+   باندل چاپ حاضر نیست، پس خانوادهٔ فونت اینجا صریحاً تعریف می‌شود.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/print-fonts/Vazirmatn-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/print-fonts/Vazirmatn-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/print-fonts/Vazirmatn-ExtraBold.ttf') format('truetype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: block;
+}
+
+@page {
+  size: A4;
+  margin: 0; /* حاشیه در خودِ .page اعمال می‌شود */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: 'Vazirmatn', Tahoma, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.8;
+  direction: rtl;
+  text-align: right;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+/* MathText یک div با کلاس font-vazirmatn است؛ اینجا معنی پیدا می‌کند */
+.font-vazirmatn {
+  font-family: 'Vazirmatn', Tahoma, sans-serif;
+}
+
+/* ── برگهٔ A4 ────────────────────────────────────────────────────────────
+   هر .page دقیقاً یک برگ A4 است. صفحه‌بندی را اسکریپت با اندازه‌گیری واقعیِ
+   DOM انجام می‌دهد، پس هیچ ارتفاعی در CSS هاردکد نمی‌شود. */
+.page {
+  width: 794px;
+  min-height: 1123px;
+  padding: 14mm;
+  margin: 0 auto;
+  background: #ffffff;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: visible; /* اگر صفحه‌بند اشتباه کند، بزرگ می‌شود و کوچک نمی‌ماند */
+}
+
+.page-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.page-body > * {
+  margin-top: 0;
+}
+
+/* سطحِ اندازه‌گیری: هم‌عرضِ ناحیهٔ محتوا، اما بیرون از کادر دید */
+#flow {
+  position: absolute;
+  top: 0;
+  left: -20000px;
+  width: 680px; /* 794 - 2×14mm */
+  visibility: hidden;
+  pointer-events: none;
+}
+#flow > * {
+  margin-top: 0;
+}
+
+/* ── سرصفحه ───────────────────────────────────────────────────────────── */
+.print-masthead {
+  text-align: center;
+  margin-bottom: 4.5mm;
+}
+.print-school {
+  font-size: 13.5pt;
+  font-weight: 800;
+  color: #1f6a55;
+  letter-spacing: -0.2px;
+}
+.print-school-sub {
+  font-size: 8.5pt;
+  color: #64748b;
+  margin-top: 0.8mm;
+}
+
+.print-title {
+  margin: 3.5mm 0;
+  border: 1.6pt solid #1f6a55;
+  border-radius: 14px;
+  padding: 3mm 4mm;
+  text-align: center;
+  font-size: 15pt;
+  font-weight: 800;
+  color: #0d271f;
+  background: #effaf4;
+  line-height: 1.6;
+}
+
+/* ── جدول مشخصات ──────────────────────────────────────────────────────── */
+.print-meta {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+  margin-bottom: 3.5mm;
+}
+.print-meta td {
+  border: 0.6pt solid #b0e6cf;
+  padding: 1.3mm 2.4mm;
+  line-height: 1.6;
+}
+.print-meta-k {
+  background: #effaf4;
+  font-weight: 700;
+  color: #1f5546;
+  width: 27mm;
+  white-space: nowrap;
+}
+.print-meta-v {
+  color: #0f172a;
+}
+
+/* ── دستورالعمل ───────────────────────────────────────────────────────── */
+.print-instructions {
+  border: 0.9pt solid #7ed4b5;
+  background: #f7fdfa;
+  border-radius: 8px;
+  padding: 2.2mm 3.2mm;
+  font-size: 9pt;
+  line-height: 1.8;
+  margin-bottom: 4mm;
+}
+.print-instructions-h {
+  font-weight: 800;
+  color: #1f5546;
+  margin-bottom: 1mm;
+}
+.print-instructions ul {
+  margin: 0;
+  padding-inline-start: 5mm;
+}
+.print-instructions li {
+  margin: 0.3mm 0;
+}
+
+/* ── بنر بخش ──────────────────────────────────────────────────────────── */
+.print-section {
+  border-right: 4pt solid #2ea37f;
+  background: #effaf4;
+  border-radius: 6px;
+  padding: 1.8mm 3mm;
+  font-size: 11pt;
+  font-weight: 800;
+  color: #1f5546;
+  margin: 2.5mm 0 3mm;
+}
+
+/* ── سؤال ─────────────────────────────────────────────────────────────── */
+.print-question {
+  margin-bottom: 4mm;
+}
+.print-q-head {
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 1.4mm 3mm;
+  font-size: 9pt;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 1mm;
+}
+.print-q-num {
+  color: #1f6a55;
+  font-weight: 800;
+}
+.print-dot {
+  color: #94a3b8;
+  margin: 0 1.2mm;
+}
+.print-q-body {
+  padding: 0.5mm 1mm 1mm;
+  font-size: 10.5pt;
+  line-height: 2.05;
+  color: #0f172a;
+}
+
+/* MathText داخل بلوکِ سؤال باید عرض کامل بگیرد، نه inline-blockِ پیش‌فرض */
+.print-q-body .font-vazirmatn,
+.print-key-q .font-vazirmatn,
+.print-key-expl .font-vazirmatn {
+  display: block;
+  width: 100%;
+}
+/* در گزینه‌ها هم بلوک باشد تا در ستونِ خودش بشکند */
+.print-option-value .font-vazirmatn {
+  display: block;
+  width: 100%;
+}
+
+/* پاراگراف‌های مارک‌داون */
+.math-text-container,
+.math-text-container p {
+  /* جهتِ هر بلوک از نخستین حرفِ قویِ خودش تعیین شود. بدون این، جمله‌ای که با
+     فرمول یا عدد تمام می‌شود نقطه‌اش را به ابتدای خط می‌برد («.دترمینان…»). */
+  unicode-bidi: plaintext;
+}
+.math-text-container p {
+  margin: 0;
+}
+.math-text-container p + p {
+  margin-top: 1.5mm;
+}
+
+/* ── گزینه‌ها ─────────────────────────────────────────────────────────── */
+.print-options {
+  list-style: none;
+  margin: 0;
+  padding: 0.5mm 1mm 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.6mm 2mm;
+}
+.print-option {
+  font-size: 9.5pt;
+  line-height: 1.75;
+  color: #334155;
+  display: flex;
+  gap: 1.2mm;
+  align-items: flex-start;
+}
+.print-option-letter {
+  font-weight: 800;
+  color: #1f6a55;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.print-option-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── شکل ──────────────────────────────────────────────────────────────── */
+.print-diagram {
+  margin: 2mm 0 1mm;
+  text-align: center;
+  padding: 0;
+}
+.print-diagram-inner svg,
+.print-diagram-inner img {
+  max-width: 100%;
+  max-height: 62mm;
+  height: auto;
+  width: auto;
+}
+
+/* ── پاسخنامه ─────────────────────────────────────────────────────────── */
+.print-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+  margin-bottom: 3mm;
+}
+.print-grid th {
+  background: #1f6a55;
+  color: #fff;
+  font-weight: 700;
+  padding: 1.4mm 1mm;
+  border: 0.6pt solid #1f5546;
+}
+.print-grid td {
+  border: 0.6pt solid #cbd5e1;
+  height: 7mm;
+  text-align: center;
+  vertical-align: middle;
+}
+.print-grid-n {
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+/* ── کلید ─────────────────────────────────────────────────────────────── */
+.print-secret {
+  border: 0.9pt solid #dc2626;
+  background: #fef2f2;
+  color: #991b1b;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 9.5pt;
+  font-weight: 800;
+  padding: 2mm;
+  margin-bottom: 3.5mm;
+}
+.print-key-item {
+  margin-bottom: 3.2mm;
+  padding-bottom: 2.2mm;
+  border-bottom: 0.5pt dashed #e2e8f0;
+}
+.print-key-head {
+  font-size: 9pt;
+  font-weight: 700;
+  color: #334155;
+  background: #f1f5f9;
+  border-radius: 5px;
+  padding: 1.1mm 2.5mm;
+  margin-bottom: 1.2mm;
+}
+.print-key-answer {
+  font-size: 10.5pt;
+  font-weight: 800;
+  color: #1f5546;
+  margin-bottom: 0.8mm;
+}
+.print-key-q {
+  font-size: 8.6pt;
+  color: #64748b;
+  line-height: 1.7;
+  margin-bottom: 0.8mm;
+}
+.print-key-expl {
+  font-size: 9pt;
+  color: #1f2937;
+  line-height: 1.85;
+}
+
+/* ── پاورقی ───────────────────────────────────────────────────────────── */
+.print-footer {
+  margin-top: auto;
+  padding-top: 2.5mm;
+  border-top: 0.5pt solid #e2e8f0;
+  font-size: 7.5pt;
+  color: #94a3b8;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.print-footer-pg {
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* ── KaTeX ────────────────────────────────────────────────────────────── */
+/* جهتِ هر فرمول صریحاً LTR و ایزوله است. KaTeX هیچ‌جا direction تعیین نمی‌کند،
+   پس داخل سندِ RTL از آن ارث می‌برد و الگوریتم دوجهته ترتیبِ نمادها را می‌چرخاند:
+   «−۴» به‌صورت «۴−» و بازهٔ «[۲,۵]» به‌صورت «[۵,۲]» چاپ می‌شد. فاصله و ترتیب
+   ریاضی هرگز نباید تابعِ جهتِ متنِ اطراف باشد. */
+.katex {
+  white-space: nowrap;
+  direction: ltr;
+  unicode-bidi: isolate;
+  /* inline-block ارتفاعِ واقعیِ فرمول (کسر، رادیکال، ماتریس، aligned) را در
+     جعبهٔ خط می‌شمارد. با inline ساده، فرمولِ بلندتر از خط روی سطرِ بالا و
+     پایین می‌افتد — همان چیزی که در دستگاه نامعادله دیده شد. ساختار تغییر
+     نمی‌کند، فقط جعبهٔ خط به اندازهٔ واقعی باز می‌شود. */
+  display: inline-block;
+  vertical-align: baseline;
+  max-width: 100%;
+}
+.katex-display,
+.katex-display > .katex {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.katex-display {
+  margin: 1.4mm 0;
+  overflow-x: visible;
+}

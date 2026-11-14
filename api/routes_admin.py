@@ -24,7 +24,8 @@ import json
 import re
 
 from reports.report_generator import build_report
-from reports.exam_pdf import DIFFICULTY_LABELS, build_exam_pdf
+from reports.pdf_shared import DIFFICULTY_LABELS
+from reports.pdf_browser import BrowserRenderError, build_exam_pdf_browser
 from reports.session_status import (
     COMPREHENSION_LABELS,
     comprehension_status,
@@ -600,17 +601,25 @@ def generate_exam_pdf(
             }
         )
 
-    pdf_bytes = build_exam_pdf(
-        school_name=school_name,
-        title=title,
-        questions=questions,
-        duration_minutes=payload.duration_minutes,
-        difficulty=payload.difficulty,
-        grade=payload.grade,
-        major=major,
-        subject_label=subject_label,
-        topic=topic,
-    )
+    # رندر با مرورگر: همان کامپوننت‌های پیش‌نمایش، سپس بسته‌بندیِ تصویرها به PDF.
+    # امضای فراخوانی نسبت به موتور قدیم تفاوتی ندارد.
+    try:
+        pdf_bytes = build_exam_pdf_browser(
+            school_name=school_name,
+            title=title,
+            questions=questions,
+            duration_minutes=payload.duration_minutes,
+            difficulty=payload.difficulty,
+            grade=payload.grade,
+            major=major,
+            subject_label=subject_label,
+            topic=topic,
+        )
+    except BrowserRenderError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"ساخت PDF با موتور مرورگری ممکن نشد: {exc}",
+        ) from exc
 
     filename = "fahmyar-konkur-exam.pdf"
     headers = {

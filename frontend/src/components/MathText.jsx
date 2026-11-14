@@ -17,7 +17,15 @@ export default function MathText({ content, className = '' }) {
     .replace(/\$\\\$/g, '$')
     .replace(/\\\$/g, '$')
     .replace(/\$\$\$/g, '$')
-    .replace(/\$\$/g, '$')
+
+  // `$$ … $$` تنها وقتی به ریاضیِ درون‌خطی فروکاسته می‌شود که محیطِ بلوکی
+  // نداشته باشد. محیط‌هایی مانند aligned/array/cases/matrix ارتفاعی بیش از
+  // ارتفاعِ خط دارند؛ اگر درون‌خطی رندر شوند روی سطرِ بالا و پایین می‌افتند و
+  // دستگاه معادله خوانا نیست. این تفکیک باید حفظ شود تا پیش‌نمایش و PDF
+  // یکسان دیده شوند.
+  text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, inner) =>
+    /\\begin\s*\{/.test(inner) ? match : `$${inner}$`,
+  )
 
   // Auto-add backslashes if AI generated unescaped commands like sqrt{...}, vec{...}, theta, cos^{-1}
   text = text.replace(

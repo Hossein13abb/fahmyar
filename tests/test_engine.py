@@ -281,7 +281,6 @@ def test_wrong_answer_path_builds_hypotheses(seeded):
     assert cross, "باید حداقل یک فرضیهٔ بین‌درسی ساخته شود (توان ریاضی → کولن)"
 
 
-
 def test_safe_parse_json_latex_backslashes():
     from ai.json_sanitize import extract_json_array, safe_parse_json
 
@@ -352,83 +351,6 @@ def test_exam_preview_multi_model_retry_fallback(seeded):
         router.generate = orig_gen
 
 
-
-def test_clean_latex_for_pdf_and_svg_pdf_export(seeded):
-    from main import app
-    from reports.exam_pdf import clean_latex_for_pdf, has_math
-
-    # مسیر اصلی: فرمول‌ها به تصویر واقعی رندر می‌شوند و به متن تبدیل نمی‌شوند
-    assert has_math(r"دترمینان $\frac{a}{b}$ چیست؟") is True
-
-    # مسیر fallback (فقط وقتی رندر تصویری شکست بخورد): پاک‌سازی متنیِ امن
-    cleaned = clean_latex_for_pdf(
-        r"دترمینان $$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$$ و $\frac{a}{b} \times ۲$ چیست؟"
-    )
-    assert "$" not in cleaned
-    # ماتریس هرگز به رشتهٔ براکتیِ «[ ۲ , ۱ | -۱ , ۰ ]» تبدیل نمی‌شود
-    assert "[ " not in cleaned
-    assert " | " not in cleaned
-    assert "," not in cleaned
-    for cell in ("۱", "۲", "۳", "۴"):
-        assert cell in cleaned
-    assert "a/b" in cleaned            # کسر به «a/b» ساده می‌شود، نه «a به روی b»
-    assert "×" in cleaned              # \times به نماد × تبدیل می‌شود
-    # هیچ ترجمهٔ کلمه‌ای انجام نمی‌شود
-    assert "به روی" not in cleaned
-    assert "رادیکال" not in cleaned
-
-    client = TestClient(app)
-    r = client.post("/api/auth/login", json={"username": "teacher1", "password": "teacher123"})
-    token = r.json()["token"]
-    headers = {"Authorization": f"Bearer {token}"}
-
-    valid_svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 160" width="300" height="160">'
-        '<rect x="20" y="20" width="260" height="120" fill="#f8fafc" stroke="#0d9488" stroke-width="2"/>'
-        '<circle cx="150" cy="80" r="40" fill="none" stroke="#0f172a" stroke-width="2"/>'
-        '<text x="150" y="85" font-family="Vazirmatn, Arial" font-size="14" text-anchor="middle">شعاع ۵</text>'
-        "</svg>"
-    )
-    res = client.post(
-        "/api/teacher/generate-exam-pdf",
-        json={
-            "title": "آزمون تست هندسه و حسابان",
-            "school_name": "دبیرستان نمونه",
-            "grade": "12",
-            "major": "ریاضی و فیزیک",
-            "subject_label": "هندسه ۳",
-            "topic": "ماتریس و مقاطع مخروطی",
-            "duration_minutes": 45,
-            "difficulty": "کنکوری",
-            "questions": [
-                {
-                    "id": 1,
-                    "text": r"دترمینان $$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$$ و $\frac{۱}{۲} \times ۴$ کدام است؟",
-                    "options": [r"$\frac{۱}{۲}$", "$-۲$", "$۰$", "$۴$"],
-                    "correct_answer": 2,
-                    "source_tag": "تألیفی AI",
-                    "explanation": r"حاصل $\frac{۱}{۲} \times ۴ = ۲$ و دترمینان برابر $-۲$ است.",
-                    "diagram_svg": valid_svg,
-                },
-                {
-                    "id": 2,
-                    "text": "سؤال با SVG معیوب که باید بدون خطا نادیده گرفته شود",
-                    "options": ["۱", "۲", "۳", "۴"],
-                    "correct_answer": 1,
-                    "source_tag": "قلم‌چی",
-                    "explanation": "پاسخ ۱",
-                    "diagram_svg": "<svg><broken>",
-                },
-            ],
-        },
-        headers=headers,
-    )
-    assert res.status_code == 200, res.text
-    assert res.headers["content-type"] == "application/pdf"
-    assert res.content.startswith(b"%PDF-")
-    assert len(res.content) > 5000
-
-
 def test_prompt_rules_and_swallowed_backslash_recovery():
     from ai.exam_generator import build_exam_preview_prompt
     from ai.json_sanitize import safe_parse_json
@@ -463,67 +385,6 @@ def test_prompt_rules_and_swallowed_backslash_recovery():
     assert r"\sqrt{x}" in parsed[0]["text"]
 
 
-
-def test_latex_to_persian_text_converter():
-    from reports.exam_pdf import latex_to_persian_text
-
-    raw = r"اگر زاویه بین $\vec{a}$ و $\vec{AB}$ برابر $30^\circ$ باشد و $\sqrt{x} = \frac{1}{2}$ و $$\begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix}$$ باشد:"
-    out = latex_to_persian_text(raw)
-    # برچسبِ برداری حذف می‌شود ولی هیچ ترجمهٔ کلمه‌ای («بردار»، «رادیکال»، «به روی») ساخته نمی‌شود
-    assert "بردار" not in out
-    assert "رادیکال" not in out
-    assert "به روی" not in out
-    assert "a" in out and "AB" in out
-    assert "۳۰" in out
-    assert "x" in out
-    assert "۱/۲" in out
-    # ماتریس به رشتهٔ براکتی تبدیل نمی‌شود (فقط سلول‌ها با «،» جدا می‌شوند)
-    assert "[ " not in out
-    assert " | " not in out
-    assert "۱ ، ۲ ، ۳ ، ۴" in out
-    assert "$" not in out
-    assert "\\" not in out
-    assert "vec" not in out
-    assert "circ" not in out
-
-
-
-def test_nezam_jadid_syllabus_and_latex_to_pdf_image():
-    from reportlab.platypus import Image as RLImage
-    from ai.exam_generator import build_exam_preview_prompt
-    from reports.exam_pdf import latex_to_pdf_image, render_latex_to_image
-
-    prompt = build_exam_preview_prompt(
-        count=2,
-        field_label="ریاضی و فیزیک",
-        subjects_slugs="geometry",
-        subjects_labels="هندسه ۳",
-        subject_configs=[{"subject": "geometry", "count": 2, "difficulty": "متوسط", "subTopics": []}],
-        sub_topics=[],
-        ai_ratio=50,
-        grade_label="دوازدهم",
-        topic="—",
-        question_type_label="نامشخص / ترکیبی",
-        difficulty_label="متوسط",
-        custom_prompt="—",
-    )
-    assert "CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):" in prompt
-    assert "BANNED NEZAM-GHADIM TOPICS (STRICTLY FORBIDDEN):" in prompt
-    assert "معادله بیضی و هذلولی" in prompt
-    assert "معکوس ماتریس 3x3" in prompt
-
-    img_frac = latex_to_pdf_image(r"$ \frac{a}{b} $")
-    assert isinstance(img_frac, RLImage)
-    assert img_frac.drawWidth > 0 and img_frac.drawHeight > 0
-
-    img_sqrt = render_latex_to_image(r"$ \sqrt{2} $")
-    assert isinstance(img_sqrt, RLImage)
-
-    img_mat = latex_to_pdf_image(r"$$ \begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} $$")
-    assert isinstance(img_mat, RLImage)
-
-
-
 def test_critical_math_formatting_rule_and_pristine_json_latex():
     from ai.exam_generator import build_exam_preview_prompt
     from ai.json_sanitize import safe_parse_json
@@ -556,12 +417,10 @@ def test_critical_math_formatting_rule_and_pristine_json_latex():
     assert "T^{-1}" in txt
 
 
-
 def test_sanitize_json_backslash_and_dollar_noise():
+    """sanitize_json_string قرارداد است و باید دست‌نخورده بماند."""
     from ai.json_sanitize import sanitize_json_string
-    from reports.exam_pdf import latex_to_persian_text
 
-    # Single-backslash rac, 	heta, egin, \sqrt, ec and broken $\$ dollars
     raw = r'[{"id": 1, "text": "مقدار $\$\sqrt{7}\$$ و $\theta$ و $\vec{a}$ و $\frac{1}{2}$ و \cos^{-1}(4/9) چیست؟"}]'
     parsed = sanitize_json_string(raw)
     txt = parsed[0]["text"]
@@ -569,117 +428,7 @@ def test_sanitize_json_backslash_and_dollar_noise():
     assert r"\theta" in txt
     assert r"\vec{a}" in txt
     assert r"\frac{1}{2}" in txt
-    assert r"$\$" not in txt
-
-    # PDF converter handles both escaped and unescaped commands + cos^{-1} + theta
-    pdf_txt = latex_to_persian_text(r"$\$ sqrt{7} \$ و vec{a} و frac{1}{2} و \cos^{-1} و theta و 45^\circ")
-    assert "۷" in pdf_txt            # رادیکاند باقی می‌ماند
-    assert "a" in pdf_txt
-    assert "۱/۲" in pdf_txt
-    assert "۴۵" in pdf_txt
-    assert "$" not in pdf_txt
-    for banned in ("رادیکال", "بردار", "به روی", "کسینوس معکوس", "تتا", "درجه"):
-        assert banned not in pdf_txt, banned
-
-
-
-def test_final_pdf_cleanup_and_get_pdf_safe_text():
-    from reports.exam_pdf import final_pdf_cleanup, get_pdf_safe_text
-
-    raw = r"مقدار $45^\circ$ و $\sqrt{7}$ و $\vec{a}$ و $\cos^{-1}(4/9)$ و $\frac{a}{b}$ و $\theta$ و $\rightarrow \infty$"
-    cleaned = final_pdf_cleanup(raw)
-    assert "۴۵" in cleaned and "°" in cleaned     # \circ → ° (نماد، نه کلمه)
-    assert "۷" in cleaned
-    assert "a/b" in cleaned                        # \frac → a/b (نماد، نه «به روی»)
-    assert "→" in cleaned                          # \rightarrow → →
-    assert "∞" in cleaned                          # \infty → ∞
-    # هیچ ترجمهٔ کلمه‌ای: این واژه‌ها هرگز نباید ظاهر شوند
-    for banned in ("به روی", "رادیکال", "بردار", "کسینوس معکوس", "تتا", "به سمت", "بی‌نهایت", "درجه"):
-        assert banned not in cleaned, banned
-    for ch in ("$", "\\", "{", "}", "^", "_"):
-        assert ch not in cleaned
-
-    safe = get_pdf_safe_text(raw)
-    assert isinstance(safe, str) and len(safe) > 10
-
-
-def test_math_renderer_real_fractions_and_radicals():
-    """فرمول‌ها باید به تصویر واقعی (کسر/رادیکال/بردار/ماتریس) رندر شوند — نه متنِ «به روی»."""
-    from reports.math_renderer import normalize_latex, render_math_png
-
-    assert normalize_latex(r"$\frac{a}{b}$") == r"\frac{a}{b}"
-    assert normalize_latex(r"sqrt{7}") == r"\sqrt{7}"
-    assert normalize_latex(r"vec{AB}") == r"\vec{AB}"
-    assert normalize_latex(r"\\frac{a}{b}") == r"\frac{a}{b}"
-
-    frac = render_math_png(r"$\frac{۵\sqrt{۱۴}}{۱۴}$", font_size=10.5)
-    assert frac is not None
-    assert frac.width > 10 and frac.height > 8
-    assert frac.depth > 0
-    assert frac.png[:8] == b"\x89PNG\r\n\x1a\n"
-
-    for expr in (
-        r"$\sqrt{۷}$",
-        r"$\vec{a}=(۱,۲,۲)$",
-        r"$\cos^{-1}\left(\frac{۴}{۹}\right)$",
-        r"$۴۵^\circ$",
-        r"$$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$$",
-    ):
-        rendered = render_math_png(expr, font_size=10.5)
-        assert rendered is not None, expr
-        assert rendered.width > 0 and rendered.height > 0
-
-
-def test_pdf_text_flow_splits_math_segments():
-    from reports.pdf_text_flow import has_math, split_math_segments
-
-    segs = split_math_segments(r"مقدار $\frac{۱}{۲}$ و $$\sqrt{۷}$$ کدام است؟")
-    kinds = [seg[0] for seg in segs]
-    assert kinds.count("math") == 2
-    assert kinds[0] == "text"
-    assert has_math(r"اگر $x^2=۴$ باشد") is True
-    assert has_math("این جمله هیچ فرمولی ندارد") is False
-
-
-def test_exam_pdf_contains_real_math_images():
-    """PDF نهایی باید تصویر فرمول (XObject) داشته باشد و برچسب دلار خام در آن نماند."""
-    import pymupdf
-
-    from reports.exam_pdf import build_exam_pdf
-
-    questions = [
-        {
-            "order": 1,
-            "subject": "هندسه ۳",
-            "difficulty": "متوسط",
-            "text": r"اگر $\vec{a}=(۱,۲)$ باشد، حاصل $\frac{۵\sqrt{۱۴}}{۱۴}$ کدام است؟",
-            "options": [r"$\frac{۵\sqrt{۱۴}}{۱۴}$", r"$\sqrt{۷}$", r"$۴۵^\circ$", r"$T^{-1}$"],
-            "correct_answer": 1,
-            "explanation": r"داریم $\sqrt{۷}<\frac{۵\sqrt{۱۴}}{۱۴}$ پس پاسخ ۱ است.",
-            "diagram_svg": None,
-        }
-    ]
-    pdf = build_exam_pdf(
-        school_name="دبیرستان نمونه",
-        title="آزمون رندر ریاضی",
-        questions=questions,
-        duration_minutes=30,
-        difficulty="متوسط",
-        grade="12",
-        major="ریاضی و فیزیک",
-        subject_label="هندسه ۳",
-        topic="بردار",
-    )
-    assert pdf.startswith(b"%PDF-")
-    doc = pymupdf.open(stream=pdf, filetype="pdf")
-    try:
-        images = sum(len(page.get_images(full=True)) for page in doc)
-        assert images >= 4  # کسر، رادیکال، درجه، T^-1
-        text = "".join(page.get_text() for page in doc)
-        assert "به روی" not in text  # دیگر فرمول‌ها به کلمه ترجمه نمی‌شوند
-        assert "$" not in text
-    finally:
-        doc.close()
+    assert "$\$" not in txt
 
 
 def test_ai_prompt_requires_persian_digits_inside_math():
@@ -703,67 +452,17 @@ def test_ai_prompt_requires_persian_digits_inside_math():
     assert "۵" in prompt and "۱۴" in prompt
 
 
-def test_matrix_row_separator_variants_all_render():
-    """جداکنندهٔ سطرِ ماتریس ممکن است \\\\، \\cr، یا خط جدید باشد — هیچ‌کدام نباید
-    ماتریس ۲×۲ را به یک سطر ادغام کند یا به رشتهٔ براکتی falback بیندازد."""
-    from reports.math_renderer import _MATRIX_ENV_RE, _split_matrix_rows, render_math_png
-
-    cases = [
-        r"\begin{bmatrix} 2 & 1 \\ -1 & 0 \end{bmatrix}",   # استاندارد
-        r"\begin{bmatrix} 2 & 1 \cr -1 & 0 \end{bmatrix}",  # \cr
-        "\\begin{bmatrix} 2 & 1 \n -1 & 0 \\end{bmatrix}",  # خط جدید
-        r"\begin{bmatrix}{cc} 2 & 1 \\ -1 & 0 \end{bmatrix}",  # مشخصهٔ ستون
-        r"\begin{smallmatrix} 2 & 1 \\ -1 & 0 \end{smallmatrix}",
-        r"\begin{Bmatrix} 2 & 1 \\ -1 & 0 \end{Bmatrix}",
-        r"\begin{pmatrix} 2 & 1 \\ -1 & 0 \end{pmatrix}",
-        r"\begin{bmatrix} ۲ & ۱ \\ -۱ & ۰ \end{bmatrix}",   # ارقام فارسی
-    ]
-    for latex in cases:
-        m = _MATRIX_ENV_RE.search(latex)
-        assert m is not None, latex
-        assert len(_split_matrix_rows(m.group(2))) == 2, latex
-        img = render_math_png(latex, font_size=10.5)
-        assert img is not None, latex
-        # ماتریس ۲×۲ باید بلندتر از یک سطرِ تخت باشد (~۲.۴ برابرِ font_size)
-        assert img.height > 1.8 * 10.5, f"{latex} → {img.width}x{img.height} (rows collapsed)"
-        assert img.height >= 2.0 * 10.5, f"{latex} → rows may have collapsed: {img.height}"
-        # ... ولی نباید سطرهای متن را بشکند: ارتفاعِ ماتریس باید در محدودهٔ
-        # یک سطرِ دوصفحه‌ایِ معمول بماند (۲.۵ تا ۳.۵ برابرِ font_size برای ۲ سطر).
-        # پیش‌تر این عدد ~۴.۵ برابر بود و سؤال را بین دو صفحه تکه می‌کرد.
-        assert img.height < 3.5 * 10.5, f"{latex} → too tall: {img.height}"
-
-    # ۳×۳
-    m3 = _MATRIX_ENV_RE.search(r"\begin{bmatrix} 1 & 0 & 0 \\ 0 & 1 & 0 \\ 0 & 0 & 1 \end{bmatrix}")
-    assert len(_split_matrix_rows(m3.group(2))) == 3
-
-
-def test_fallback_never_emits_bracket_matrix_string():
-    """حتی اگر رندر تصویری شکست بخورد، خروجی متنی نباید «[ ۲ , ۱ | -۱ , ۰ ]» باشد."""
-    from reports.exam_pdf import final_pdf_cleanup
-
-    out = final_pdf_cleanup(r"دترمینان $\begin{bmatrix} 2 & 1 \\ -1 & 0 \end{bmatrix}$ کدام است؟")
-    assert "[ " not in out
-    assert " | " not in out
-    assert "," not in out          # کامای لاتین
-    assert "بmatrix" not in out
-    assert "begin" not in out
-    for cell in ("۲", "۱", "۰"):
-        assert cell in out
-
-
 def test_json_control_chars_in_latex_are_recovered():
-    """json.loads رشتهٔ "\\begin" را به \\x08egin و "\\frac" را به \\x0crac تبدیل می‌کند."""
-    from reports.pdf_text_flow import repair_control_chars, split_math_segments
+    """json.loads رشتهٔ "\\begin" را به \x08egin و "\\frac" را به \x0crac تبدیل می‌کند.
 
-    assert "\\begin" in repair_control_chars("$\x08egin{bmatrix} ۱ \\end{bmatrix}$")
-    assert "\\frac" in repair_control_chars("$\x0crac{۱}{۲}$")
+    بازیابی از عهدهٔ MathText (سمت فرانت‌اند) و sanitize_json_string است؛ موتور
+    PDFِ قدیم حذف شد و این تست دیگر به آن وابسته نیست.
+    """
+    from ai.json_sanitize import sanitize_json_string
 
-    segs = [s for s in split_math_segments("حاصل $\x0crac{۱}{۲}+\\sqrt{۷}$") if s[0] == "math"]
-    assert segs and "\\frac" in segs[0][1]
-
-    # ورودی سالم نباید دستکاری شود
-    healthy = r"$\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}$"
-    assert repair_control_chars(healthy) == healthy
+    parsed = sanitize_json_string(r'[{"text": "حاصل $\frac{۱}{۲}+\sqrt{۷}$"}]')
+    assert r"\frac" in parsed[0]["text"]
+    assert r"\sqrt" in parsed[0]["text"]
 
 
 def test_progress_percent_curve_is_monotonic_and_bounded():
@@ -806,89 +505,6 @@ def test_progress_percent_curve_is_monotonic_and_bounded():
 # ---------------------------------------------------------------------------
 # رگرسیون‌های چیدمانِ PDF (کشف‌شده در بازبینیِ تزریقِ درون‌خطیِ ریاضی)
 # ---------------------------------------------------------------------------
-def test_options_row_fits_inside_frame():
-    """ردیفِ چهارگزینه‌ای نباید از کادرِ متن بیرون بزند.
-
-    ``doc.width`` = ``178mm`` = ``504.57pt`` بود و همان به ``OptionsRow`` داده
-    می‌شد؛ اما ``Frame`` به‌طورِ پیش‌فرض ۶pt padding از هر طرف دارد، پس گشودگیِ
-    واقعی ``492.57pt`` است. نتیجه: ۱۲pt سرریز روی هر ردیفِ گزینه‌ها.
-    """
-    from reportlab.lib.units import mm
-
-    from reports.exam_pdf import _CONTENT_WIDTH_PT
-
-    available = 178 * mm - 12.0  # doc.width منهای paddingِ دو طرف
-    assert _CONTENT_WIDTH_PT <= available, f"{_CONTENT_WIDTH_PT} > {available}"
-    # ولی نه زیادی کوچک که گزینه‌ها بی‌دلیل تنگ شوند
-    assert _CONTENT_WIDTH_PT > available - 1.0
-
-
-def test_matrix_image_scales_with_font_size():
-    """ارتفاعِ ماتریس باید تقریباً خطی با font_size رشد کند (نه غول‌آسا).
-
-    پیش‌تر ``ax.text(size=fs)`` روی ``figsize`` اینچیِ ثابت نوشته می‌شد؛ نتیجه
-    این بود که ماتریس ۲×۲ در fs=10.5 به ارتفاعِ ~۴۷pt (۴.۵ برابرِ متن) می‌رسید و
-    سطرِ سؤال را می‌شکست.
-    """
-    from reports.math_renderer import render_math_png
-
-    tex = r"\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}"
-    heights = {}
-    for fs in (8.0, 10.5, 14.0, 20.0):
-        img = render_math_png(tex, font_size=fs)
-        assert img is not None, fs
-        heights[fs] = img.height
-        # نسبتِ ارتفاع به فونت باید در محدودهٔ معقول بماند، نه ۴.۵ برابر
-        ratio = img.height / fs
-        assert 2.0 <= ratio <= 3.0, f"fs={fs} → h={img.height} (ratio {ratio:.2f})"
-
-    # رشدِ خطی: دو برابر شدنِ فونت باید ارتفاع را ~دو برابر کند
-    assert 1.7 < heights[20.0] / heights[10.5] < 2.3
-
-
-def test_bare_latex_frac_consumes_both_brace_groups():
-    r"""``frac{۱}{۲}`` بدونِ بک‌اسلش باید هر دو گروه را ببلعد.
-
-    الگوی قبلی فقط یک ``\{[^{}]*\}`` می‌گرفت، پس ``frac{۱}{۲}`` به قطعهٔ ریاضیِ
-    ``frac{۱}`` + متنِ ``{۲}`` تجزیه می‌شد و در PDF به‌صورتِ «{۲}۱» چاپ می‌شد.
-    """
-    from reports.pdf_text_flow import split_math_segments
-
-    segs = split_math_segments(r"مقدار frac{1}{2} و sqrt{7} را حساب کنید")
-    maths = [s[1] for s in segs if s[0] == "math"]
-    texts = "".join(s[1] for s in segs if s[0] == "text")
-    assert "frac{1}{2}" in maths, maths
-    assert "sqrt{7}" in maths, maths
-    # هیچ آکولادِ سرگردانی در متن نمانده باشد
-    assert "{" not in texts and "}" not in texts, texts
-
-
-def test_inline_math_word_spacing_is_drawn():
-    """Spaces around inline formulas must be real glyphs, not cursor moves.
-
-    The old ``math_inline`` module (deleted — it was never reached on the PDF
-    path) built ``<img/>`` HTML; the live renderer is ``MathRichBlock``.  This
-    test pins the behaviour that module was meant to guarantee.
-    """
-    from reports.exam_pdf import _register_fonts, final_pdf_cleanup
-    from reports.pdf_text_flow_v2 import MathRichBlock
-    from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_RIGHT
-
-    _register_fonts()
-    st = ParagraphStyle("t", fontName="VazirBold" if False else "Vazirmatn-Bold",
-                        fontSize=10.5, leading=21, alignment=TA_RIGHT) \
-        if False else ParagraphStyle("t", fontSize=10.5, leading=21)
-    blk = MathRichBlock("مقدار $x$ کدام است؟", style=st, max_width=300,
-                        fallback=final_pdf_cleanup)
-    blk.wrap(300, 500)
-    kinds = [a.kind for ln in blk.lines for a in ln.atoms]
-    assert "math" in kinds, kinds
-    assert "word" in kinds, kinds
-    spaces = [a.space_before for ln in blk.lines for a in ln.atoms if a.kind == "math"]
-    assert any(spaces), "inline formula has no gap before it"
-
-
 def test_progress_markup_uses_standard_font_size():
     """درصدِ پیشرفت باید با اندازهٔ استاندارد (`text-lg`) نمایش داده شود، نه `text-3xl`."""
     from pathlib import Path
@@ -930,154 +546,6 @@ def test_flat_matrix_repair_leaves_normal_lists_alone():
         assert repair_flat_matrices(text) == text, text
 
 
-def test_matrix_render_keeps_prefix_and_has_no_placeholder_cells():
-    r"""``A=\begin{bmatrix}…`` نباید «A=» را دور بریزد و نه سلول‌ها را به نقطه تبدیل کند.
-
-    دو باگِ واقعی که این تست از بازگشتشان جلوگیری می‌کند:
-
-    1. رندرکنندهٔ ماتریس فقط ``\begin{bmatrix}…\end{bmatrix}`` را می‌گرفت و
-       پیشوند را بی‌صدا حذف می‌کرد ⇒ دانش‌آموز به‌جای ``A=`` فقط ماتریس می‌دید.
-    2. matplotlib با ``fontset="cm"/"stix"`` گلیفِ ارقامِ فارسی ندارد و به‌جای
-       رقم «نمادِ ساختگی» (یک نقطه) می‌کشد ⇒ ماتریسِ پر از نقطه.
-    """
-    from reports.math_renderer import _split_matrix_affixes, render_math_png
-
-    latex = r"A=\begin{bmatrix} ۱ & ۰ & ۱ \\ ۱ & ۰ & ۰ \\ ۱ & ۰ & ۱ \end{bmatrix}"
-    prefix, env, body, suffix = _split_matrix_affixes(latex)
-    assert prefix == "A=", prefix
-    assert env == "bmatrix"
-    assert "&" in body
-
-    img = render_math_png(latex, font_size=10.5, dpi=300)
-    assert img is not None
-    # پیشوند «A=» عرض را افزایش می‌دهد؛ بدونِ آن ۲×۲ کوچک‌تر است.
-    bare = render_math_png(
-        r"\begin{bmatrix} ۱ & ۰ & ۱ \\ ۱ & ۰ & ۰ \\ ۱ & ۰ & ۱ \end{bmatrix}",
-        font_size=10.5,
-        dpi=300,
-    )
-    assert img.width > bare.width + 10, (img.width, bare.width)
-
-    # هیچ سلولی نباید به «نمادِ ساختگی» تبدیل شود: تصویر باید پیکسلِ کافی داشته باشد.
-    try:
-        import io as _io
-
-        from PIL import Image
-
-        with Image.open(_io.BytesIO(img.png)) as im:
-            opaque = sum(1 for p in im.convert("RGBA").getdata() if p[3] > 10)
-    except Exception:
-        return  # PIL نبود — بررسی بصری در E2E انجام می‌شود
-    assert opaque > 2000, f"too few opaque pixels: {opaque} (placeholder glyphs?)"
-
-
-# ---------------------------------------------------------------------------
-# رگرسیون: فرمول‌های بدون «$» به fallback متنی می‌افتادند (گزارش کاربر)
-# ---------------------------------------------------------------------------
-def test_bare_symbol_commands_are_recognized_as_math():
-    r"""دستوراتِ نمادی مثلِ ``\times`` و ``\cdot`` باید ریاضی شناخته شوند.
-
-    پیش‌تر ``_LATEX_SYMBOL_CMDS`` هیچ‌جا نبود و متنی مثل
-    «ماتریسی ۲ \\times ۲» هیچ فرمولی برایش پیدا نمی‌شد؛ ``has_math`` مقدار
-    ``False`` می‌گرفت، کلِ سؤال از مسیرِ رندر تصویری بیرون می‌افتاد و به
-    ``final_pdf_cleanup`` (ترجمهٔ متنی) می‌رفت. نتیجه در PDF: «۲۲» و
-    «۱، ۲، ۳، ۴» — دقیقاً همان چیزی که کاربر گزارش کرد.
-    """
-    from reports.pdf_text_flow import has_math, split_math_segments
-
-    for text, expected in (
-        (r"ماتریسی ۲ \times ۲ باشد", r"۲ \times ۲"),
-        (r"اگر a \cdot b باشد", r"a \cdot b"),
-        (r"مقدار x \leq y", r"x \leq y"),
-        (r"جمع ۲ \pm ۳", r"۲ \pm ۳"),
-    ):
-        assert has_math(text), text
-        maths = [s[1] for s in split_math_segments(text) if s[0] == "math"]
-        # باید **یک** قطعهٔ کامل باشد، نه سه تکهٔ پراکنده
-        assert len(maths) == 1, (text, maths)
-        assert expected.replace(" ", "") in maths[0].replace(" ", ""), (text, maths)
-
-
-def test_whole_math_expression_is_not_split_around_operators():
-    r"""``۲ \times ۲`` باید یک قطعه بماند، نه «۲ » + «\times» + « ۲».
-
-    قبلاً ``_BARE_LATEX_RE`` پیش از ``_wrap_bare_math`` اجرا می‌شد و دستورِ
-    وسطِ عبارت را می‌برید؛ تصویرِ ۸ پوینتیِ «×» تنها چیزی بود که می‌ماند.
-    """
-    from reports.pdf_text_flow import split_math_segments
-
-    segs = split_math_segments(r"ماتریسی ۲ \times ۲ باشد")
-    maths = [s[1] for s in segs if s[0] == "math"]
-    assert len(maths) == 1, maths
-    assert "times" in maths[0] and "۲" in maths[0]
-
-    # ماتریسِ بدون $ هم باید یک قطعهٔ واحد بماند
-    segs = split_math_segments(
-        r"ماتریس \begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix} را بنویس"
-    )
-    maths = [s[1] for s in segs if s[0] == "math"]
-    assert len(maths) == 1, maths
-    assert "bmatrix" in maths[0] and "&" in maths[0]
-
-
-def test_plain_persian_text_stays_plain():
-    """متنِ فارسیِ بدونِ فرمول نباید به قطعهٔ ریاضی تبدیل شود."""
-    from reports.pdf_text_flow import has_math
-
-    for text in (
-        "میانگین سه عدد ۴، ۷ و ۱۰ چیست؟",
-        "این آزمون و پاسخنامه توسط فهم‌یار ساخته شد.",
-        "کدام گزینه درباره‌ی ساختار اتم درست است؟",
-        "The derivative of a constant is always one.",
-    ):
-        assert not has_math(text), text
-
-    # «X» تنها یک متغیر ریاضی است، نه متن — این عمداً از این فهرست حذف شد.
-    from reports.pdf_text_flow import split_math_segments
-
-    kinds = [seg.kind for seg in split_math_segments("کدام است X؟")]
-    assert kinds == ["text", "math", "text"], kinds
-
-
-def test_no_dollar_latex_matrix_end_to_end():
-    r"""کلِ سؤالِ گزارش‌شده — بدون هیچ ``$`` — باید ماتریسِ واقعی رندر کند."""
-    import pymupdf  # noqa: F401  (اختیاری)
-
-    from reports.exam_pdf import build_exam_pdf
-
-    text = (
-        r"اگر A=\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} و "
-        r"B=\begin{bmatrix} ۰ \\ ۱ \end{bmatrix} باشد که X ماتریسی "
-        r"۲ \times ۲ باشد و AX=B برقرار است، کدام است X؟"
-    )
-    opts = [
-        r"\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}",
-        r"\begin{bmatrix} -۱ & ۲ \\ -۳ & ۱ \end{bmatrix}",
-        r"\begin{bmatrix} -۱ & -۲ \\ -۳ & -۱ \end{bmatrix}",
-        r"\begin{bmatrix} ۲ & -۱ \\ ۱ & -۱ \end{bmatrix}",
-    ]
-    pdf = build_exam_pdf(
-        "دبیرستان", "آزمون", [
-            {"order": 1, "subject": "هندسه", "difficulty": "سخت", "text": text,
-             "options": opts, "correct_answer": 3, "explanation": "", "diagram_svg": None},
-        ],
-        60, "سخت", grade="12", major="ریاضی و فیزیک", subject_label="هندسه", topic="ماتریس",
-    )
-    assert pdf[:4] == b"%PDF"
-
-    import io as _io
-
-    doc = pymupdf.open(stream=pdf, filetype="pdf")
-    total_images = sum(len(p.get_images()) for p in doc)
-    # ۵ ماتریس + «۲×۲» + X → دست‌کم ۶ تصویر در صفحهٔ سؤال
-    assert total_images >= 6, total_images
-
-    full_text = "".join(p.get_text() for p in doc)
-    # هیچ نشتیِ متنی نباید باشد
-    for leak in ("\\times", "bmatrix", "\\begin", "$"):
-        assert leak not in full_text, leak
-
-
 def test_flat_option_becomes_real_matrix():
     r"""گزینه‌های تخت («۱، ۲، ۳، ۴») باید به ماتریس واقعی تبدیل شوند.
 
@@ -1102,55 +570,3 @@ def test_flat_option_becomes_real_matrix():
         assert repair_flat_option(keep) == keep, keep
 
 
-def test_operand_operator_expression_is_math_without_signal_chars():
-    r"""عبارتی مثلِ ``(A+B)۲-A۲-B۲`` باید ریاضی شناخته شود.
-
-    این عبارت هیچ‌یک از نشانه‌های ``_MATH_SIGNAL_RE`` (``^ _ = < > |``) را ندارد
-    و هیچ واژهٔ دوحرفی‌ای هم در آن نیست؛ بنابراین پیش‌تر ``_looks_math`` آن را رد
-    می‌کرد و کلِ عبارت به متنِ تخت تبدیل می‌شد. کاربر عیناً
-    ``(A+B)۲-A۲-B۲`` را در PDF می‌دید.
-    """
-    from reports.pdf_text_flow import has_math, split_math_segments
-
-    text = "حاصل‌جمع تمام درایه‌های (A+B)۲-A۲-B۲ کدام است؟"
-    assert has_math(text)
-    maths = [s[1] for s in split_math_segments(text) if s[0] == "math"]
-    assert maths == ["(A+B)۲-A۲-B۲"], maths
-
-    # ولی واژه‌های خط‌تیره‌دارِ فارسی نباید ریاضی شوند
-    for plain in ("سود-زیان این معامله چقدر است؟", "بیش-کم در جدول مشخص است"):
-        assert not has_math(plain), plain
-
-
-def test_attached_digit_becomes_power():
-    r"""رقمِ چسبیده به حرف یا پرانتز باید توان شود، نه زیرنویس.
-
-    مدل به‌جای ``(A+B)^۲`` رشتهٔ ``(A+B)۲`` تولید می‌کند؛ بدونِ این اصلاح
-    رقم به‌شکلِ چسبیده رندر می‌شد و معنای توان را نمی‌رساند.
-    """
-    from reports.math_renderer import normalize_latex
-
-    assert normalize_latex("(A+B)۲-A۲-B۲") == r"(A+B)^{۲}-A^{۲}-B^{۲}"
-    assert normalize_latex("A۲+B۲") == r"A^{۲}+B^{۲}"
-    # نباید چیزی که توان نیست را خراب کند
-    assert normalize_latex("x^2") == "x^2"
-    assert normalize_latex("۲x") == "۲x"
-
-
-def test_unicode_minus_and_superscript_survive():
-    r"""مدل‌های زبانی شکل‌های یونیکدِ عملگر را هم تولید می‌کنند.
-
-    ``U+2212`` (منفیِ ریاضی) و ``²`` (بالانویسِ U+00B2) باید مثلِ ``-`` و
-    ``^2`` رفتار کنند. وقتی در ``_MATH_CHARS`` نبودند عبارت از سرِ همان کاراکتر
-    می‌شکست و بقیهٔ عبارت متنِ تخت می‌شد — دقیقاً همان چیزی که کاربر دید.
-    """
-    from reports.pdf_text_flow import has_math, split_math_segments
-
-    for expr in ("(A+B)۲\u2212A۲\u2212B۲", "(A+B)²-A²-B²", "۳x\u2212۲y"):
-        sent = f"اگر {expr} باشد، حاصل کدام است؟"
-        assert has_math(sent), expr
-        maths = [s[1] for s in split_math_segments(sent) if s[0] == "math"]
-        assert expr in maths, (expr, maths)
-
-    # و دوباره: خط تیرهٔ فارسی نباید ریاضی شود
-    assert not has_math("سود-زیان این معامله چقدر است؟")

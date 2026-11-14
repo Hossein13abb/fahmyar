@@ -5,6 +5,21 @@ import react from '@vitejs/plugin-react'
 // بلکه درخواست‌های /api از طریق همین پروکسی به بک‌اند می‌رسند (هم در dev و هم در preview).
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      // دو ورودی: اپ کاربر، و نقطهٔ ورودِ چاپ که موتور PDF آن را باز می‌کند.
+      // خروجی چاپ به assets/ می‌رود تا مسیرِ ثابت و قابل‌اتکا داشته باشد.
+      input: {
+        main: 'index.html',
+        print: 'print.html',
+      },
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,

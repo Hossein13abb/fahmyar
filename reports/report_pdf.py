@@ -28,7 +28,7 @@ from reportlab.platypus import (
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
 from models.question import STATUS_FA
-from reports.exam_pdf import (
+from reports.pdf_shared import (
     BRAND_ACCENT,
     BRAND_DARK,
     BRAND_LINE,
@@ -51,8 +51,8 @@ from reports.exam_pdf import (
     RED_TEXT,
     NumberedCanvas,
     _esc_xml,
-    _fa,
-    _fa_date,
+    fa_number,
+    fa_date,
     _meta_table,
     _register_fonts,
     _section_banner,
@@ -129,7 +129,7 @@ def _dimension_rows(dimensions: list[dict[str, Any]]) -> list[Flowable]:
         status = str(d.get("status") or "UNCLEAR").upper()
         finding = str(d.get("finding") or "—")
         chip = _status_chip(status)
-        head = rtl_flowables(f"{_fa(i)}. {dim}", _style(f"dim-h-{i}", fontName=FONT_XBOLD, fontSize=9.5, textColor=SLATE_900, leading=18), 118)
+        head = rtl_flowables(f"{fa_number(i)}. {dim}", _style(f"dim-h-{i}", fontName=FONT_XBOLD, fontSize=9.5, textColor=SLATE_900, leading=18), 118)
         t = Table([[chip, head]], colWidths=[38 * mm, 140 * mm])
         t.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -151,7 +151,7 @@ def _per_question_blocks(per_question: list[dict[str, Any]]) -> list[Flowable]:
         feedback = str(q.get("qualitative_feedback") or q.get("reasoning") or "—")
         label_style = _style(f"pq-h-{i}", fontName=FONT_BOLD, fontSize=9, leading=18, textColor=EMERALD_TEXT,
                              backColor=SLATE_50, borderWidth=0.6, borderColor=BRAND_LINE, borderPadding=5, borderRadius=3)
-        blocks.append(Paragraph(_esc_xml(prepare_farsi_text(f"سؤال {_fa(order)} — {qtype}")), label_style))
+        blocks.append(Paragraph(_esc_xml(prepare_farsi_text(f"سؤال {fa_number(order)} — {qtype}")), label_style))
         blocks.append(Spacer(1, 1.5 * mm))
         chip = _status_chip(status)
         chip_row = Table([[chip]], colWidths=[PAGE_W])
@@ -168,7 +168,7 @@ def _root_cause_blocks(root_causes: list[dict[str, Any]], target: str) -> list[F
         name = str(rc.get("concept_name") or rc.get("area") or "عنوان ریشه ثبت نشد")
         reasoning = str(rc.get("reasoning") or "")
         cross = bool(rc.get("cross_subject"))
-        title = f"ریشهٔ {_fa(i)}: {name}" + (" (بین‌درسی)" if cross else "")
+        title = f"ریشهٔ {fa_number(i)}: {name}" + (" (بین‌درسی)" if cross else "")
         blocks.append(Paragraph(
             _esc_xml(prepare_farsi_text(title)),
             _style(f"rc-h-{i}", fontName=FONT_XBOLD, fontSize=9.5, leading=19, textColor=BROWN_TEXT,
@@ -200,8 +200,8 @@ def build_report_pdf(
 
     is_exam = bool(report.get("exam"))
     concept_name = report.get("concept_name") or "نامشخص"
-    stamp = _fa_date()
-    grade_text = f"پایهٔ {_fa(student_grade)}" if student_grade else "—"
+    stamp = fa_date()
+    grade_text = f"پایهٔ {fa_number(student_grade)}" if student_grade else "—"
     major_text = (student_major or "").strip()
     if major_text:
         grade_text = f"{grade_text} — {major_text}"
@@ -237,7 +237,7 @@ def build_report_pdf(
                 ("پایه / رشته", grade_text),
                 ("زمینهٔ بررسی", concept_name),
                 ("نوع گزارش", "آزمون جامع تشخیصی" if is_exam else "فهم‌سنجیِ مفهومی (ECD)"),
-                ("تعداد پاسخ ثبت‌شده", f"{_fa(report.get('questions_answered') or 0)} پاسخ"),
+                ("تعداد پاسخ ثبت‌شده", f"{fa_number(report.get('questions_answered') or 0)} پاسخ"),
                 ("تاریخ تولید گزارش", stamp),
             ]
         )
