@@ -724,8 +724,13 @@ def test_matrix_row_separator_variants_all_render():
         assert len(_split_matrix_rows(m.group(2))) == 2, latex
         img = render_math_png(latex, font_size=10.5)
         assert img is not None, latex
-        # ماتریس ۲×۲ باید بلندتر از یک سطرِ تخت باشد
-        assert img.height > 30, f"{latex} → {img.width}x{img.height} (rows collapsed)"
+        # ماتریس ۲×۲ باید بلندتر از یک سطرِ تخت باشد (~۲.۴ برابرِ font_size)
+        assert img.height > 1.8 * 10.5, f"{latex} → {img.width}x{img.height} (rows collapsed)"
+        assert img.height >= 2.0 * 10.5, f"{latex} → rows may have collapsed: {img.height}"
+        # ... ولی نباید سطرهای متن را بشکند: ارتفاعِ ماتریس باید در محدودهٔ
+        # یک سطرِ دوصفحه‌ایِ معمول بماند (۲.۵ تا ۳.۵ برابرِ font_size برای ۲ سطر).
+        # پیش‌تر این عدد ~۴.۵ برابر بود و سؤال را بین دو صفحه تکه می‌کرد.
+        assert img.height < 3.5 * 10.5, f"{latex} → too tall: {img.height}"
 
     # ۳×۳
     m3 = _MATRIX_ENV_RE.search(r"\begin{bmatrix} 1 & 0 & 0 \\ 0 & 1 & 0 \\ 0 & 0 & 1 \end{bmatrix}")
@@ -762,16 +767,125 @@ def test_json_control_chars_in_latex_are_recovered():
 
 
 def test_progress_percent_curve_is_monotonic_and_bounded():
-    """شمارندهٔ پیشرفت: از ۵٪ تا سقف ۹۵٪، بدون پرش به ۱۰۰٪ پیش از پایان کار."""
-    DURATION_MS = 40_000
+    """شمارندهٔ پیشرفت: منحنیِ مجانبی، یکنوا، با سقفِ سختِ ۹۰٪.
 
-    def at(ms: float) -> int:
-        ratio = min(ms / DURATION_MS, 1)
-        eased = 1 - (1 - ratio) ** 2.2
-        return min(95, round(5 + eased * 90))
+    قراردادِ جدید (نسبت به نسخهٔ زمان‌محورِ قبلی):
 
-    assert at(0) == 5
-    assert at(DURATION_MS) == 95
-    assert at(120_000) == 95           # هرگز به ۱۰۰ نمی‌رسد مگر پاسخ واقعی برسد
-    values = [at(ms) for ms in range(0, 60_000, 180)]
+    * هر تیک: ``next = prev + (90 - prev) * 0.08``  (هرچه نزدیک‌تر، کندتر)
+    * هرگز از ۹۰ عبور نمی‌کند — حتی اگر تولید دقیقه‌ها طول بکشد
+    * ۱۰۰ فقط با پاسخِ واقعیِ سرور ست می‌شود، نه با تایمر
+    """
+
+    def tick(prev: float) -> float:
+        nxt = prev + (90 - prev) * 0.08
+        return 90.0 if nxt > 90 else nxt
+
+    # ۱) شروع از ۵٪ و رشدِ یکنوا
+    values = [5.0]
+    for _ in range(200):
+        values.append(tick(values[-1]))
     assert all(b >= a for a, b in zip(values, values[1:])), "should be monotonic"
+
+    # ۲) هرگز از ۹۰ عبور نمی‌کند (حتی بعد از ۲۰۰ ثانیه).
+    #    منحنی «مجانبی» است، پس به ۹۰ میل می‌کند ولی هرگز به آن نمی‌رسد؛
+    #    به همین دلیل مقایسه با یک اپسیلون انجام می‌شود نه برابریِ دقیق.
+    assert max(values) <= 90.0
+    assert 89.9 < values[-1] <= 90.0
+
+    # ۳) ولی در بازهٔ معقولی به سقف می‌رسد (نه این‌که یخ بزند)
+    assert values[30] > 80.0, "بعد از ۳۰ ثانیه باید بالای ۸۰٪ باشد"
+
+    # ۴) از بالا تقریب نمی‌زند: همیشه کمتر از سقف تا وقتی واقعاً برسد
+    assert all(v <= 90.0 for v in values)
+
+    # ۵) نرخِ کاهشی: تا کردنِ فاصله در هر تیک کمتر از ۱۰٪ فاصلهٔ اولیه نیست
+    first_step = values[1] - values[0]
+    assert 5.0 < first_step < 8.0, first_step
+
+
+# ---------------------------------------------------------------------------
+# رگرسیون‌های چیدمانِ PDF (کشف‌شده در بازبینیِ تزریقِ درون‌خطیِ ریاضی)
+# ---------------------------------------------------------------------------
+def test_options_row_fits_inside_frame():
+    """ردیفِ چهارگزینه‌ای نباید از کادرِ متن بیرون بزند.
+
+    ``doc.width`` = ``178mm`` = ``504.57pt`` بود و همان به ``OptionsRow`` داده
+    می‌شد؛ اما ``Frame`` به‌طورِ پیش‌فرض ۶pt padding از هر طرف دارد، پس گشودگیِ
+    واقعی ``492.57pt`` است. نتیجه: ۱۲pt سرریز روی هر ردیفِ گزینه‌ها.
+    """
+    from reportlab.lib.units import mm
+
+    from reports.exam_pdf import _CONTENT_WIDTH_PT
+
+    available = 178 * mm - 12.0  # doc.width منهای paddingِ دو طرف
+    assert _CONTENT_WIDTH_PT <= available, f"{_CONTENT_WIDTH_PT} > {available}"
+    # ولی نه زیادی کوچک که گزینه‌ها بی‌دلیل تنگ شوند
+    assert _CONTENT_WIDTH_PT > available - 1.0
+
+
+def test_matrix_image_scales_with_font_size():
+    """ارتفاعِ ماتریس باید تقریباً خطی با font_size رشد کند (نه غول‌آسا).
+
+    پیش‌تر ``ax.text(size=fs)`` روی ``figsize`` اینچیِ ثابت نوشته می‌شد؛ نتیجه
+    این بود که ماتریس ۲×۲ در fs=10.5 به ارتفاعِ ~۴۷pt (۴.۵ برابرِ متن) می‌رسید و
+    سطرِ سؤال را می‌شکست.
+    """
+    from reports.math_renderer import render_math_png
+
+    tex = r"\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}"
+    heights = {}
+    for fs in (8.0, 10.5, 14.0, 20.0):
+        img = render_math_png(tex, font_size=fs)
+        assert img is not None, fs
+        heights[fs] = img.height
+        # نسبتِ ارتفاع به فونت باید در محدودهٔ معقول بماند، نه ۴.۵ برابر
+        ratio = img.height / fs
+        assert 2.0 <= ratio <= 3.0, f"fs={fs} → h={img.height} (ratio {ratio:.2f})"
+
+    # رشدِ خطی: دو برابر شدنِ فونت باید ارتفاع را ~دو برابر کند
+    assert 1.7 < heights[20.0] / heights[10.5] < 2.3
+
+
+def test_bare_latex_frac_consumes_both_brace_groups():
+    r"""``frac{۱}{۲}`` بدونِ بک‌اسلش باید هر دو گروه را ببلعد.
+
+    الگوی قبلی فقط یک ``\{[^{}]*\}`` می‌گرفت، پس ``frac{۱}{۲}`` به قطعهٔ ریاضیِ
+    ``frac{۱}`` + متنِ ``{۲}`` تجزیه می‌شد و در PDF به‌صورتِ «{۲}۱» چاپ می‌شد.
+    """
+    from reports.pdf_text_flow import split_math_segments
+
+    segs = split_math_segments(r"مقدار frac{1}{2} و sqrt{7} را حساب کنید")
+    maths = [s[1] for s in segs if s[0] == "math"]
+    texts = "".join(s[1] for s in segs if s[0] == "text")
+    assert "frac{1}{2}" in maths, maths
+    assert "sqrt{7}" in maths, maths
+    # هیچ آکولادِ سرگردانی در متن نمانده باشد
+    assert "{" not in texts and "}" not in texts, texts
+
+
+def test_inline_math_html_keeps_word_spacing():
+    """فاصله‌های میانِ واژه‌ها در HTMLِ خروجی نباید گم شوند.
+
+    اشتباه در یک واحد (نگاه به ``atom.space_before`` به‌جای اتمِ همسایهٔ راست) کلمات
+    را به هم می‌چسباند: «ﺩﺗﺮﻣﯿﻨﺎﻥﻣﺎﺗﺮﯾﺲ». آن‌گاه ReportLab عرضِ خط را اشتباه می‌سنجد
+    و پاراگراف را دوباره می‌شکند.
+    """
+    from reports.math_inline import _build_block, _lines_to_html, _ensure_fonts
+    from reportlab.lib.styles import ParagraphStyle
+
+    _ensure_fonts()
+    style = ParagraphStyle("t", fontName="Vazirmatn", fontSize=10, leading=19)
+    txt = "دترمینان ماتریس دو $x^2$ را محاسبه کنید"
+    html = _lines_to_html(_build_block(txt, style, 400))
+    assert len(html) == 1, html
+    # باید حداقل یک فاصلهٔ واقعی میانِ واژه‌ها باشد
+    assert html[0].count(" ") >= 4, html[0]
+
+
+def test_progress_markup_uses_standard_font_size():
+    """درصدِ پیشرفت باید با اندازهٔ استاندارد (`text-lg`) نمایش داده شود، نه `text-3xl`."""
+    from pathlib import Path
+
+    src = Path("frontend/src/pages/ExamBuilder.jsx").read_text(encoding="utf-8")
+    assert "text-lg font-bold text-slate-700" in src
+    assert "text-3xl font-black" not in src

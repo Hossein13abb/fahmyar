@@ -34,9 +34,14 @@ _DISPLAY_RE = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
 _INLINE_RE = re.compile(r"(?<!\\)\$(?!\$)(.+?)(?<!\\)\$", re.DOTALL)
 
 # دستورات LaTeXِ «بدون $ » (خطای رایج مدل‌ها)
+#
+# نکته: ``\frac`` و ``\sqrt[n]`` می‌توانند دو گروه آکولاد داشته باشند
+# (``frac{۱}{۲}``). نسخهٔ قبلی فقط یک گروه را می‌گرفت و در نتیجه ``frac{۱}{۲}``
+# به «ریاضی=frac{۱}» + «متن={۲}» تجزیه می‌شد و در PDF به‌صورت «{۲}۱» چاپ می‌شد.
 _BARE_LATEX_RE = re.compile(
     r"(?:\\+)?\b(?:[dt]?frac|sqrt|vec|overrightarrow|theta|alpha|beta|gamma|pi|"
-    r"cos|sin|tan|cot|log|ln|infty|circ|deg)\b\s*(?:\{[^{}]*\})"
+    r"cos|sin|tan|cot|log|ln|infty|circ|deg)\b"
+    r"\s*(?:\[[^\[\]]*\]\s*)?(?:\{[^{}]*\})?(?:\s*\{[^{}]*\})?"
     r"|(?:\\+)?\b(?:begin)\s*\{[bpvBV]?(?:matrix|array|cases)\}[\s\S]*?(?:\\+)?\b(?:end)\s*\{[bpvBV]?(?:matrix|array|cases)\}",
 )
 

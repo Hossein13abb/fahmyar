@@ -71,6 +71,12 @@ from reports.pdf_text_flow import (  # noqa: F401  (بازصادراتِ قرا�
     math_paragraph_flowables,
     parse_mixed_text_and_math,
 )
+from reports.math_inline import (  # noqa: F401  (تزریقِ درون‌خطیِ <img/>)
+    build_mixed_math_flowables,
+    build_mixed_math_text,
+    release_temp_files,
+    render_math_to_file,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FONT_DIR = BASE_DIR / "assets" / "fonts"
@@ -132,6 +138,18 @@ RED_LINE = colors.HexColor("#FECACA")
 FONT_REG = "Vazirmatn"
 FONT_BOLD = "Vazirmatn-Bold"
 FONT_XBOLD = "Vazirmatn-XBold"
+
+#: عرضِ مفیدِ واقعیِ ستونِ متن در قالبِ آزمون (برحسبِ پوینت).
+#:
+#: ``doc.width`` = ``A4 - 16mm - 16mm`` = ``504.57pt``، اما ``Frame`` به‌طور
+#: پیش‌فرض ``leftPadding`` و ``rightPadding`` هر یک ۶ پوینت اضافه می‌کند؛ پس
+#: گشودگیِ واقعی برای هر Flowable برابر است با ``492.57pt``. هر عرضی که بزرگ‌تر
+#: از این مقدار به یک Flowable داده شود، از کادرِ راست بیرون می‌زند.
+_MARGIN_MM = 16.0
+_FRAME_PADDING_PT = 6.0
+#: ۰.۲۵pt حاشیهٔ امن تا خطای گردکردنِ ممیزِ شناور باعثِ سرریزِ زیرپیکسلی نشود.
+_SAFETY_PT = 0.25
+_CONTENT_WIDTH_PT = 178 * mm - 2 * _FRAME_PADDING_PT - _SAFETY_PT
 
 
 def to_persian_numbers(text: Any) -> str:
@@ -202,14 +220,21 @@ def final_pdf_cleanup(text: Any) -> str:
     s = re.sub(r"\\?infty\b", "∞", s)
     s = re.sub(r"\\?(?:alpha|beta|gamma|theta|lambda|mu|pi|sigma|omega)\b", "", s)
 
-    # 3. حذف دستورات و نمادهای باقی‌ماندهٔ LaTeX
-    s = re.sub(r"\\[a-zA-Z]+", " ", s)
-    s = re.sub(r"[\$\\\{\}\^_]", " ", s)
+    # 3. توان و اندیس: پیش از حذفِ نشانه‌ها، ``x^2`` را به ``x۲`` تبدیل کن، نه ``x ۲``
+    #    (در غیرِ این صورت ``x^2 + y^2`` در fallback به «x ۲ + y ۲» تبدیل می‌شد).
+    s = re.sub(r"\^\s*\{([^{}]*)\}", r"\1", s)
+    s = re.sub(r"\^\s*(\S)", r"\1", s)
+    s = re.sub(r"_\s*\{([^{}]*)\}", r"\1", s)
+    s = re.sub(r"_\s*(\S)", r"\1", s)
 
-    # 4. ارقام فارسی
+    # 4. حذف دستورات و نمادهای باقی‌ماندهٔ LaTeX
+    s = re.sub(r"\\[a-zA-Z]+", " ", s)
+    s = re.sub(r"[\$\\\{\}]", " ", s)
+
+    # 5. ارقام فارسی
     s = s.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
-    # 5. یکدست‌سازی فاصله‌ها
+    # 6. یکدست‌سازی فاصله‌ها
     s = re.sub(r"[ \t]+", " ", s).strip()
     return s
 
@@ -856,10 +881,15 @@ def _options_table(item: dict[str, Any]) -> "OptionsRow":
     """گزینه‌های چهارگانه در یک ردیفِ تمام‌عرض، از راست به چپ (الف → د).
 
     هر گزینه یک بلوکِ ریاضی‌فهم است؛ فرمول‌ها به تصویرِ واقعی (کسر/رادیکال/بردار) تبدیل می‌شوند.
+
+    .. note::
+       عرضِ در دسترسِ واقعیِ قالب ``492.57pt`` است (``doc.width`` منهای paddingِ
+       پیش‌فرضِ ``Frame``). پیش‌تر این‌جا ``178mm`` = ``504.57pt`` داده می‌شد که
+       ۱۲ پوینت از کادر بیرون می‌زد و ردیفِ گزینه‌ها سرریز می‌کرد.
     """
     opts = list(item["options"])
     cells = [(_option_text(opts[i], i), _option_style(i)) for i in range(4)]
-    return OptionsRow(cells, width=178 * mm, fallback=final_pdf_cleanup)
+    return OptionsRow(cells, width=_CONTENT_WIDTH_PT, fallback=final_pdf_cleanup)
 
 
 def _question_flow(item: dict[str, Any], with_lines: bool = True) -> list[Flowable]:

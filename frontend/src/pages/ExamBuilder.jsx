@@ -482,20 +482,25 @@ export default function ExamBuilder({ embedded = false }) {
   const allSelectedSubTopics = subjectConfigsPayload.flatMap((c) => c.subTopics)
   const totalCount = subjectConfigsPayload.reduce((sum, c) => sum + c.count, 0)
 
-  // شمارندهٔ درصدیِ پیشرفت: از ۵٪ آرام تا ۹۵٪ در حدود ۴۰ ثانیه
+  // ── شمارندهٔ درصدیِ پیشرفت (منحنیِ مجانبی) ──
+  //
+  // منطق قبلی یک منحنیِ زمان‌محور بود که در ثانیهٔ ۴۰ به سقفِ ثابتِ ۹۵٪ می‌رسید و
+  // می‌ایستاد. منطق جدید «مجانبی» است: در هر تیک، درصد به سقفِ ۹۰ نزدیک‌تر می‌شود
+  // ولی هرگز از آن عبور نمی‌کند — یعنی حتی اگر تولید ۳ دقیقه طول بکشد، کاربر
+  // پیشرفتِ واقعی می‌بیند و عدد یخ نمی‌زند.
+  //
+  // نکتهٔ مهم: `Math.round` روی کرانِ بالا نگذارید؛ بعد از یک بازه به خاطرِ
+  // گرد کردن عدد بی‌حرکت می‌شود. گرد کردن را در لایهٔ نمایش انجام می‌دهیم.
   useEffect(() => {
     if (!generating) return undefined
     setProgressPercent(5)
-    const startedAt = Date.now()
-    const DURATION_MS = 40_000
-    const t = window.setInterval(() => {
-      const elapsed = Date.now() - startedAt
-      // منحنی نرم (ease-out): سرعت اولیه بالا، سپس کندتر تا سقف ۹۵٪
-      const ratio = Math.min(elapsed / DURATION_MS, 1)
-      const eased = 1 - Math.pow(1 - ratio, 2.2)
-      setProgressPercent(Math.min(95, Math.round(5 + eased * 90)))
-    }, 180)
-    return () => window.clearInterval(t)
+    const timer = window.setInterval(() => {
+      setProgressPercent((prev) => {
+        const next = prev + (90 - prev) * 0.08 // هرچه به ۹۰ نزدیک‌تر، کندتر
+        return next > 90 ? 90 : next
+      })
+    }, 1000)
+    return () => window.clearInterval(timer)
   }, [generating])
 
   // هر تغییری در لیست سؤال‌ها، PDF قبلی را باطل می‌کند
@@ -1363,22 +1368,22 @@ export default function ExamBuilder({ embedded = false }) {
               در حال تولید، اعتبارسنجی و رسم اشکال هندسی... (این فرآیند ممکن است ۱ تا ۲ دقیقه زمان ببرد)
             </h3>
             <div
-              className="mb-2 text-3xl font-black text-emerald-700 tabular-nums font-vazirmatn"
+              className="mb-2 text-lg font-bold text-slate-700 tabular-nums font-vazirmatn"
               aria-live="polite"
             >
-              {toFarsiNumber(progressPercent)}٪
+              {toFarsiNumber(Math.round(progressPercent))}٪
             </div>
             <div
               className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-emerald-100"
               role="progressbar"
-              aria-valuenow={progressPercent}
+              aria-valuenow={Math.round(progressPercent)}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-label="درصد پیشرفت تولید آزمون"
             >
               <div
                 className="h-full rounded-full bg-gradient-to-l from-emerald-500 to-teal-500 transition-[width] duration-200 ease-out"
-                style={{ width: `${progressPercent}%` }}
+                style={{ width: `${Math.round(progressPercent)}%` }}
               />
             </div>
             <p className="mt-3 text-[11px] font-medium text-slate-500">لطفاً صفحه را نبندید؛ سامانه در حال طراحی دقیق سؤالات و اشکال است.</p>

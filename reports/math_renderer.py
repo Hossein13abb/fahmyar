@@ -169,6 +169,23 @@ def _to_latin_digits(text: str) -> str:
 # رسم ماتریس‌ها (mathtext از bmatrix پشتیبانی نمی‌کند)
 # ---------------------------------------------------------------------------
 def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: str) -> Optional[RenderedMath]:
+    r"""رندرِ ماتریس با ابعادِ **دقیقاً متناسب با اندازهٔ فونت**.
+
+    چرا این‌قدر روی ابعاد حساسیم؟
+    ---------------------------------
+    این تصویر درونِ جریانِ متن می‌نشیند؛ اگر بلندتر از ارتفاع سطر باشد، سطر را
+    می‌شکند و صفحه به‌هم می‌ریزد. پیش‌تر از ``figsize`` ثابت (برحسب اینچ) استفاده
+    می‌شد و ``size`` متن مستقل از آن بود؛ نتیجه این بود که ماتریس ۲×۲ از ``font_size``
+    ۱۰.۵ به ارتفاعِ ~۴۷pt می‌رسید (۴.۵ برابرِ متن) و سطرِ سؤال را می‌شکست.
+
+    اکنون چیدمان برحسبِ **پوینت** محاسبه می‌شود:
+
+    * هر سلول یک کادرِ ``cell_w`` × ``cell_h`` دارد که از اندازهٔ فونت می‌آید،
+    * هر خانه با ``ha="left", va="baseline"`` در مرکزِ کادرِ خودش نوشته می‌شود
+      (به‌جای ``ha/va=center`` که مرکزِ جعبهٔ متن را می‌گذارد، نه خطِ کرسی را)،
+    * ارتفاعِ نهایی برای یک ماتریس ``nrows`` سطری برابر است با
+      ``2*cell_h*nrows + pad`` که با ``nrows=2`` و ``fs=10.5`` حدودِ ۲۶pt می‌شود.
+    """
     if not _HAS_MATPLOTLIB or plt is None:
         return None
     rows = _split_matrix_rows(body)
@@ -179,66 +196,81 @@ def _render_matrix_png(env: str, body: str, font_size: float, dpi: int, color: s
     ncols = max((len(r) for r in grid), default=1)
     fig = None
     try:
-        scale = max(0.42, font_size / 11.0)
-        fig, ax = plt.subplots(figsize=(max(0.5, 0.62 * ncols) * scale, max(0.34, 0.42 * nrows) * scale))
-        ax.set_xlim(0, ncols)
-        ax.set_ylim(0, nrows)
+        # اندازه‌های هندسی برحسبِ پوینت، سپس تبدیل به اینچ برای matplotlib
+        fs = float(font_size)
+        cell_w = fs * 2.1          # عرضِ هر خانه (جا برای «−۱۲»)
+        cell_h = fs * 1.00         # ارتفاعِ هر سطر — هم‌تراز با LaTeX واقعی
+        pad = fs * 0.18            # حاشیهٔ بیرونی
+        fig_w_pt = ncols * cell_w + 2 * pad
+        fig_h_pt = nrows * cell_h + 2 * pad
+        fig = plt.figure(figsize=(fig_w_pt / 72.0, fig_h_pt / 72.0), dpi=dpi)
+        fig.patch.set_alpha(0.0)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.set_xlim(0, fig_w_pt)
+        ax.set_ylim(0, fig_h_pt)
         ax.axis("off")
+
         for ri, row in enumerate(grid):
-            y = nrows - ri - 0.5
-            for ci, cell in enumerate(row):
-                cell_tex = cell.strip().strip("$").strip() or "0"
+            baseline = fig_h_pt - pad - (ri + 0.80) * cell_h
+            for ci in range(ncols):
+                cell_tex = (row[ci].strip().strip("$").strip() if ci < len(row) else "") or "0"
+                cx = pad + ci * cell_w + cell_w / 2.0
                 try:
                     ax.text(
-                        ci + 0.5,
-                        y,
+                        cx,
+                        baseline,
                         f"${cell_tex}$",
-                        size=font_size * 1.05,
+                        size=fs,
                         ha="center",
-                        va="center",
+                        va="baseline",
                         color=color,
                     )
                 except Exception:
-                    ax.text(ci + 0.5, y, cell_tex, size=font_size, ha="center", va="center", color=color)
-        # کمانه‌ها / براکت‌ها
+                    ax.text(cx, baseline, cell_tex, size=fs, ha="center", va="baseline", color=color)
+
+        # کمانه / براکت / میله
         env_l = (env or "").lower()
-        bracket = (
-            "["
-            if "bmatrix" in env_l
-            else ("(" if "pmatrix" in env_l else ("|" if "vmatrix" in env_l else ""))
-        )
-        if "cases" in (env or "").lower():
+        if "cases" in env_l:
             bracket = "{"
-        bar = 0.10
+        elif "bmatrix" in env_l:
+            bracket = "["
+        elif "pmatrix" in env_l:
+            bracket = "("
+        elif "vmatrix" in env_l:
+            bracket = "|"
+        else:
+            bracket = ""
+
+        top = fig_h_pt - pad * 0.55
+        bot = pad * 0.55
+        arm = min(cell_w * 0.34, pad + cell_w * 0.30)
+        lw = max(1.0, fs * 0.11)
+        lx, rx = pad * 0.55, fig_w_pt - pad * 0.55
+
         if bracket in "[(":
-            left, right = ("[" if bracket == "[" else "("), ("]" if bracket == "[" else ")")
-            ax.plot([0.20, 0.05, 0.05, 0.20], [0.05, 0.05, nrows - 0.05, nrows - 0.05], color=color, lw=1.6)
-            ax.plot(
-                [ncols - 0.20, ncols - 0.05, ncols - 0.05, ncols - 0.20],
-                [0.05, 0.05, nrows - 0.05, nrows - 0.05],
-                color=color,
-                lw=1.6,
-            )
-            _ = (left, right, bar)
+            right = "]" if bracket == "[" else ")"
+            ax.plot([lx + arm, lx, lx, lx + arm], [top, top, bot, bot], color=color, lw=lw, solid_capstyle="butt")
+            ax.plot([rx - arm, rx, rx, rx - arm], [top, top, bot, bot], color=color, lw=lw, solid_capstyle="butt")
+            _ = right
         elif bracket == "|":
-            for x in (0.06, ncols - 0.06):
-                ax.plot([x, x], [0.05, nrows - 0.05], color=color, lw=1.3)
+            for x in (lx, rx):
+                ax.plot([x, x], [top, bot], color=color, lw=lw, solid_capstyle="butt")
         elif bracket == "{":
-            ax.plot([0.24, 0.08, 0.08, 0.24], [0.04, 0.12, nrows - 0.12, nrows - 0.04], color=color, lw=1.4)
+            ax.plot([lx + arm, lx, lx, lx + arm], [top, top - (top - bot) * 0.08, bot + (top - bot) * 0.08, bot],
+                    color=color, lw=lw, solid_capstyle="butt")
 
         buf = io.BytesIO()
-        plt.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", pad_inches=0.02, transparent=True)
+        fig.savefig(buf, format="png", dpi=dpi, transparent=True)
         plt.close(fig)
         fig = None
         data = buf.getvalue()
         if not data:
             return None
-        width_px, height_px = _png_size(data)
         return RenderedMath(
             png=data,
-            width=width_px * 72.0 / dpi,
-            height=height_px * 72.0 / dpi,
-            depth=0.18 * font_size,
+            width=fig_w_pt,
+            height=fig_h_pt,
+            depth=0.10 * fs,
         )
     except Exception:
         if fig is not None:

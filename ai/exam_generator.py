@@ -114,7 +114,16 @@ LATEX_MATH_INSTRUCTION = (
     "Inside these math blocks use standard LaTeX syntax but replace ALL English digits with Persian digits, "
     "e.g. `$\\frac{۵\\sqrt{۱۴}}{۱۴}$` instead of `$\\frac{5\\sqrt{14}}{14}$`, "
     "`$\\begin{bmatrix} ۱ & ۲ \\\\ ۳ & ۴ \\end{bmatrix}$`. "
-    "This is CRITICAL for the visual renderer that draws real fractions and radicals in the PDF."
+    "This is CRITICAL for the visual renderer that draws real fractions and radicals in the PDF.\\n"
+    "ABSOLUTE HARD RULE — NO EXCEPTIONS:\\n"
+    "You MUST wrap EVERY matrix, EVERY formula, EVERY fraction, EVERY radical, EVERY power, "
+    "EVERY subscript and EVERY single variable in `$ ... $`. "
+    "If you write something like `A = 1,2,1,3` or `det = ad - bc` WITHOUT dollar signs, "
+    "the PDF builder receives bare LaTeX, cannot render it as mathematics, and the whole exam "
+    "generation FAILS — the system will CRASH and the user gets an error page instead of an exam. "
+    "The ONLY correct form is `$A = \\\\begin{bmatrix} 1 & 2 \\\\\\\\ 1 & 3 \\end{bmatrix}$`. "
+    "Before you emit ANY JSON, re-read every `text`, `option`, and `explanation` field and verify "
+    "that no mathematical token sits outside a `$ ... $` pair."
 )
 
 SVG_DIAGRAM_INSTRUCTION = (
