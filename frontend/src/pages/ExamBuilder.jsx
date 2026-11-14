@@ -526,28 +526,41 @@ export default function ExamBuilder({ embedded = false }) {
 
   // ── مرحلهٔ ۱ → تولید پیش‌نمایش (JSON فقط؛ بدون PDF) ──
   const generatePreview = async () => {
+    // اعتبارسنجی پیش از باز کردن مودال تا پیام خطا فوراً دیده شود
+    if (selectedSubjects.length === 0 || allSelectedSubTopics.length === 0) {
+      setNotice('⚠️ لطفاً حداقل یک درس و یک مبحث را انتخاب کنید.')
+      return
+    }
     const err = validate()
-    if (err) return setNotice(`⚠️ ${err}`)
+    if (err) {
+      setNotice(`⚠️ ${err}`)
+      return
+    }
+
+    const payload = {
+      field,
+      grade,
+      subjects: selectedSubjects,
+      subject_configs: subjectConfigsPayload,
+      subTopics: allSelectedSubTopics,
+      ai_ratio: aiPercentage,
+      ai_percentage: aiPercentage,
+      topic: null,
+      question_type: questionType,
+      difficulty,
+      count: totalCount,
+      custom_prompt: customPrompt.trim(),
+    }
+    console.log('Generating exam with payload:', payload)
+
+    // مودال باید بدون تأخیر باز شود
     setNotice('')
-    setGenStep(0)
+    setProgressPercent(5)
     setGenerating(true)
     try {
       const { data } = await client.post(
         '/api/teacher/generate-exam-preview',
-        {
-          field,
-          grade,
-          subjects: selectedSubjects,
-          subject_configs: subjectConfigsPayload,
-          subTopics: allSelectedSubTopics,
-          ai_ratio: aiPercentage,
-          ai_percentage: aiPercentage,
-          topic: null,
-          question_type: questionType,
-          difficulty,
-          count: totalCount,
-          custom_prompt: customPrompt.trim(),
-        },
+        payload,
         { timeout: 180000 },
       )
       const list = Array.isArray(data?.questions) ? data.questions : []
@@ -1349,9 +1362,11 @@ export default function ExamBuilder({ embedded = false }) {
             <h3 className="mt-5 text-base font-black leading-7 text-slate-800">
               در حال تولید، اعتبارسنجی و رسم اشکال هندسی... (این فرآیند ممکن است ۱ تا ۲ دقیقه زمان ببرد)
             </h3>
-            <div className="mt-4 flex items-baseline justify-center gap-1" aria-live="polite">
-              <span className="text-4xl font-black tabular-nums text-emerald-700">{toFarsiNumber(progressPercent)}</span>
-              <span className="text-xl font-black text-emerald-700">٪</span>
+            <div
+              className="mb-2 text-3xl font-black text-emerald-700 tabular-nums font-vazirmatn"
+              aria-live="polite"
+            >
+              {toFarsiNumber(progressPercent)}٪
             </div>
             <div
               className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-emerald-100"
