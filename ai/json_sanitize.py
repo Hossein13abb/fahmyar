@@ -151,6 +151,58 @@ def repair_flat_matrices(text: str) -> str:
     return "".join(out)
 
 
+def repair_flat_option(text: str) -> str:
+    r"""ماتریسِ تخت‌شده را در یک **گزینه** بازسازی می‌کند.
+
+    گزینه‌ها برخلافِ متنِ سؤال، LHS (مثلِ ``A=``) ندارند؛ محتوایشان مستقیماً
+    ``۱، ۲، ۳، ۴`` یا ``-۱ / ۲، -۳ / ۲، ۲، ۱`` است. بنابراین شرطِ انتسابِ
+    ``repair_flat_matrices`` این‌جا کار نمی‌کند و باید یک مسیرِ جدا داشت.
+
+    برای گزینه‌ها پس‌زمینهٔ ریاضی روشن است (کلِ گزینه یک مقدار است)، پس:
+    * اگر از قبل ``$`` یا ``\begin{`` دارد ← دست نزن،
+    * اگر «سلولِ سلولِ» کاملاً عددی با جداکنندهٔ ویرگول است ← ماتریس بساز،
+    * در غیرِ این صورت ← دست نزن.
+    """
+    if not text or not isinstance(text, str):
+        return text
+    s = text.strip()
+    if not s or "$" in s or "begin{" in s:
+        return text
+
+    # کسرها را به شکلِ rac دربیاور تا داخل ماتریس درست رندر شوند
+    cells = [c.strip() for c in _CELL_SEP_RE.split(s) if c.strip()]
+    if len(cells) < 4:
+        return text
+    rows, cols = _guess_option_dims(len(cells))
+    if rows < 2 or cols < 2:
+        return text
+
+    def _norm_cell(cell: str) -> str:
+        cell = cell.strip()
+        m = re.fullmatch(r"([\-−+]?)\s*(\S+?)\s*/\s*(\S+)", cell)
+        if m:
+            sign, num, den = m.groups()
+            sign = "-" if sign in ("-", "−") else ""
+            return rf"{sign}\frac{{{num}}}{{{den}}}"
+        return cell
+
+    norm = [_norm_cell(c) for c in cells]
+    grid = [norm[r * cols : (r + 1) * cols] for r in range(rows)]
+    body = r" \\ ".join(" & ".join(row) for row in grid)
+    return "$" + r"\begin{bmatrix}" + body + r"\end{bmatrix}$"
+
+
+def _guess_option_dims(n: int) -> tuple[int, int]:
+    """برای گزینه‌ها اکثرِ ماتریس‌ها ۲×۲ هستند؛ در غیرِ این صورت مربع‌ترین."""
+    if n == 4:
+        return (2, 2)
+    dims = [(r, n // r) for r in range(1, n + 1) if n % r == 0 and r >= 2]
+    if not dims:
+        return (1, n)
+    dims.sort(key=lambda rc: (abs(rc[0] - rc[1]), rc[1]))
+    return dims[0]
+
+
 def restore_latex_commands(obj: Any) -> Any:
     """پس‌پردازندهٔ امن پس از `json.loads` برای تضمین سلامت دستورات LaTeX و علامت‌های `$`."""
     if isinstance(obj, str):

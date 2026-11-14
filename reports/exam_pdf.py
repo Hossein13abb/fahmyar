@@ -71,7 +71,7 @@ from reports.pdf_text_flow import (  # noqa: F401  (بازصادراتِ قرا�
     math_paragraph_flowables,
     parse_mixed_text_and_math,
 )
-from ai.json_sanitize import repair_flat_matrices
+from ai.json_sanitize import repair_flat_matrices, repair_flat_option
 from reports.math_inline import (  # noqa: F401  (تزریقِ درون‌خطیِ <img/>)
     build_mixed_math_flowables,
     build_mixed_math_text,
@@ -888,7 +888,7 @@ def _options_table(item: dict[str, Any]) -> "OptionsRow":
        پیش‌فرضِ ``Frame``). پیش‌تر این‌جا ``178mm`` = ``504.57pt`` داده می‌شد که
        ۱۲ پوینت از کادر بیرون می‌زد و ردیفِ گزینه‌ها سرریز می‌کرد.
     """
-    opts = [repair_flat_matrices(str(o)) for o in item["options"]]
+    opts = [repair_flat_option(repair_flat_matrices(str(o))) for o in item["options"]]
     cells = [(_option_text(opts[i], i), _option_style(i)) for i in range(4)]
     return OptionsRow(cells, width=_CONTENT_WIDTH_PT, fallback=final_pdf_cleanup)
 

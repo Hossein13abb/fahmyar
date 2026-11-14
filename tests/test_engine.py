@@ -962,3 +962,127 @@ def test_matrix_render_keeps_prefix_and_has_no_placeholder_cells():
     except Exception:
         return  # PIL نبود — بررسی بصری در E2E انجام می‌شود
     assert opaque > 2000, f"too few opaque pixels: {opaque} (placeholder glyphs?)"
+
+
+# ---------------------------------------------------------------------------
+# رگرسیون: فرمول‌های بدون «$» به fallback متنی می‌افتادند (گزارش کاربر)
+# ---------------------------------------------------------------------------
+def test_bare_symbol_commands_are_recognized_as_math():
+    r"""دستوراتِ نمادی مثلِ ``\times`` و ``\cdot`` باید ریاضی شناخته شوند.
+
+    پیش‌تر ``_LATEX_SYMBOL_CMDS`` هیچ‌جا نبود و متنی مثل
+    «ماتریسی ۲ \\times ۲» هیچ فرمولی برایش پیدا نمی‌شد؛ ``has_math`` مقدار
+    ``False`` می‌گرفت، کلِ سؤال از مسیرِ رندر تصویری بیرون می‌افتاد و به
+    ``final_pdf_cleanup`` (ترجمهٔ متنی) می‌رفت. نتیجه در PDF: «۲۲» و
+    «۱، ۲، ۳، ۴» — دقیقاً همان چیزی که کاربر گزارش کرد.
+    """
+    from reports.pdf_text_flow import has_math, split_math_segments
+
+    for text, expected in (
+        (r"ماتریسی ۲ \times ۲ باشد", r"۲ \times ۲"),
+        (r"اگر a \cdot b باشد", r"a \cdot b"),
+        (r"مقدار x \leq y", r"x \leq y"),
+        (r"جمع ۲ \pm ۳", r"۲ \pm ۳"),
+    ):
+        assert has_math(text), text
+        maths = [s[1] for s in split_math_segments(text) if s[0] == "math"]
+        # باید **یک** قطعهٔ کامل باشد، نه سه تکهٔ پراکنده
+        assert len(maths) == 1, (text, maths)
+        assert expected.replace(" ", "") in maths[0].replace(" ", ""), (text, maths)
+
+
+def test_whole_math_expression_is_not_split_around_operators():
+    r"""``۲ \times ۲`` باید یک قطعه بماند، نه «۲ » + «\times» + « ۲».
+
+    قبلاً ``_BARE_LATEX_RE`` پیش از ``_wrap_bare_math`` اجرا می‌شد و دستورِ
+    وسطِ عبارت را می‌برید؛ تصویرِ ۸ پوینتیِ «×» تنها چیزی بود که می‌ماند.
+    """
+    from reports.pdf_text_flow import split_math_segments
+
+    segs = split_math_segments(r"ماتریسی ۲ \times ۲ باشد")
+    maths = [s[1] for s in segs if s[0] == "math"]
+    assert len(maths) == 1, maths
+    assert "times" in maths[0] and "۲" in maths[0]
+
+    # ماتریسِ بدون $ هم باید یک قطعهٔ واحد بماند
+    segs = split_math_segments(
+        r"ماتریس \begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix} را بنویس"
+    )
+    maths = [s[1] for s in segs if s[0] == "math"]
+    assert len(maths) == 1, maths
+    assert "bmatrix" in maths[0] and "&" in maths[0]
+
+
+def test_plain_persian_text_stays_plain():
+    """متنِ فارسیِ بدونِ فرمول نباید به قطعهٔ ریاضی تبدیل شود."""
+    from reports.pdf_text_flow import has_math
+
+    for text in (
+        "میانگین سه عدد ۴، ۷ و ۱۰ چیست؟",
+        "کدام است X؟",
+        "این آزمون و پاسخنامه توسط فهم‌یار ساخته شد.",
+    ):
+        assert not has_math(text), text
+
+
+def test_no_dollar_latex_matrix_end_to_end():
+    r"""کلِ سؤالِ گزارش‌شده — بدون هیچ ``$`` — باید ماتریسِ واقعی رندر کند."""
+    import pymupdf  # noqa: F401  (اختیاری)
+
+    from reports.exam_pdf import build_exam_pdf
+
+    text = (
+        r"اگر A=\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix} و "
+        r"B=\begin{bmatrix} ۰ \\ ۱ \end{bmatrix} باشد که X ماتریسی "
+        r"۲ \times ۲ باشد و AX=B برقرار است، کدام است X؟"
+    )
+    opts = [
+        r"\begin{bmatrix} ۱ & ۲ \\ ۳ & ۴ \end{bmatrix}",
+        r"\begin{bmatrix} -۱ & ۲ \\ -۳ & ۱ \end{bmatrix}",
+        r"\begin{bmatrix} -۱ & -۲ \\ -۳ & -۱ \end{bmatrix}",
+        r"\begin{bmatrix} ۲ & -۱ \\ ۱ & -۱ \end{bmatrix}",
+    ]
+    pdf = build_exam_pdf(
+        "دبیرستان", "آزمون", [
+            {"order": 1, "subject": "هندسه", "difficulty": "سخت", "text": text,
+             "options": opts, "correct_answer": 3, "explanation": "", "diagram_svg": None},
+        ],
+        60, "سخت", grade="12", major="ریاضی و فیزیک", subject_label="هندسه", topic="ماتریس",
+    )
+    assert pdf[:4] == b"%PDF"
+
+    import io as _io
+
+    doc = pymupdf.open(stream=pdf, filetype="pdf")
+    total_images = sum(len(p.get_images()) for p in doc)
+    # ۵ ماتریس + «۲×۲» + X → دست‌کم ۶ تصویر در صفحهٔ سؤال
+    assert total_images >= 6, total_images
+
+    full_text = "".join(p.get_text() for p in doc)
+    # هیچ نشتیِ متنی نباید باشد
+    for leak in ("\\times", "bmatrix", "\\begin", "$"):
+        assert leak not in full_text, leak
+
+
+def test_flat_option_becomes_real_matrix():
+    r"""گزینه‌های تخت («۱، ۲، ۳، ۴») باید به ماتریس واقعی تبدیل شوند.
+
+    گزینه‌ها LHS ندارند، پس مسیرِ ``repair_flat_matrices`` (که به ``A=`` نیاز
+    دارد) آن‌ها را نمی‌گرفت و در PDF به‌صورتِ متنِ ویرگول‌دار چاپ می‌شدند.
+    """
+    from ai.json_sanitize import repair_flat_option
+
+    cases = {
+        "۱، ۲، ۳، ۴": (r"\begin{bmatrix}۱ & ۲ \\ ۳ & ۴\end{bmatrix}", 2),
+        "-۱، ۲، -۳، ۱": (r"\begin{bmatrix}-۱ & ۲ \\ -۳ & ۱\end{bmatrix}", 2),
+        "-۱ / ۲، -۳ / ۲، ۲، ۱": (r"\frac", 2),
+    }
+    for raw, (needle, nrows) in cases.items():
+        out = repair_flat_option(raw)
+        assert out.startswith("$") and out.endswith("$"), out
+        assert needle in out, (raw, out)
+        assert out.count(r" \\ ") == nrows - 1, (raw, out)
+
+    # مواردی که نباید تغییر کنند
+    for keep in ("$x$", "میانگین ۴، ۷", "۱، ۲"):
+        assert repair_flat_option(keep) == keep, keep

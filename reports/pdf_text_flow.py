@@ -38,11 +38,40 @@ _INLINE_RE = re.compile(r"(?<!\\)\$(?!\$)(.+?)(?<!\\)\$", re.DOTALL)
 # نکته: ``\frac`` و ``\sqrt[n]`` می‌توانند دو گروه آکولاد داشته باشند
 # (``frac{۱}{۲}``). نسخهٔ قبلی فقط یک گروه را می‌گرفت و در نتیجه ``frac{۱}{۲}``
 # به «ریاضی=frac{۱}» + «متن={۲}» تجزیه می‌شد و در PDF به‌صورت «{۲}۱» چاپ می‌شد.
+#: دستوراتِ ریاضی که «آرگومان» می‌گیرند (``\frac{۱}{۲}``، ``\sqrt{۷}``).
+_LATEX_ARG_CMDS = (
+    r"[dt]?frac|sqrt|vec|overrightarrow|widehat|overline|hat|bar|tilde|"
+    r"text|mathrm|mathbf|operatorname"
+)
+
+#: دستوراتِ «نمادی» که آرگومان نمی‌گیرند و فقط یک نماد می‌سازند
+#: (``2 \times 2``، ``a \cdot b``، ``x \leq y``). این‌ها پیش‌تر در هیچ الگویی
+#: نبودند؛ نتیجه این بود که متنی مثل «ماتریسی ۲ \times ۲» هیچ فرمولی برایش
+#: شناسایی نمی‌شد، ``has_math`` مقدار ``False`` می‌گرفت و کلِ سؤال از مسیرِ
+#: رندر تصویری بیرون می‌افتاد و به ``final_pdf_cleanup`` (ترجمهٔ متنی) می‌رفت.
+_LATEX_SYMBOL_CMDS = (
+    r"times|cdot|div|pm|mp|ast|star|circ|bullet|"
+    r"leq|le|geq|ge|neq|ne|approx|equiv|sim|cong|propto|"
+    r"rightarrow|leftarrow|leftrightarrow|Rightarrow|Leftarrow|"
+    r"Leftrightarrow|to|gets|mapsto|"
+    r"in|notin|subset|subseteq|supset|supseteq|cup|cap|setminus|"
+    r"forall|exists|nexists|partial|nabla|infty|"
+    r"theta|alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|"
+    r"lambda|mu|nu|xi|rho|sigma|tau|phi|varphi|chi|psi|omega|"
+    r"Gamma|Delta|Theta|Lambda|Xi|Sigma|Phi|Psi|Omega|"
+    r"pi|angle|degree|perp|parallel|triangle|square|"
+    r"left|right|quad|qquad|,|;|!| "
+)
+
 _BARE_LATEX_RE = re.compile(
-    r"(?:\\+)?\b(?:[dt]?frac|sqrt|vec|overrightarrow|theta|alpha|beta|gamma|pi|"
-    r"cos|sin|tan|cot|log|ln|infty|circ|deg)\b"
+    # ۱) دستوراتِ آرگومان‌دار (با یا بدونِ آکولاد)
+    rf"(?:\\+)?\b(?:{_LATEX_ARG_CMDS})\b"
     r"\s*(?:\[[^\[\]]*\]\s*)?(?:\{[^{}]*\})?(?:\s*\{[^{}]*\})?"
-    r"|(?:\\+)?\b(?:begin)\s*\{[bpvBV]?(?:matrix|array|cases)\}[\s\S]*?(?:\\+)?\b(?:end)\s*\{[bpvBV]?(?:matrix|array|cases)\}",
+    # ۲) دستوراتِ نمادی — تک‌تک، چون آرگومان ندارند
+    rf"|(?:\\+)(?:{_LATEX_SYMBOL_CMDS})(?![a-zA-Z])"
+    # ۳) محیط‌های ماتریسی بدونِ $
+    r"|(?:\\+)?\b(?:begin)\s*\{[bpvBV]?(?:matrix|array|cases)\}"
+    r"[\s\S]*?(?:\\+)?\b(?:end)\s*\{[bpvBV]?(?:matrix|array|cases)\}",
 )
 
 _TOKEN_RE = re.compile(
@@ -55,10 +84,16 @@ Segment = tuple  # ("text", str) | ("math", str, is_display)
 
 
 # کاراکترهای مجاز در یک عبارت ریاضی (حروف فارسی اینجا نیستند)
+#: کاراکترهای مجاز در یک «کاندیدِ ریاضی»ِ بدونِ ``$``.
+#:
+#: نکتهٔ مهم: بک‌اسلش (``\\``) هم باید در مجموعه باشد، وگرنه دستوراتی مثل
+#: ``2 \times 2`` یا ``a \cdot b`` هرگز به‌عنوان یک عبارتِ واحد دیده نمی‌شوند و
+#: به تکه‌های پراکنده («۲ » + «\times» + « ۲») می‌شکنند؛ ``\times`` تنها یک
+#: تصویرِ ۸ پوینتی می‌شد و نتیجه در PDF مثلِ «۲۲» دیده می‌شد.
 _MATH_CHARS = (
     "A-Za-z0-9"
     "\u06F0-\u06F9"                      # ارقام فارسی
-    "\\^_=+\\-*/()\\[\\]{}.,<>|:'\""
+    "\\\\^_=+\\-*/()\\[\\]{}.,<>|:'\"&"
     "\u066B\u066C\u00D7\u00F7\u221A\u2264\u2265\u2260\u00B1"
 )
 _MATH_SIGNAL_RE = re.compile(r"[\\^_=<>|]")
@@ -88,8 +123,14 @@ def _looks_math(group_text: str) -> bool:
         return True
     if _FUNC_CALL_RE.match(g) or _COORD_CALL_RE.match(g):
         return True
-    if "\\" in g:
-        return True
+    # دستورِ LaTeX (با یا بدونِ بک‌اسلش — مدل‌ها هر دو را تولید می‌کنند)
+    has_cmd = bool(re.search(r"\\?[a-zA-Z]{2,}", g))
+    if "\\" in g or has_cmd:
+        # دستورِ تنها (مثلِ «\times» یا «frac» بی‌آرگومان) فرمولِ کاملی نیست؛
+        # اگر چیزِ دیگری جز همان یک دستور در کاندید نباشد آن را «واژه» بگذار تا
+        # به تصویرِ بی‌معنا (یک علامتِ ۸ پوینتی) تبدیل نشود.
+        residue = re.sub(r"\\\\?[a-zA-Z]+|[\s{}]", "", g)
+        return bool(residue)
     return False
 
 
@@ -169,21 +210,19 @@ def split_math_segments(text: Any) -> List[Segment]:
     if pos < len(raw):
         segments.append(("text", raw[pos:]))
 
-    # دستورات LaTeXِ بدون $ را هم به قطعهٔ ریاضی تبدیل کن
+    # دستورات LaTeXِ بدون $ را هم به قطعهٔ ریاضی تبدیل کن.
+    #
+    # ترتیب مهم است: اول ``_wrap_bare_math`` روی کلِ تکه اجرا می‌شود تا
+    # عبارت‌های چندجزئی (``۲ \times ۲``، ``x^2 + y^2``، ``f(x) = x - ۳``) به
+    # صورتِ **یک** قطعهٔ ریاضی در بیایند. اگر اول ``_BARE_LATEX_RE`` اجرا شود،
+    # دستورِ وسطِ عبارت بریده می‌شود و به سه تکهٔ بی‌ربط («۲ » + «\times» + « ۲»)
+    # می‌شکند — همان چیزی که در PDF به‌صورتِ «۲۲» دیده می‌شد.
     enriched: List[Segment] = []
     for seg in segments:
         if seg[0] != "text":
             enriched.append(seg)
             continue
-        chunk = seg[1]
-        cursor = 0
-        for m in _BARE_LATEX_RE.finditer(chunk):
-            if m.start() > cursor:
-                enriched.extend(_wrap_bare_math(chunk[cursor : m.start()]))
-            enriched.append(("math", m.group(0).strip(), False))
-            cursor = m.end()
-        if cursor < len(chunk):
-            enriched.extend(_wrap_bare_math(chunk[cursor:]))
+        enriched.extend(_wrap_bare_math(seg[1]))
     return enriched
 
 
