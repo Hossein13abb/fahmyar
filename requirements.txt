@@ -12,7 +12,9 @@ reportlab>=4
 arabic-reshaper>=3
 python-bidi>=0.4
 jdatetime>=5
-# موتور رندر PDF آزمون: Chromium واقعی که صفحهٔ چاپ React را عکس می‌گیرد
+# موتور رندر PDF آزمون: Chromium واقعی که صفحهٔ چاپ React را عکس می‌گیرد.
+# توجه: این پکیج فقط کد پایتون است؛ باینری مرورگر و کتابخانه‌های سیستمی‌اش
+# جداگانه لازم‌اند. Dockerfile (مرحلهٔ pdf-browser) هر دو را نصب می‌کند.
 playwright>=1.40
 # تست
 pytest>=8.0

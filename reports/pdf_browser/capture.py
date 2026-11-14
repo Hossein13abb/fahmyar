@@ -47,7 +47,19 @@ A4_H = 1123
 
 
 class CaptureError(RuntimeError):
-    """Raised when the browser is missing, the bundle is stale, or capture fails."""
+    """Raised when the browser is missing, the bundle is stale, or capture fails.
+
+    ``reason`` lets the API layer produce a message an operator can act on
+    instead of a stack trace.  Two reasons are distinguished because they need
+    different fixes:
+
+    ``bundle_missing``  the Vite build never ran        → run `npm run build`
+    ``chromium_missing`` the browser binary is absent   → run `playwright install`
+    """
+
+    def __init__(self, message: str, reason: str = "capture_failed") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 @dataclass
@@ -79,6 +91,34 @@ class CaptureResult:
 def bundle_ready() -> bool:
     """True if a built print entry point is present."""
     return (DIST_DIR / PRINT_ENTRY).is_file() and (DIST_DIR / "assets").is_dir()
+
+
+def bundle_diagnosis() -> str:
+    """Explain *why* the bundle is unusable, in terms an operator can act on.
+
+    Returns an empty string when the bundle is fine.  The text is surfaced
+    verbatim in the API error, so it names the exact missing path and the exact
+    command that produces it.
+    """
+    entry = DIST_DIR / PRINT_ENTRY
+    assets = DIST_DIR / "assets"
+    if entry.is_file() and assets.is_dir():
+        return ""
+
+    missing = []
+    if not entry.is_file():
+        missing.append(f"«{entry}»")
+    if not assets.is_dir():
+        missing.append(f"«{assets}»")
+
+    return (
+        "باندل فرانت‌اند (که موتور تولید PDF آن را در مرورگر بارگذاری می‌کند) "
+        f"یافت نشد: {', '.join(missing)}. "
+        "این باندل با اجرای «npm run build» در پوشهٔ frontend تولید می‌شود و "
+        "باید در مسیر frontend/dist قرار بگیرد. در استقرار کانتینری، مرحلهٔ "
+        "frontend-build در Dockerfile این کار را انجام می‌دهد؛ اگر سرویس را "
+        "مستقیم اجرا می‌کنید، یک‌بار دستی build کنید."
+    )
 
 
 def browser_available() -> bool:
@@ -144,16 +184,19 @@ def capture_exam(
 
     ``exam`` is JSON-serialisable and becomes ``window.__EXAM__`` in the page.
     """
-    if not bundle_ready():
-        raise CaptureError(
-            "frontend bundle missing — run `npm run build` in frontend/ "
-            f"(expected {DIST_DIR / PRINT_ENTRY})"
-        )
+    diagnosis = bundle_diagnosis()
+    if diagnosis:
+        raise CaptureError(diagnosis, reason="bundle_missing")
 
     try:
         from playwright.sync_api import sync_playwright
     except Exception as exc:  # pragma: no cover - environment dependent
-        raise CaptureError(f"playwright is not installed: {exc}") from exc
+        raise CaptureError(
+            "موتور رندر مرورگری در این نصب موجود نیست (پکیج playwright). "
+            "«pip install -r requirements.txt» و سپس "
+            "«python -m playwright install chromium» را اجرا کنید.",
+            reason="chromium_missing",
+        ) from exc
 
     server, port = _start_server(DIST_DIR)
     try:
@@ -161,15 +204,20 @@ def capture_exam(
             raise CaptureError("static server did not come up")
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--font-render-hinting=none",
-                    "--force-color-profile=srgb",
-                    "--disable-lcd-text",
-                ]
-            )
+            try:
+                browser = p.chromium.launch(
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--font-render-hinting=none",
+                        "--force-color-profile=srgb",
+                        "--disable-lcd-text",
+                    ]
+                )
+            except Exception as exc:
+                raise CaptureError(
+                    _launch_error_message(exc), reason="chromium_missing"
+                ) from exc
             try:
                 ctx = browser.new_context(
                     viewport={"width": 794, "height": A4_H},
@@ -225,6 +273,25 @@ def capture_exam(
         i + 1 for i, pg in enumerate(pages) if pg.height_px > A4_H * scale * 1.01
     ]
     return CaptureResult(pages=pages, scale=scale, overflow=overflow)
+
+
+def _launch_error_message(exc: Exception) -> str:
+    """Turn a Chromium launch failure into an operator-readable sentence."""
+    text = str(exc)
+    if "shared libraries" in text or "cannot open shared object" in text:
+        return (
+            "مرورگر Chromium نصب است اما اجرا نشد، چون کتابخانه‌های سیستمیِ "
+            "لازم موجود نیستند. این کتابخانه‌ها با pip نصب نمی‌شوند و باید در "
+            "تصویر سیستم‌عامل باشند — Dockerfile این پروژه آن‌ها را نصب می‌کند "
+            "(libnspr4، libnss3، libatk-1.0، libgbm1، libpango، libcairo و…). "
+            f"پیام اصلی: {text.splitlines()[0][:200] if text else 'نامشخص'}"
+        )
+    if "Executable doesn't exist" in text:
+        return (
+            "باینری Chromium نصب نشده است. «python -m playwright install "
+            "chromium» را اجرا کنید."
+        )
+    return f"راه‌اندازی Chromium شکست خورد: {text.splitlines()[0][:300] if text else exc}"
 
 
 def _js_json(data: Any) -> str:

@@ -1,0 +1,52 @@
+# ── چیزی از محیط توسعه نباید وارد تصویر شود ────────────────────────────────
+
+# وابستگی‌ها و خروجی build (در مرحلهٔ frontend-build دوباره ساخته می‌شوند)
+frontend/node_modules
+frontend/dist
+node_modules
+dist
+build
+
+# پایتون
+__pycache__
+*.py[cod]
+.venv
+venv
+env
+.mypy_cache
+.pytest_cache
+.ruff_cache
+*.egg-info
+
+# پایگاه‌داده و وضعیت محلی
+*.db
+*.sqlite
+*.sqlite3
+fahmyar.db
+
+# متغیرهای محیطی و رمزها — هیچ‌گاه در تصویر نباشند
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# کش مرورگر از محیط توسعه
+.cache
+.ms-playwright
+.npm
+
+# ابزار ویرایشگر و سیستم
+.git
+.gitignore
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# خروجی‌های آزمون و نمونه‌های محلی
+reports/**/*.pdf
+tests/**/*.png
+corpus_browser
+baseline
+*.log

@@ -25,7 +25,16 @@ __all__ = ["build_exam_pdf_browser", "BrowserRenderError", "build_payload"]
 
 
 class BrowserRenderError(RuntimeError):
-    """The browser could not produce a PDF."""
+    """The browser could not produce a PDF.
+
+    ``reason`` mirrors :class:`reports.pdf_browser.capture.CaptureError.reason`
+    so the HTTP layer can log a precise cause and still return one stable
+    status code.
+    """
+
+    def __init__(self, message: str, reason: str = "render_failed") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 _GRADE_LABELS = {
@@ -137,7 +146,7 @@ def build_exam_pdf_browser(
     try:
         captured = capture_exam(payload, scale=scale, timeout_ms=timeout_ms)
     except CaptureError as exc:
-        raise BrowserRenderError(str(exc)) from exc
+        raise BrowserRenderError(str(exc), reason=exc.reason) from exc
     except Exception as exc:
         raise BrowserRenderError(f"chromium capture failed: {exc}") from exc
 
@@ -147,4 +156,6 @@ def build_exam_pdf_browser(
     try:
         return pdf_from_images(captured.pages, title=payload["meta"]["title"])
     except Exception as exc:
-        raise BrowserRenderError(f"pdf packing failed: {exc}") from exc
+        raise BrowserRenderError(
+            f"pdf packing failed: {exc}", reason="packing_failed"
+        ) from exc

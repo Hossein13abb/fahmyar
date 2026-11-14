@@ -1,6 +1,7 @@
 """مسیرهای معلم/مدیر — داشبورد، گزارش دانش‌آموزان، تصویبِ سؤالات AI."""
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,6 +19,8 @@ from datetime import datetime, timedelta
 from urllib.parse import quote
 
 from fastapi.responses import StreamingResponse
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 
 import json
@@ -616,9 +619,18 @@ def generate_exam_pdf(
             topic=topic,
         )
     except BrowserRenderError as exc:
+        # noqa: the message is written for an operator, not the end user, and is
+        # logged in full so a 503 in production is diagnosable from the logs
+        logger.error(
+            "exam pdf render failed (reason=%s): %s", exc.reason, exc, exc_info=True
+        )
         raise HTTPException(
             status_code=503,
-            detail=f"ساخت PDF با موتور مرورگری ممکن نشد: {exc}",
+            detail={
+                "message": f"ساخت PDF با موتور مرورگری ممکن نشد: {exc}",
+                "reason": exc.reason,
+            },
+            headers={"Retry-After": "5"},
         ) from exc
 
     filename = "fahmyar-konkur-exam.pdf"
