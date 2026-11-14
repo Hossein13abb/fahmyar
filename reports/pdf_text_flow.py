@@ -476,10 +476,44 @@ class OptionsRow(Flowable):
         c.restoreState()
 
 
+def parse_mixed_text_and_math(content: Any) -> List[Segment]:
+    """تحلیل‌گرِ محتوای ترکیبی (متن + فرمول) — همان قراردادِ ``parse_mixed_text_and_math``.
+
+    خروجی یک لیست مرتب از قطعه‌هاست::
+
+        [("text", "اگر "), ("math", "\\frac{۱}{۲}", False), ("text", " باشد")]
+
+    * ``$ ... $``  → قطعهٔ ریاضیِ درون‌خطی (``display=False``)
+    * ``$$ ... $$`` → قطعهٔ ریاضیِ نمایشی (``display=True``)
+    * LaTeXِ بدون دلار (مثل ``sqrt{۷}`` یا ``f(x) = x^2``) هم به قطعهٔ ریاضی تبدیل می‌شود
+    * بقیهٔ متن دست‌نخورده می‌ماند تا با ``arabic_reshaper`` + ``bidi`` آماده شود.
+    """
+    return split_math_segments(content)
+
+
+def build_mixed_flowables(
+    content: Any,
+    style: ParagraphStyle,
+    max_width: float,
+    fallback: Optional[Callable[[str], str]] = None,
+) -> list:
+    """محتوای ترکیبی را به لیست Flowableهای ReportLab تبدیل می‌کند.
+
+    هر قطعهٔ متن → پاراگرافِ RTL (reshape + bidi) و هر قطعهٔ ریاضی → تصویرِ PNG
+    شفاف با DPI بالا. این تابع همان چیزی است که صورت سؤال و گزینه‌ها را می‌سازد.
+    """
+    return math_paragraph_flowables(
+        content, style=style, max_width=max_width, fallback=fallback
+    )
+
+
+
 __all__ = [
     "MathRichBlock",
     "OptionsRow",
     "math_paragraph_flowables",
     "split_math_segments",
+    "parse_mixed_text_and_math",
+    "build_mixed_flowables",
     "has_math",
 ]

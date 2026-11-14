@@ -343,8 +343,54 @@ def math_image_size(latex_str: Any, font_size: float = 10.5) -> tuple[float, flo
     return (rendered.width, rendered.height)
 
 
+def render_latex_to_image(
+    latex_str: Any,
+    dpi: int = DEFAULT_DPI,
+    font_size: float = 10.5,
+    max_width_pt: Optional[float] = None,
+    color: str = DEFAULT_COLOR,
+) -> Optional["RLImage"]:
+    r"""رندر یک عبارت LaTeX به ``reportlab.platypus.Image`` با DPI بالا و پس‌زمینهٔ شفاف.
+
+    این همان تابعِ قراردادیِ سند است؛ بر خلاف پیاده‌سازیِ سادهٔ مبتنی بر
+    ``plt.figure(figsize=(0.01, 0.01))`` — که به‌خاطر کلایپِ جعبهٔ محورها همیشه
+    تصویرِ خالی می‌دهد — از ``mathtext.math_to_image`` استفاده می‌کند که خودش
+    tight-bbox می‌دهد و ابعادِ دقیقِ پوینتی را برمی‌گرداند.
+
+    Parameters
+    ----------
+    latex_str:
+        عبارت LaTeX؛ با یا بدون ``$``/``$$``.
+    dpi:
+        تفکیک‌پذیری تصویر خروجی (پیش‌فرض ۳۰۰).
+    font_size:
+        اندازهٔ قلم بر حسب پوینت — هم‌تراز با متنِ اطراف در ReportLab.
+    max_width_pt:
+        اگر داده شود، تصویر بلندتر از این عرض مقیاس می‌شود.
+    """
+    rendered = render_math_png(latex_str, font_size=font_size, dpi=dpi, color=color)
+    if rendered is None or RLImage is None:
+        return None
+    img = RLImage(
+        io.BytesIO(rendered.png),
+        width=rendered.width,
+        height=rendered.height,
+    )
+    if max_width_pt and 0 < max_width_pt < rendered.width:
+        k = max_width_pt / rendered.width
+        img.drawWidth = rendered.width * k
+        img.drawHeight = rendered.height * k
+    img.hAlign = "RIGHT"
+    # نگه‌داشتن بایت‌ها تا ReportLab در زمان build دوباره بخواند
+    img._math_png = rendered.png  # type: ignore[attr-defined]
+    img._math_depth = rendered.depth  # type: ignore[attr-defined]
+    return img
+
+
+
 __all__ = [
     "RenderedMath",
+    "render_latex_to_image",
     "render_math_png",
     "latex_to_image",
     "normalize_latex",

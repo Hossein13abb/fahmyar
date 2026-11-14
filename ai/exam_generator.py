@@ -103,11 +103,18 @@ LATEX_MATH_INSTRUCTION = (
     "- Vectors & subscripts: `$\\vec{n}_1 = (1, 2, 2)$` (NOT `n_1=(1,2,2)`)\n"
     "- Matrices: `$$\\begin{bmatrix} 2 & 1 \\\\ 1 & 3 \\end{bmatrix}$$`\n"
     "Never output raw LaTeX commands outside of `$` or `$$` delimiters!\n"
+    "NEVER DESCRIBE A FORMULA IN WORDS (STRICTLY FORBIDDEN):\n"
+    "Do NOT write words like 'be rooy', 'radikal', 'ta tavan', 'barabar ba', or their Persian equivalents "
+    "(«به روی»، «رادیکال»، «به توان»، «تتا»، «بردار») inside question text, options, or explanations. "
+    "The PDF and web renderer draw real fractions, radicals and roots from LaTeX — so write the LaTeX itself "
+    "and let the renderer handle visual formatting.\n"
+    "Examples: write `$\\frac{41}{5}$` (NOT '41 be rooy 5'), `$\\sqrt{14}$` (NOT 'radikal 14'), "
+    "`$x^{2}$` (NOT 'x be tavan 2'), `$\\theta$` (NOT 'teta').\n"
     "PERSIAN DIGITS INSIDE MATH (VISUAL RENDERER REQUIREMENT):\n"
     "Inside these math blocks use standard LaTeX syntax but replace ALL English digits with Persian digits, "
-    "e.g. `$\\frac{۵\\sqrt{۱۴}}{۱۴}$` instead of `$\\frac{5\\sqrt{14}}{14}$`. "
-    "This is CRITICAL for the visual renderer that draws real fractions and radicals in the PDF.\n"
-    "DO NOT write text like 'x be tavan 2'. Never describe a formula in words — always typeset it in LaTeX."
+    "e.g. `$\\frac{۵\\sqrt{۱۴}}{۱۴}$` instead of `$\\frac{5\\sqrt{14}}{14}$`, "
+    "`$\\begin{bmatrix} ۱ & ۲ \\\\ ۳ & ۴ \\end{bmatrix}$`. "
+    "This is CRITICAL for the visual renderer that draws real fractions and radicals in the PDF."
 )
 
 SVG_DIAGRAM_INSTRUCTION = (

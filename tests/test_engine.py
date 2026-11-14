@@ -368,8 +368,11 @@ def test_clean_latex_for_pdf_and_svg_pdf_export(seeded):
     assert "[ " in cleaned and " ]" in cleaned
     assert " | " in cleaned
     assert ", " in cleaned
-    assert "a به روی b" in cleaned
-    assert " x " in cleaned
+    assert "a/b" in cleaned            # کسر به «a/b» ساده می‌شود، نه «a به روی b»
+    assert "×" in cleaned              # \times به نماد × تبدیل می‌شود
+    # هیچ ترجمهٔ کلمه‌ای انجام نمی‌شود
+    assert "به روی" not in cleaned
+    assert "رادیکال" not in cleaned
 
     client = TestClient(app)
     r = client.post("/api/auth/login", json={"username": "teacher1", "password": "teacher123"})
@@ -463,11 +466,14 @@ def test_latex_to_persian_text_converter():
 
     raw = r"اگر زاویه بین $\vec{a}$ و $\vec{AB}$ برابر $30^\circ$ باشد و $\sqrt{x} = \frac{1}{2}$ و $$\begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix}$$ باشد:"
     out = latex_to_persian_text(raw)
-    assert "بردار a" in out
-    assert "بردار AB" in out
-    assert "۳۰ درجه" in out
-    assert "رادیکال x" in out
-    assert "۱ به روی ۲" in out
+    # برچسبِ برداری حذف می‌شود ولی هیچ ترجمهٔ کلمه‌ای («بردار»، «رادیکال»، «به روی») ساخته نمی‌شود
+    assert "بردار" not in out
+    assert "رادیکال" not in out
+    assert "به روی" not in out
+    assert "a" in out and "AB" in out
+    assert "۳۰" in out
+    assert "x" in out
+    assert "۱/۲" in out
     assert "[ ۱ , ۲ | ۳ , ۴ ]" in out
     assert "$" not in out
     assert "\\" not in out
@@ -561,13 +567,13 @@ def test_sanitize_json_backslash_and_dollar_noise():
 
     # PDF converter handles both escaped and unescaped commands + cos^{-1} + theta
     pdf_txt = latex_to_persian_text(r"$\$ sqrt{7} \$ و vec{a} و frac{1}{2} و \cos^{-1} و theta و 45^\circ")
-    assert "رادیکال ۷" in pdf_txt
-    assert "بردار a" in pdf_txt
-    assert "۱ به روی ۲" in pdf_txt
-    assert "کسینوس معکوس" in pdf_txt
-    assert "تتا" in pdf_txt
-    assert "۴۵ درجه" in pdf_txt
+    assert "۷" in pdf_txt            # رادیکاند باقی می‌ماند
+    assert "a" in pdf_txt
+    assert "۱/۲" in pdf_txt
+    assert "۴۵" in pdf_txt
     assert "$" not in pdf_txt
+    for banned in ("رادیکال", "بردار", "به روی", "کسینوس معکوس", "تتا", "درجه"):
+        assert banned not in pdf_txt, banned
 
 
 
@@ -576,15 +582,15 @@ def test_final_pdf_cleanup_and_get_pdf_safe_text():
 
     raw = r"مقدار $45^\circ$ و $\sqrt{7}$ و $\vec{a}$ و $\cos^{-1}(4/9)$ و $\frac{a}{b}$ و $\theta$ و $\rightarrow \infty$"
     cleaned = final_pdf_cleanup(raw)
-    assert "۴۵ درجه" in cleaned
-    assert "رادیکال ۷" in cleaned
-    assert "بردار a" in cleaned
-    assert "کسینوس معکوس" in cleaned
-    assert "a به روی b" in cleaned
-    assert "تتا" in cleaned
-    assert "به سمت" in cleaned
-    assert "بی‌نهایت" in cleaned
-    for ch in ("$", "\\", "{", "}", "^", "_", "(", ")"):
+    assert "۴۵" in cleaned and "°" in cleaned     # \circ → ° (نماد، نه کلمه)
+    assert "۷" in cleaned
+    assert "a/b" in cleaned                        # \frac → a/b (نماد، نه «به روی»)
+    assert "→" in cleaned                          # \rightarrow → →
+    assert "∞" in cleaned                          # \infty → ∞
+    # هیچ ترجمهٔ کلمه‌ای: این واژه‌ها هرگز نباید ظاهر شوند
+    for banned in ("به روی", "رادیکال", "بردار", "کسینوس معکوس", "تتا", "به سمت", "بی‌نهایت", "درجه"):
+        assert banned not in cleaned, banned
+    for ch in ("$", "\\", "{", "}", "^", "_"):
         assert ch not in cleaned
 
     safe = get_pdf_safe_text(raw)

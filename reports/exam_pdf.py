@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-import io
 import os
 import re
 import tempfile
@@ -64,8 +63,14 @@ from reportlab.platypus import (
 
 from models.concept import Concept
 from models.question import Question
-from reports.math_renderer import render_math_png
-from reports.pdf_text_flow import OptionsRow, has_math, math_paragraph_flowables
+from reports.math_renderer import render_latex_to_image
+from reports.pdf_text_flow import (  # noqa: F401  (بازصادراتِ قراردادی)
+    OptionsRow,
+    build_mixed_flowables,
+    has_math,
+    math_paragraph_flowables,
+    parse_mixed_text_and_math,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FONT_DIR = BASE_DIR / "assets" / "fonts"
@@ -134,16 +139,26 @@ def to_persian_numbers(text: Any) -> str:
 
 
 def final_pdf_cleanup(text: Any) -> str:
-    """The 'Nuclear Option' to stop PDF text scrambling."""
+    """پاک‌سازیِ **حداقلیِ** متن برای ReportLab — بدون هیچ ترجمهٔ کلمه‌ای.
+
+    این تابع فقط نویزِ متنی را پاک می‌کند و دیگر هیچ فرمولی را به واژه تبدیل نمی‌کند
+    (پیش‌تر ``\\frac`` → «به روی» و ``\\sqrt`` → «رادیکال» تبدیل می‌شد — حذف شد).
+    فرمول‌ها همیشه پیش از رسیدن به این تابع، با :mod:`reports.math_renderer` به
+    تصویر PNG با DPI بالا تبدیل می‌شوند؛ این تابع صرفاً برای متنِ نهایی و برای
+    فرمول‌هایی است که (به‌ندرت) رندر تصویری‌شان شکست بخورد.
+
+    خروجی: متن فارسیِ راست‌چین‌پذیر، با ارقام فارسی و بدون نویزِ دلار/بک‌اسلش.
+    """
     if not text:
         return ""
 
     s = str(text)
-    s = s.replace("\x08", "\\b").replace("\x0c", "\\f")
+    # احیای کاراکترهای کنترلی‌ای که JSON خورده است (\b در \begin و \f در \frac)
+    s = s.replace("\x08", r"\b").replace("\x0c", r"\f")
 
-    # 1. Handle Matrices first (so inner & and \\ are converted before nuclear symbol strip)
+    # 1. ماتریس‌ها: سلول‌ها با « | » و « , » تا ساختار دوبعدی خوانا بماند
     def matrix_sub(m: re.Match) -> str:
-        content = m.group(1).replace("\\\\", " | ").replace("&", " , ")
+        content = m.group(1).replace(r"\\", " | ").replace("&", " , ")
         return f"[ {content} ]"
 
     s = re.sub(
@@ -153,43 +168,34 @@ def final_pdf_cleanup(text: Any) -> str:
         flags=re.DOTALL,
     )
 
-    # 2. Translate Math to Persian Words
-    s = re.sub(r"([\d۰-۹]+)\s*\^?\s*\{?\s*\\?(?:circ|deg(?:ree)?)\b\}?", r"\1 درجه", s)
-    s = re.sub(r"\\?(?:circ|deg(?:ree)?)\b", " درجه ", s)
-    s = re.sub(r"\\?sqrt\s*\[([^\[\]]+)\]\s*\{([^}]+)\}", r"رادیکال \2", s)
-    s = re.sub(r"\\?sqrt\s*\{([^}]+)\}", r"رادیکال (\1)", s)
-    s = re.sub(r"\\?(?:vec|overrightarrow)\s*\{([^}]+)\}", r"بردار \1", s)
-    s = re.sub(r"\\?cos\s*\^?\s*\{?\s*-[1۱]\s*\}?", "کسینوس معکوس", s)
-    s = re.sub(r"\\?sin\s*\^?\s*\{?\s*-[1۱]\s*\}?", "سینوس معکوس", s)
-    s = re.sub(r"\\?tan\s*\^?\s*\{?\s*-[1۱]\s*\}?", "تانژانت معکوس", s)
+    # 2. حذف کاملِ نشانه‌های LaTeX (نه ترجمهٔ کلمه‌ای)
+    s = re.sub(r"\\?sqrt\s*\[([^\[\]]+)\]\s*\{([^}]+)\}", r"\2", s)   # ریشهٔ n‌ام → رادیکاند
+    s = re.sub(r"\\?sqrt\s*\{([^}]+)\}", r"\1", s)
+    s = re.sub(r"\\?(?:vec|overrightarrow|overline|hat)\s*\{([^}]+)\}", r"\1", s)
     for _ in range(4):
-        next_s = re.sub(r"\\?(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"(\1 به روی \2)", s)
+        next_s = re.sub(r"\\?(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"\1/\2", s)
         if next_s == s:
             break
         s = next_s
-    s = re.sub(r"\\?theta\b", "تتا", s)
-    s = re.sub(r"\\?alpha\b", "آلفا", s)
-    s = re.sub(r"\\?beta\b", "بتا", s)
-    s = re.sub(r"\\?pi\b", "پی", s)
-    s = re.sub(r"\\?(?:rightarrow|to)\b", " به سمت ", s)
-    s = re.sub(r"\\?infty\b", "بی‌نهایت", s)
-    s = re.sub(r"\\+times\b", " x ", s)
-    s = re.sub(r"\\+cdot\b", " · ", s)
-    s = re.sub(r"([a-zA-Z])\s*\^\s*\{?\s*-[1۱]\s*\}?", r"معکوس \1", s)
+    s = re.sub(r"\\?(?:left|right)\b", "", s)
+    s = re.sub(r"\\?(?:circ|degree)\b", "°", s)
+    s = re.sub(r"\\?(?:times|cdot)\b", "×", s)
+    s = re.sub(r"\\?(?:neq|ne)\b", "≠", s)
+    s = re.sub(r"\\?(?:leq|le)\b", "≤", s)
+    s = re.sub(r"\\?(?:geq|ge)\b", "≥", s)
+    s = re.sub(r"\\?(?:rightarrow|to)\b", "→", s)
+    s = re.sub(r"\\?infty\b", "∞", s)
+    s = re.sub(r"\\?(?:alpha|beta|gamma|theta|lambda|mu|pi|sigma|omega)\b", "", s)
 
-    # Remove remaining unknown \commands before stripping symbols
+    # 3. حذف دستورات و نمادهای باقی‌ماندهٔ LaTeX
     s = re.sub(r"\\[a-zA-Z]+", " ", s)
+    s = re.sub(r"[\$\\\{\}\^_]", " ", s)
 
-    # 3. THE NUCLEAR STEP: Remove ALL remaining LaTeX/English symbols that cause bidi scrambling
-    # This removes \, {, }, ^, _, $, (, )
-    s = re.sub(r"[\$\\\{\}\^_\(\)]", " ", s)
+    # 4. ارقام فارسی
+    s = s.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
-    # 4. Convert digits to Persian
-    persian_digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
-    s = s.translate(persian_digits)
-
-    # 5. Final Polish: remove double spaces
-    s = re.sub(r"\s+", " ", s).strip()
+    # 5. یکدست‌سازی فاصله‌ها
+    s = re.sub(r"[ \t]+", " ", s).strip()
     return s
 
 
@@ -249,27 +255,10 @@ def latex_to_pdf_image(latex_str: str, dpi: int = 200) -> Optional[RLImage]:
     از موتور mathtext کتابخانهٔ matplotlib استفاده می‌کند (بدون نیاز به نصب LaTeX/TeX Live)
     تا کسرها، رادیکال‌ها و ماتریس‌ها به‌صورت **واقعی** و برداری‌گونه رندر شوند.
     """
-    if not _HAS_MATPLOTLIB:
-        return None
     try:
-        rendered = render_math_png(latex_str, font_size=11.0, dpi=max(150, int(dpi)))
+        return render_latex_to_image(latex_str, dpi=max(150, int(dpi)), font_size=11.0)
     except Exception:
         return None
-    if rendered is None:
-        return None
-    try:
-        img = RLImage(io.BytesIO(rendered.png), width=rendered.width, height=rendered.height)
-    except Exception:
-        return None
-    img.hAlign = "RIGHT"
-    return img
-
-
-# نام مستعار مطابق مستندات
-render_latex_to_image = latex_to_pdf_image
-
-# نام مستعار مطابق مستندات
-render_latex_to_image = latex_to_pdf_image
 
 
 def _extract_complex_math_images(raw_text: Any, max_width_pt: float = 180.0) -> list[RLImage]:
