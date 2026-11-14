@@ -290,7 +290,8 @@ class MathRichBlock(Flowable):
             if run.atoms and run.atoms[0].kind == "word":
                 run.width = stringWidth(run.visual, self.font, self.size)
         line.width = sum(
-            r.width + (self.space_w if r.space_before else 0.0) for r in line.runs
+            r.width + (_gap_before(self, r, prev) if r is not line.runs[0] else 0.0)
+            for prev, r in zip([None] + line.runs[:-1], line.runs)
         )
         self.lines.append(line)
 
@@ -343,9 +344,10 @@ class MathRichBlock(Flowable):
             # Runs are placed right-to-left.  Inside one run the string is
             # already in visual order (BiDi ran over the whole run), so its
             # internal spaces are real characters and English keeps its order.
+            prev = None
             for run in line.runs:
-                if run.space_before:
-                    cursor -= self.space_w
+                if prev is not None:
+                    cursor -= _gap_before(self, run, prev)
                 cursor -= run.width
                 if run.atoms and run.atoms[0].kind == "word":
                     c.setFont(self.font, self.size)
@@ -354,8 +356,27 @@ class MathRichBlock(Flowable):
                     atom = run.atoms[0] if run.atoms else None
                     if atom is not None and atom.rendered is not None:
                         _draw_math_image(c, atom.rendered, cursor, line.baseline)
+                prev = run
 
         c.restoreState()
+
+
+def _is_math_run(run: "_Run") -> bool:
+    return bool(run.atoms) and run.atoms[0].kind in ("math", "display")
+
+
+def _gap_before(block: "MathRichBlock", run: "_Run", prev) -> float:
+    """Horizontal gap to insert before ``run`` when laying out right-to-left.
+
+    A word-to-word gap is the font's own space width.  Anything touching a math
+    image gets extra room: an image has no side bearing, so at 10.5pt a 2.65pt
+    space is visually zero and the formula appears glued to its noun.
+    """
+    if not run.space_before:
+        return 0.0
+    if _is_math_run(run) or (prev is not None and _is_math_run(prev)):
+        return block.space_w * 1.9
+    return block.space_w
 
 
 # ---------------------------------------------------------------------------
@@ -367,12 +388,28 @@ def _image_reader(rendered: RenderedMath) -> ImageReader:
 
 
 def _draw_math_image(c, rendered: RenderedMath, x: float, baseline: float) -> None:
-    """Place a formula image so its baseline coincides with the text baseline."""
+    """Place a formula image on the text baseline.
+
+    Small inline formulas (``x``, ``\frac{1}{2}``) align exactly on the baseline.
+    A *tall* block — a matrix, a cases system, an aligned chain — would otherwise
+    push 20+pt above the baseline and visually detach from its sentence.  For
+    those we centre the block on the math axis: the image grows symmetrically
+    about a point ~0.25em above the baseline, which is what LaTeX does for a
+    multi-line construct sitting inline.
+    """
     try:
+        ascent = rendered.height - rendered.depth
+        # 0.25em at the surrounding text size, clamped so tiny images keep exact
+        # baseline alignment
+        axis = min(max(rendered.height * 0.30, 2.5), 8.0)
+        if ascent > axis * 2.0:
+            y = baseline + axis - rendered.height / 2.0
+        else:
+            y = baseline - rendered.depth
         c.drawImage(
             _image_reader(rendered),
             x,
-            baseline - rendered.depth,
+            y,
             width=rendered.width,
             height=rendered.height,
             mask="auto",

@@ -56,6 +56,9 @@ _MATRIX_ENV_RE = re.compile(
 #: جداکننده‌های سطر در محیط‌های ماتریسی — هر شکلی که JSON/مدل تولید کند
 _ROW_SEP_RE = re.compile(r"\\\\|\\cr\b|\\newline\b|\r?\n")
 
+#: محیط‌هایی که با موتور قدیمیِ اثبات‌شده رندر می‌شوند (تست رگرسیون دارند).
+_LEGACY_ENVS = {"bmatrix", "pmatrix", "vmatrix", "Vmatrix", "Bmatrix", "matrix", "smallmatrix", "cases", "dcases"}
+
 
 def _split_matrix_rows(body: str) -> list:
     r"""بدنهٔ ماتریس را به سطرها می‌شکند.
@@ -481,6 +484,28 @@ def _render_cases_png(
         return None
 
 
+def _render_table_png(
+    env: str,
+    body: str,
+    font_size: float,
+    dpi: int,
+    color: str,
+    prefix: str = "",
+    suffix: str = "",
+) -> Optional[RenderedMath]:
+    """Thin forwarder to :mod:`reports.pdf_math_table` (imported lazily).
+
+    ``pdf_math_table`` imports ``RenderedMath`` and ``_to_latin_digits`` from
+    this module, so a top-level import here would be circular.
+    """
+    try:
+        from reports.pdf_math_table import render_table
+
+        return render_table(env, body, font_size, dpi, color, prefix=prefix, suffix=suffix)
+    except Exception:
+        return None
+
+
 def render_math_png(
     latex_str: Any,
     font_size: float = 10.5,
@@ -494,20 +519,44 @@ def render_math_png(
     if not raw:
         return None
 
-    # دستگاهِ معادلات مسیر اختصاصی دارد (آکولادِ واقعی)
-    _cases = re.search(r"\\?(?:begin)\s*\{\s*cases\s*\}", raw)
-    if _cases:
-        _m = _MATRIX_ENV_RE.search(raw)
-        if _m:
-            prefix, _env, body, suffix = _split_matrix_affixes(raw)
-            rendered = _render_cases_png(body, font_size, dpi, color, prefix=prefix, suffix=suffix)
-            if rendered is not None:
-                return rendered
-
-    # ماتریس‌ها مسیر جداگانه دارند
-    if _MATRIX_ENV_RE.search(raw):
+    # ---- multi-row environments -------------------------------------
+    # Split by family so each keeps the renderer it was validated with:
+    #
+    #   bmatrix/pmatrix/vmatrix/cases  -> the existing, regression-tested
+    #                                     drawing code (unchanged)
+    #   array/aligned/gathered/split   -> reports.pdf_math_table, the unified
+    #                                     engine (mathtext cannot draw these at
+    #                                     all: it emitted a bracketed blob with
+    #                                     the cells collapsed)
+    #
+    # Both paths return the same RenderedMath, so callers never learn which one
+    # ran.
+    _env_match = _MATRIX_ENV_RE.search(raw)
+    if _env_match:
         prefix, env_name, body, suffix = _split_matrix_affixes(raw)
-        return _render_matrix_png(env_name, body, font_size, dpi, color, prefix=prefix, suffix=suffix)
+        _base = re.sub(r"\*$", "", (env_name or "").strip().lower())
+
+        if _base in _LEGACY_ENVS:
+            if _base == "cases":
+                rendered = _render_cases_png(
+                    body, font_size, dpi, color, prefix=prefix, suffix=suffix
+                )
+                if rendered is not None:
+                    return rendered
+            return _render_matrix_png(
+                env_name, body, font_size, dpi, color, prefix=prefix, suffix=suffix
+            )
+
+        rendered = _render_table_png(
+            env_name, body, font_size, dpi, color, prefix=prefix, suffix=suffix
+        )
+        if rendered is not None:
+            return rendered
+        # last resort: if the unified engine choked, fall back to the matrix
+        # drawing so the student still sees a matrix instead of raw LaTeX
+        return _render_matrix_png(
+            env_name, body, font_size, dpi, color, prefix=prefix, suffix=suffix
+        )
 
     expr = normalize_latex(raw)
     if not expr:
