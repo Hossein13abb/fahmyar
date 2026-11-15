@@ -139,13 +139,6 @@ _OPENROUTER_SYSTEM_MESSAGE = (
 )
 
 # گروه‌های اولویت — گروه‌های قبلی اولویت بیشتری دارند؛ داخل هر گروه به ترتیب
-_PREFERENCE_GROUPS: tuple[tuple[str, ...], ...] = (
-    ("llama-3.3-70b", "llama-3.1-70b"),
-    ("qwen-2.5-72b", "qwen-2.5-32b"),
-    ("gemini-2.0", "gemini-1.5"),
-    ("mistral", "qwen", "phi"),
-)
-
 # کش لیست مدل‌های رایگان — مشترک بین همهٔ نمونه‌ها
 _FREE_MODELS_TTL_SECONDS = 15 * 60
 _free_models_cache: dict[str, Any] = {"ts": 0.0, "models": []}
@@ -155,36 +148,30 @@ MAX_FALLBACK_ATTEMPTS = 8
 
 
 def _preference_rank(model_id: str) -> int:
-    low = model_id.lower()
-    for rank, group in enumerate(_PREFERENCE_GROUPS):
-        if any(pattern in low for pattern in group):
-            return rank
-    return len(_PREFERENCE_GROUPS)
+    """رتبهٔ اولویتِ یک مدل در فهرستِ زندهٔ رایگان (۰ = بهترین).
+
+    قبلاً این تابع یک فهرستِ دستی از نام‌ها را می‌گشت
+    (`llama-3.3-70b`، `qwen-2.5-72b`). آن مدل‌ها دیگر در فهرست رایگان
+    نیستند، پس هر مدلی به گروهِ آخر می‌افتاد و ترتیب عملاً تصادفی بود.
+    اکنون امتیاز از `ai.model_catalog` می‌آید که خودش از دادهٔ زندهٔ
+    OpenRouter (JSON mode، شاخصِ هوش، پنجرهٔ زمینه، فیلترِ محتوا) می‌سازد.
+    """
+    from ai.model_catalog import fetch_free_models
+
+    try:
+        models = fetch_free_models()
+    except Exception:
+        return len(model_id)  # بدونِ کاتالوگ، ترتیبِ الفبایی
+    for index, model in enumerate(models):
+        if model.id == model_id:
+            return index
+    return len(models)
 
 
 def rank_free_models(model_ids: list[str]) -> list[str]:
-    """مرتب‌سازی پایدارِ مدل‌های رایگان بر اساس اولویت (گروه، سپس نام)."""
-    return sorted(dict.fromkeys(model_ids), key=lambda m: (_preference_rank(m), m))
-
-
-def _is_free_model(entry: dict[str, Any]) -> bool:
-    """آیا مدل رایگان است؟ :free در انتهای شناسه یا قیمت صفر prompt و completion."""
-    model_id = (entry.get("id") or "").strip().lower()
-    if not model_id:
-        return False
-    if model_id.endswith(":free"):
-        return True
-    pricing = entry.get("pricing") or {}
-
-    def _zero(value: Any) -> bool:
-        if value is None:
-            return False
-        try:
-            return float(str(value).strip()) == 0.0
-        except (TypeError, ValueError):
-            return str(value).strip() == "0"
-
-    return _zero(pricing.get("prompt")) and _zero(pricing.get("completion"))
+    """مرتب‌سازیِ مدل‌ها بر اساسِ امتیازِ زندهٔ کاتالوگ."""
+    unique = list(dict.fromkeys(model_ids))
+    return sorted(unique, key=lambda m: (_preference_rank(m), m))
 
 
 class OpenRouterProvider(AIProvider):
@@ -292,48 +279,30 @@ class OpenRouterProvider(AIProvider):
     # کشف مدل‌های رایگان فعال — کش ۱۵ دقیقه‌ای
     # ------------------------------------------------------------------
     def fetch_active_free_models(self, force_refresh: bool = False) -> list[str]:
-        """فهرست مدل‌های رایگان فعال OpenRouter را برمی‌گرداند (مرتب‌شده بر اساس اولویت).
+        """شناسهٔ مدل‌های رایگانِ فعال، از بهترین به بدترین.
 
-        نتیجه ۱۵ دقیقه کش می‌شود؛ force_refresh=True یعنی دریافت تازه (پس از شکست مدل).
+        منطقِ انتخاب در `ai.model_catalog` است تا جداگانه آزمون‌پذیر باشد.
+        نتیجه ۱۵ دقیقه کش می‌شود.
         """
-        now = time.monotonic()
-        with _free_models_lock:
-            cached = _free_models_cache["models"]
-            age = now - _free_models_cache["ts"]
-            if not force_refresh and cached and age < _FREE_MODELS_TTL_SECONDS:
-                return list(cached)
-
-        import requests
+        from ai.model_catalog import fetch_free_models
 
         try:
-            resp = requests.get(f"{self.base_url}/models", headers=self._headers(), timeout=30)
-        except requests.RequestException as exc:
+            models = fetch_free_models(
+                api_key=self.api_key, force_refresh=force_refresh, timeout=30.0
+            )
+        except Exception as exc:  # noqa: BLE001
             with _free_models_lock:
                 if _free_models_cache["models"]:
-                    print(f"[OpenRouter] دریافت فهرست مدل‌ها ناموفق بود ({exc})؛ از کش (حتی قدیمی) استفاده شد.")
-                    return list(_free_models_cache["models"])
-            raise AIProviderError(f"خطای شبکه در دریافت فهرست مدل‌های OpenRouter: {exc}", retryable=True) from exc
-
-        if resp.status_code >= 400:
-            with _free_models_lock:
-                if _free_models_cache["models"]:
-                    print(f"[OpenRouter] HTTP {resp.status_code} از /models؛ از کش استفاده شد.")
+                    print(f"[OpenRouter] کراولِ مدل‌ها ناموفق بود ({exc})؛ از کشِ درون‌حافظه استفاده شد.")
                     return list(_free_models_cache["models"])
             raise AIProviderError(
-                f"دریافت فهرست مدل‌ها از OpenRouter ناموفق بود (HTTP {resp.status_code}): {(resp.text or '')[:200]}",
-                retryable=False,
-            )
+                f"دریافت فهرست مدل‌های OpenRouter ناموفق بود: {exc}", retryable=True
+            ) from exc
 
-        try:
-            entries = resp.json().get("data", [])
-        except ValueError as exc:
-            raise AIProviderError("پاسخ غیرJSON از /models دریافت شد.", retryable=True) from exc
-
-        free_ids = [e["id"].strip() for e in entries if isinstance(e, dict) and _is_free_model(e)]
-        ranked = rank_free_models(free_ids)
+        ids = [m.id for m in models]
         with _free_models_lock:
-            _free_models_cache.update(ts=time.monotonic(), models=ranked)
-        return list(ranked)
+            _free_models_cache.update(ts=time.monotonic(), models=ids)
+        return list(ids)
 
     # ------------------------------------------------------------------
     # فراخوانی chat/completions
