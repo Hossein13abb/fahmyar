@@ -154,10 +154,23 @@ async def evaluate_assessment(
 
     result = report.to_dict()
     _fact_check_mcq(result, questions, answers)
+
+    # حکمِ «تسلط» همراه با «نیاز به بازپرسی» متناقض است: اگر تسلط کامل بود،
+    # چه چیزی مانده که از کاربر بپرسیم؟ تا وقتی ابهام حل نشده، حکم باید
+    # محتاطانه‌تر باشد. پس از بازپرسی، حکمِ نهایی می‌تواند ارتقا یابد.
+    if result.get("needs_clarification"):
+        evaluation = result.setdefault("evaluation_report", {})
+        if evaluation.get("mastery_status") == "MASTERED":
+            evaluation["mastery_status"] = "PARTIAL_FRAGMENTED"
+        evaluation["mastery_note"] = (
+            "در بیشترِ پاسخ‌ها فهمِ درستی دیده می‌شود، اما یک تناقضِ حل‌نشده "
+            "در پاسخ‌هایت هست که تا روشن نشود، حکمِ نهایی صادر نمی‌شود."
+        )
     # قواعدِ قطعی به‌عنوانِ تورِ ایمنی روی حکمِ مدل اعمال می‌شوند.
     result = apply_supremacy_override(result, signals)
     result = apply_jargon_flag(result, signals)
     result = dedupe_findings(result)
+    _annotate_custom_title(result)
     result["signals"] = signals
     return result
 
@@ -208,6 +221,7 @@ async def clarify_assessment(
     result = apply_supremacy_override(result, signals)
     result = apply_jargon_flag(result, signals)
     result = dedupe_findings(result)
+    _annotate_custom_title(result)
     result["signals"] = signals
     result["clarification_answer"] = clarification_answer.strip()
     return result
@@ -263,3 +277,25 @@ def _fact_check_mcq(
         insights.sort(key=lambda i: int(i.get("question_id") or 0))
         evaluation["question_by_question_insight"] = insights
         return
+
+
+def _annotate_custom_title(report: dict[str, Any]) -> None:
+    """وقتی مدل عنوانِ اختصاصی می‌سازد، توضیح بده که از کجا آمده.
+
+    کارتِ پرسونا یک معنای ثابت برای هر وضعیت دارد. اگر عنوانِ مدل با آن
+    یکی نباشد، نمایشِ معنای قالب باعث تناقض ظاهری می‌شود (مثلاً «مهندسِ
+    مسلط اما کم‌حوصله» کنارِ توضیحِ «توهمِ یادگیری»). در آن حالت یک یادداشتِ
+    کوتاه جایگزین می‌شود که توضیح می‌دهد عنوان از دلِ پاسخ‌ها ساخته شده.
+    """
+    from cognition.personas import PERSONAS
+
+    evaluation = report.get("evaluation_report") or {}
+    status = evaluation.get("mastery_status") or ""
+    title = (evaluation.get("persona_title") or "").strip()
+    canonical = (PERSONAS.get(status) or {}).get("title", "")
+    if not title or not canonical:
+        return
+    if title != canonical and not evaluation.get("mastery_note"):
+        evaluation["mastery_note"] = (
+            "این عنوان را کارآگاه از دلِ پاسخ‌های خودت ساخت، نه از یک قالبِ آماده."
+        )

@@ -307,18 +307,51 @@ class OpenRouterProvider(AIProvider):
     # ------------------------------------------------------------------
     # فراخوانی chat/completions
     # ------------------------------------------------------------------
+    @staticmethod
+    def _model_supports_json(model: str) -> bool:
+        """آیا این مدل ``response_format`` را پشتیبانی می‌کند؟ (از کاتالوگ)
+
+        فرستادنِ ``response_format`` به مدلی که پشتیبانی نمی‌کند، خطای ۴۰۰
+        می‌دهد و کلِ زنجیرهٔ fallback را بیهوده می‌سوزاند.
+        """
+        from ai.model_catalog import fetch_free_models
+
+        try:
+            for candidate in fetch_free_models():
+                if candidate.id == model:
+                    return candidate.supports_json
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
     def _post_chat_completion(self, prompt: str, temperature: float, model: str) -> dict[str, Any]:
         import requests
 
         self._throttle()
-        payload = {
+
+        # سقفِ خروجی: بدونِ آن، مدل‌های استدلالی همهٔ بودجه را صرف فیلدِ
+        # reasoning می‌کنند و content خالی می‌ماند. ۸۰۰۰ برای پاسخِ ارزیابیِ
+        # کامل (چند یافته + تحلیلِ پنج سؤال) کافی است.
+        max_tokens = int(
+            getattr(settings, "OPENROUTER_MAX_TOKENS", 8000) or 8000
+        )
+
+        payload: dict[str, Any] = {
             "model": model,
             "messages": [
                 {"role": "system", "content": _OPENROUTER_SYSTEM_MESSAGE},
                 {"role": "user", "content": prompt},
             ],
             "temperature": temperature,
+            "max_tokens": max_tokens,
         }
+
+        # JSON mode: قراردادِ موتور فهم‌سنجی به json.loads تکیه می‌کند. اگر مدل
+        # آن را پشتیبانی کند، تضمینِ ساختار رایگان به دست می‌آید. اگر نکند،
+        # OpenRouter خطا می‌دهد؛ پس فقط برای مدل‌هایی می‌فرستیم که کاتالوگ
+        # اعلامشان کرده است.
+        if self._model_supports_json(model):
+            payload["response_format"] = {"type": "json_object"}
         try:
             resp = requests.post(
                 f"{self.base_url}/chat/completions",
@@ -348,10 +381,30 @@ class OpenRouterProvider(AIProvider):
 
     def _attempt(self, model: str, prompt: str, task_type: str, temperature: float) -> AIResponse:
         data = self._post_chat_completion(prompt, temperature, model)
+        choice = (data.get("choices") or [{}])[0]
         try:
-            text = (data["choices"][0]["message"]["content"] or "").strip()
+            text = (choice["message"]["content"] or "").strip()
         except (KeyError, IndexError, TypeError) as exc:
             raise AIProviderError(f"ساختار پاسخ OpenRouter نامعتبر بود (مدل {model}): {exc}", retryable=True) from exc
+
+        # مدل‌های استدلالی می‌توانند کلِ بودجهٔ توکن را صرفِ فیلدِ reasoning کنند و
+        # content را null بگذارند (finish_reason = "length"). نتیجه یک پاسخِ
+        # «خالی» است که بی‌دلیل به نظر می‌رسد. این حالت را صریح گزارش می‌کنیم تا
+        # در لاگ معلوم باشد مشکل از سهمیه/طول است، نه از مدل.
+        if not text:
+            reason = choice.get("finish_reason") or ""
+            reasoning = (choice.get("message") or {}).get("reasoning") or ""
+            if reason == "length" and reasoning:
+                raise AIProviderError(
+                    f"مدل {model} همهٔ توکن‌ها را صرفِ استدلال کرد و پاسخ نهایی نداد "
+                    "(finish_reason=length). سقفِ max_tokens یا max_completion_tokens را بالا ببرید.",
+                    retryable=True,
+                )
+            if reason == "content_filter":
+                raise AIProviderError(
+                    f"مدل {model} پاسخ را به‌دلیلِ فیلترِ محتوا قطع کرد.", retryable=True
+                )
+
         text = self._strip_markdown_fences(text)
         if not text:
             raise AIProviderError(f"پاسخ خالی از OpenRouter (مدل {model}).", retryable=True)

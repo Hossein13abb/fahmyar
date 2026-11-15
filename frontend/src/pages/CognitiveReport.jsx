@@ -199,8 +199,19 @@ export default function CognitiveReport({ mode = 'student' }) {
           {evaluation.executive_summary || persona?.meaning}
         </p>
 
+        {evaluation.mastery_note && (
+          <p className="mt-2 rounded-2xl bg-amber-50 p-3 text-[11px] font-bold leading-6 text-amber-900 ring-1 ring-amber-200">
+            {evaluation.mastery_note}
+          </p>
+        )}
         {persona?.meaning && (
-          <p className="mt-2 px-1 text-[11px] font-medium leading-6 text-slate-600">
+          <p
+            className={
+              evaluation.mastery_note
+                ? 'mt-2 px-1 text-[11px] font-medium leading-6 text-slate-500'
+                : 'mt-2 px-1 text-[11px] font-medium leading-6 text-slate-600'
+            }
+          >
             <strong className="font-extrabold">این یعنی چه؟ </strong>
             {persona.meaning}
           </p>

@@ -248,7 +248,36 @@ def apply_supremacy_override(report: dict[str, Any], signals: dict[str, Any]) ->
     if not supremacy.get("strong"):
         return report
 
-    status = (report.get("evaluation_report") or {}).get("mastery_status")
+    evaluation = report.setdefault("evaluation_report", {})
+    status = evaluation.get("mastery_status")
+
+    # قانون ۲ فقط برای «نفهمیده» نیست؛ «وابستگی به ادبیات» هم شکلی از
+    # حکمِ منفی است. اگر عیب‌یابی را عالی حل کرده، لقبِ «معتاد به کتاب»
+    # نادرست است — مشکلش بیان است، نه فهم. این حالت به «تسلط با نقصِ بیان»
+    # ارتقا می‌یابد و همان یافتهٔ کلماتِ ممنوعه در گزارش می‌ماند تا
+    # کاربر بداند چه چیزی را باید تمرین کند.
+    if status == "JARGON_DEPENDENT":
+        evaluation["mastery_status"] = "MASTERED"
+        evaluation["mastery_note"] = (
+            "مفهوم را عمیقاً می‌دانی — عیب‌یابی نشانش داد. تنها نقطهٔ ضعف، "
+            "تکیه بر اصطلاحات در توضیحِ ساده است."
+        )
+        findings = evaluation.setdefault("cross_check_findings", [])
+        if not any(f.get("type") == "SYNERGY" and "عیب‌یابی" in str(f.get("title", "")) for f in findings):
+            findings.insert(
+                0,
+                {
+                    "title": "پیروزیِ عیب‌یابی بر بیانِ ضعیف",
+                    "type": "SYNERGY",
+                    "description": (
+                        "استدلالِ تو در دستکاری و عیب‌یابی درست و منسجم بود. "
+                        "ساعت را بسته‌ای؛ اگر در توضیحِ ساده به اصطلاح تکیه کردی، "
+                        "نشانهٔ نفهمیدن نیست."
+                    ),
+                },
+            )
+        return report
+
     if status in ("UNSTRUCTURED", "PARTIAL_FRAGMENTED"):
         evaluation = report.setdefault("evaluation_report", {})
         evaluation["mastery_status"] = "MASTERED"

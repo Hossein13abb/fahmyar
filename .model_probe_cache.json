@@ -1,0 +1,98 @@
+{
+  "nvidia/nemotron-3.5-super-vl:free": {
+    "model": "nvidia/nemotron-3.5-super-vl:free",
+    "ok": true,
+    "elapsed_seconds": 5.94,
+    "json_ok": true,
+    "persian_ok": true,
+    "mixed_script": false,
+    "quality": 94.1,
+    "error": "",
+    "preview": "{\"question\": \"مشتقِ $x^3-2x$ در نقطهِ $1$ چقدر است؟\", \"answer\": 1}",
+    "probed_at": 1794743825.6287527
+  },
+  "google/gemma-4-31b-it:free": {
+    "model": "google/gemma-4-31b-it:free",
+    "ok": true,
+    "elapsed_seconds": 14.18,
+    "json_ok": true,
+    "persian_ok": true,
+    "mixed_script": false,
+    "quality": 85.8,
+    "error": "",
+    "preview": "{\"question\": \"مشتقِ تابع $f(x)=x^2-x$ در نقطه $x=\\\\frac{1}{2}$ چقدر است؟\", \"answer\": 0}",
+    "probed_at": 1794743825.6287527
+  },
+  "inclusionai/ling-3.2-flash:free": {
+    "model": "inclusionai/ling-3.2-flash:free",
+    "ok": true,
+    "elapsed_seconds": 78.33,
+    "json_ok": true,
+    "persian_ok": true,
+    "mixed_script": false,
+    "quality": 70.0,
+    "error": "",
+    "preview": "{\"question\": \"مشتق تابع ثابت $9$ برابر با چند است؟\", \"answer\": 0}",
+    "probed_at": 1794743825.6287527
+  },
+  "baidu/ernie-5.5-flash-preview:free": {
+    "model": "baidu/ernie-5.5-flash-preview:free",
+    "ok": true,
+    "elapsed_seconds": 2.71,
+    "json_ok": true,
+    "persian_ok": true,
+    "mixed_script": false,
+    "quality": 97.3,
+    "error": "",
+    "preview": "{\"question\": \"مشتق تابع $f(x)=5$ در نقطه $x=2$ چند است؟\", \"answer\": 0}",
+    "probed_at": 1794743825.6287527
+  },
+  "liquid/lfm-3-1.7b:free": {
+    "model": "liquid/lfm-3-1.7b:free",
+    "ok": true,
+    "elapsed_seconds": 41.01,
+    "json_ok": true,
+    "persian_ok": true,
+    "mixed_script": false,
+    "quality": 70.0,
+    "error": "",
+    "preview": "{\n  \"question\": \"مشتق تابع مربعات عدد در نقطه یک برابر چه عددی است؟ $ (x^2)'_{x=1}$ \",\n  \"answer\": 2\n}",
+    "probed_at": 1794743825.6287527
+  },
+  "particle-ai/particle-1:free": {
+    "model": "particle-ai/particle-1:free",
+    "ok": true,
+    "elapsed_seconds": 2.09,
+    "json_ok": true,
+    "persian_ok": true,
+    "mixed_script": false,
+    "quality": 97.9,
+    "error": "",
+    "preview": "{\"question\": \"مشتق تابع $f(x)=7$ در نقطه $x=3$ چند است؟\", \"answer\": 0}",
+    "probed_at": 1794743825.6287527
+  },
+  "recursive/flint-v1.0:free": {
+    "model": "recursive/flint-v1.0:free",
+    "ok": true,
+    "elapsed_seconds": 9.13,
+    "json_ok": true,
+    "persian_ok": true,
+    "mixed_script": false,
+    "quality": 90.9,
+    "error": "",
+    "preview": "{\"question\": \"مشتق تابع $م^۲$ در مقدار $۰$ چند است؟\", \"answer\": 0}",
+    "probed_at": 1794743825.6287527
+  },
+  "dots-studio/dots-3-note-preview:free": {
+    "model": "dots-studio/dots-3-note-preview:free",
+    "ok": true,
+    "elapsed_seconds": 42.76,
+    "json_ok": true,
+    "persian_ok": true,
+    "mixed_script": false,
+    "quality": 70.0,
+    "error": "",
+    "preview": "{\"question\": \"مشتق تابع $5$ را بیابید\", \"answer\": 0}",
+    "probed_at": 1794743825.6287527
+  }
+}
