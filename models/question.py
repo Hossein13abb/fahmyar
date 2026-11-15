@@ -100,6 +100,16 @@ class AssessmentSession(Base):
     #                   evidence_type, reasoning, confidence, needs_teacher_review, error_type} ]}]
     evidence_log = Column(JSON, default=list)
 
+    # ── موتور فهم‌سنجی شناختی ──────────────────────────────────────────────
+    # آزمونِ ۵ سؤالیِ زنجیره‌ای (نقشهٔ مفهومی + سؤال‌ها + کلماتِ ممنوعه) و
+    # پاسخ‌ها، به‌صورتِ یک سندِ کاملِ JSON. این جدا از ستون‌های بالا نگه داشته
+    # می‌شود تا آزمون‌های قدیمی دست‌نخورده بمانند و هیچ مهاجرتِ مخربی لازم نباشد.
+    cognitive_payload = Column(JSON, default=None)
+    # کارنامهٔ اشعهٔ ایکس + وضعیتِ بازپرسی:
+    # {needs_clarification, clarification_data, clarification_answer,
+    #  evaluation_report: {...}, signals: {...}}
+    cognitive_report = Column(JSON, default=None)
+
     def to_public_dict(self) -> dict:
         return {
             "id": self.id,
@@ -111,4 +121,5 @@ class AssessmentSession(Base):
             "time_limit_seconds": self.time_limit_seconds,
             "total_paused_seconds": self.total_paused_seconds,
             "questions_answered": len(self.evidence_log or []),
+            "kind": (self.cognitive_payload or {}).get("kind") if self.cognitive_payload else None,
         }

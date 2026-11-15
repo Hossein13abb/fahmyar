@@ -56,11 +56,13 @@ app.add_middleware(
 )
 
 from api.routes_auth import router as auth_router  # noqa: E402
+from api.routes_cognitive import router as cognitive_router  # noqa: E402
 from api.routes_assessment import router as assessment_router  # noqa: E402
 from api.routes_exam import router as exam_router  # noqa: E402
 from api.routes_admin import router as admin_router  # noqa: E402
 
 app.include_router(auth_router)
+app.include_router(cognitive_router)
 app.include_router(assessment_router)
 app.include_router(exam_router)
 app.include_router(admin_router)

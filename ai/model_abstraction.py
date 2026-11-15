@@ -521,7 +521,19 @@ class MockProvider(AIProvider):
     name = "mock"
 
     async def generate(self, prompt: str, task_type: str, temperature: float = 0.7) -> AIResponse:
-        if task_type == "generate_question":
+        if task_type == "cognitive_generate":
+            from cognition.mock_engine import mock_generation
+
+            text = mock_generation(prompt)
+        elif task_type == "cognitive_evaluate":
+            from cognition.mock_engine import mock_evaluation
+
+            text = mock_evaluation(prompt)
+        elif task_type == "cognitive_clarify":
+            from cognition.mock_engine import mock_clarify
+
+            text = mock_clarify(prompt)
+        elif task_type == "generate_question":
             text = self._mock_question(prompt)
         elif task_type == "generate_konkur_preview":
             text = self._mock_konkur_preview(prompt)
@@ -1010,6 +1022,9 @@ class MockProvider(AIProvider):
 # ---------------------------------------------------------------------------
 # مسیر پیش‌فرض برای هر وظیفه؛ اگر AI_PROVIDER در .env تنظیم شده باشد، همهٔ وظایف به آن می‌روند.
 _TASK_ROUTE_DEFAULT = {
+    "cognitive_generate": "gemini_free",
+    "cognitive_evaluate": "gemini_free",
+    "cognitive_clarify": "gemini_free",
     "generate_question": "gemini_free",
     "generate_test_booklet": "gemini_free",
     "analyze_response": "gemini_free",
@@ -1018,6 +1033,9 @@ _TASK_ROUTE_DEFAULT = {
 }
 
 _OPENROUTER_ROUTE = {
+    "cognitive_generate": "openrouter",
+    "cognitive_evaluate": "openrouter",
+    "cognitive_clarify": "openrouter",
     "generate_question": "openrouter",
     "generate_test_booklet": "openrouter",
     "analyze_response": "openrouter",

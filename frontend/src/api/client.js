@@ -38,6 +38,10 @@ client.interceptors.response.use(
 export function friendlyError(error) {
   const data = error?.response?.data
   if (typeof data?.detail === 'string') return data.detail
+  // بک‌اند برای خطاهای موتور، detail را شیءی با message و reason برمی‌گرداند
+  if (data?.detail && typeof data.detail === 'object' && typeof data.detail.message === 'string') {
+    return data.detail.message
+  }
   if (Array.isArray(data?.detail) && data.detail[0]?.msg) {
     const first = data.detail[0]
     return `${first.msg}${first.loc ? ` (${first.loc.join(' → ')})` : ''}`

@@ -14,6 +14,9 @@ export function ScrollToTop() {
 import LandingPage from './pages/LandingPage'
 import StudentDashboard from './pages/StudentDashboard'
 import ExamRoom from './pages/ExamRoom'
+import CognitiveExamRoom from './pages/CognitiveExamRoom'
+import CognitiveClarify from './pages/CognitiveClarify'
+import CognitiveReport from './pages/CognitiveReport'
 import ReportView from './pages/ReportView'
 import SchoolStaffDashboard from './pages/SchoolStaffDashboard'
 import LoadingSpinner from './components/LoadingSpinner'
@@ -74,6 +77,9 @@ export default function App() {
           <Route element={<RequireAuth roles={['student']} />}>
             <Route path="/dashboard" element={<StudentDashboard />} />
             <Route path="/exam/:sessionId" element={<ExamRoom />} />
+            <Route path="/exam/xray/:sessionId" element={<CognitiveExamRoom />} />
+            <Route path="/exam/xray/:sessionId/clarify" element={<CognitiveClarify />} />
+            <Route path="/report/xray/:sessionId" element={<CognitiveReport mode="student" />} />
             <Route path="/report/:sessionId" element={<ReportView mode="student" />} />
           </Route>
 

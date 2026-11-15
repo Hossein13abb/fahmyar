@@ -23,6 +23,8 @@ import {
   ScrollText,
   CalendarDays,
   History,
+  BrainCircuit,
+  Fingerprint,
 } from 'lucide-react'
 import client, { friendlyError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -131,6 +133,38 @@ export default function StudentDashboard() {
     () => concepts.find((c) => String(c.id) === String(conceptId)) ?? null,
     [concepts, conceptId],
   )
+
+  // ── آزمونِ فهم‌سنجی شناختی (X-Ray) ──────────────────────────────────────
+  const [xrayTopic, setXrayTopic] = useState('')
+  const [xrayStarting, setXrayStarting] = useState(false)
+  const [xrayError, setXrayError] = useState('')
+
+  const startCognitiveAssessment = async () => {
+    const topic = (xrayTopic || selectedConcept?.name || '').trim()
+    if (topic.length < 2) {
+      setXrayError('نامِ مبحث را بنویس یا از فهرستِ مفاهیم یکی را انتخاب کن.')
+      return
+    }
+    setXrayStarting(true)
+    setXrayError('')
+    try {
+      const { data } = await client.post(
+        '/api/assessment/generate',
+        {
+          topic,
+          subject: selectedConcept?.subject ?? '',
+          grade: selectedConcept?.grade ? String(selectedConcept.grade) : '',
+          concept_id: selectedConcept?.id ?? null,
+        },
+        { timeout: 180000 },
+      )
+      navigate(`/exam/xray/${data.session_id}`)
+    } catch (err) {
+      setXrayError(friendlyError(err))
+    } finally {
+      setXrayStarting(false)
+    }
+  }
 
   const startTopicSession = async () => {
     if (!conceptId) return setError('اول یک مفهوم را انتخاب کن.')
@@ -293,6 +327,69 @@ export default function StudentDashboard() {
             </p>
           </div>
         </div>
+      </section>
+
+      {/* ── آزمونِ فهم‌سنجی شناختی (پنج مرحله‌ای) ── */}
+      <section className="overflow-hidden rounded-4xl border-2 border-indigo-200 bg-gradient-to-l from-indigo-50 via-white to-white p-5 shadow-soft sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="rounded-2xl bg-indigo-600 p-3 text-white shadow-soft">
+              <BrainCircuit className="h-6 w-6" strokeWidth={2} />
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-[15px] font-black text-indigo-950">آزمونِ فهم‌سنجی شناختی</h2>
+                <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-black text-white">
+                  تازه
+                </span>
+              </div>
+              <p className="mt-1 max-w-xl text-[12px] leading-6 text-slate-600">
+                پنج سؤالِ زنجیره‌ای که ذهنت را می‌خواند: فلسفهٔ مفهوم، لایهٔ نقاب، دستکاریِ سیستم،
+                عیب‌یابیِ یک استدلالِ غلط، و توضیح برای یک بچهٔ ۱۰ ساله با دستِ بسته.
+                نتیجه نمره نیست — کارنامهٔ اشعهٔ ایکس است.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {['فلسفه', 'لایهٔ نقاب', 'دستکاری', 'عیب‌یابی', 'فاینمن'].map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-lg bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-800 ring-1 ring-indigo-100"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={xrayTopic}
+            onChange={(event) => setXrayTopic(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && startCognitiveAssessment()}
+            placeholder={selectedConcept ? `مبحث: ${selectedConcept.name}` : 'مبحث را بنویس، مثلاً «فشار در مایعات»'}
+            className="flex-1 rounded-2xl border-2 border-indigo-100 bg-white px-4 py-3 text-[13px] font-bold text-slate-800 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+          />
+          <button
+            type="button"
+            onClick={startCognitiveAssessment}
+            disabled={xrayStarting}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-700 px-6 py-3 text-[14px] font-black text-white shadow-lift transition hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {xrayStarting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Fingerprint className="h-5 w-5" />}
+            {xrayStarting ? 'در حال طراحیِ آزمون…' : 'شروعِ تحلیلِ ذهن'}
+          </button>
+        </div>
+        {xrayError && (
+          <p className="mt-2 rounded-xl bg-rose-50 p-3 text-[11px] font-bold text-rose-800 ring-1 ring-rose-200">
+            ⚠️ {xrayError}
+          </p>
+        )}
+        {selectedConcept && (
+          <p className="mt-2 text-[10px] font-medium text-slate-400">
+            مبحثِ انتخاب‌شده در کارتِ پایین: «{selectedConcept.name}» — می‌توانی همین را بفرستی یا مبحثِ دیگری بنویسی.
+          </p>
+        )}
       </section>
 
       {/* ── تب‌های مسیر شروع ── */}
