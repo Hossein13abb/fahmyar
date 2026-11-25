@@ -64,6 +64,9 @@ class AIResponse:
     attempts: int = 1
     failed_cost_usd: float = 0.0
     failed_tokens: int = 0
+    # تفکیکِ توکن از usage پاسخ (اگر سرویس داده باشد)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
     @property
     def total_cost_usd(self) -> float:
@@ -170,7 +173,9 @@ _free_models_lock = threading.Lock()
 MAX_FALLBACK_ATTEMPTS = 8
 #: برای مدلِ پین‌شدهٔ ارزیابی، سه تلاش روی همان مدل و تمام. هیچ مدلِ دیگری
 #: جایش را نمی‌گیرد و صفِ retry بی‌نهایت نمی‌شود.
-PINNED_MODEL_MAX_ATTEMPTS = int(os.getenv("OPENROUTER_PINNED_MAX_ATTEMPTS", "3"))
+#: حداکثر «تلاشِ مجدد» = ۲ (یعنی در مجموع حداکثر ۳ فراخوانی، اولی + دو retry).
+#: بیشتر از این، کاربر را معطل می‌کند و اعتبار را غیرقابل‌پیش‌بینی.
+PINNED_MODEL_MAX_ATTEMPTS = int(os.getenv("OPENROUTER_PINNED_MAX_ATTEMPTS", "2")) + 1
 
 
 def _preference_rank(model_id: str) -> int:
@@ -224,7 +229,10 @@ class OpenRouterProvider(AIProvider):
         self.api_key = (raw_key or "").strip()
         self.model_name = (model_name if model_name is not None else settings.OPENROUTER_MODEL).strip() or "auto"
         self.base_url = settings.OPENROUTER_BASE_URL.rstrip("/")
-        self.timeout = 180
+        # تایم‌اوت از .env خوانده می‌شود (OPENROUTER_TIMEOUT_SECONDS)؛
+        # عددِ ۱۸۰ِ هاردکد با ۶۰ ثانیهٔ تنظیمات تناقض داشت و کدام‌شان برنده
+        # می‌شد به ترتیبِ ساختِ شیء بستگی داشت.
+        self.timeout = float(getattr(settings, "OPENROUTER_TIMEOUT_SECONDS", 60) or 60)
         self.min_interval = float(getattr(settings, "OPENROUTER_MIN_INTERVAL_SECONDS", 0.0) or 0.0)
         self.site_url = (getattr(settings, "OPENROUTER_SITE_URL", "") or "").strip()
         self.app_name = (getattr(settings, "OPENROUTER_APP_NAME", "Fahmyar App") or "Fahmyar App").strip() or "Fahmyar App"
@@ -283,7 +291,7 @@ class OpenRouterProvider(AIProvider):
     @staticmethod
     def _usage_from(
         data: dict[str, Any], prompt: str, text: str, model: str
-    ) -> tuple[int, float]:
+    ) -> tuple[int, float, int, int]:
         """توکن و هزینهٔ **واقعیِ گزارش‌شدهٔ OpenRouter** را برمی‌گرداند.
 
         قیمت هیچ‌جا هاردکد نمی‌شود: اگر پاسخ فیلد ``usage.cost`` داشت، همان
@@ -292,10 +300,18 @@ class OpenRouterProvider(AIProvider):
         است: بودجه را بی‌دلیل می‌بلعد و عددی در گزارش می‌نشاند که واقعی نیست.
         """
         usage = data.get("usage") or {}
-        try:
-            token_count = int(usage.get("total_tokens") or 0)
-        except (TypeError, ValueError):
-            token_count = 0
+
+        def _int(key: str) -> int:
+            try:
+                return int(usage.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        prompt_tokens = _int("prompt_tokens")
+        completion_tokens = _int("completion_tokens")
+        token_count = _int("total_tokens")
+        if token_count <= 0:
+            token_count = prompt_tokens + completion_tokens
         if token_count <= 0:
             token_count = max(1, (len(prompt) + len(text)) // 4)
 
@@ -309,7 +325,7 @@ class OpenRouterProvider(AIProvider):
                 break
             except (TypeError, ValueError):
                 continue
-        return token_count, round(cost_usd, 8)
+        return token_count, round(cost_usd, 8), prompt_tokens, completion_tokens
 
     # ------------------------------------------------------------------
     # کشف مدل‌های رایگان فعال — کش ۱۵ دقیقه‌ای
@@ -369,7 +385,7 @@ class OpenRouterProvider(AIProvider):
         # reasoning می‌کنند و content خالی می‌ماند. ۸۰۰۰ برای پاسخِ ارزیابیِ
         # کامل (چند یافته + تحلیلِ پنج سؤال) کافی است.
         max_tokens = int(
-            getattr(settings, "OPENROUTER_MAX_TOKENS", 8000) or 8000
+            getattr(settings, "OPENROUTER_MAX_TOKENS", 16000) or 16000
         )
 
         payload: dict[str, Any] = {
@@ -448,7 +464,9 @@ class OpenRouterProvider(AIProvider):
         if not text:
             raise AIProviderError(f"پاسخ خالی از OpenRouter (مدل {model}).", retryable=True)
 
-        token_count, cost_usd = self._usage_from(data, prompt, text, model)
+        token_count, cost_usd, prompt_tokens, completion_tokens = self._usage_from(
+            data, prompt, text, model
+        )
 
         return AIResponse(
             text=text,
@@ -457,6 +475,8 @@ class OpenRouterProvider(AIProvider):
             cost_usd=cost_usd,
             task_type=task_type,
             raw=data,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
         )
 
     # ------------------------------------------------------------------
@@ -1193,9 +1213,90 @@ _OPENROUTER_ROUTE = {
 }
 
 
-def _log_usage(provider: str, response: AIResponse | None, task_type: str,
-               success: bool, error: str | None = None) -> None:
-    """ثبت لاگ استفاده — شکست یا موفقیت. خود خطای لاگ نباید سیستم را بخواباند."""
+# ---------------------------------------------------------------------------
+# دفترِ مصرف — جمعِ هزینه و توکن در محدودهٔ یک جلسهٔ ارزیابی
+# ---------------------------------------------------------------------------
+# چرا لازم است: AIUsageLog ردیفِ هر فراخوانی را نگه می‌دارد ولی شناسهٔ جلسه
+# ندارد؛ و گزارش باید «مجموعِ هزینهٔ این آزمون» را نشان دهد. این دفتر یک
+# بافرِ سبک و thread-safe است که مسیرِ ارزیابی آن را پر و در پایان می‌بلعد.
+_USAGE_LEDGER: list[dict[str, Any]] = []
+_LEDGER_LOCK = threading.Lock()
+
+
+def reset_usage_ledger() -> None:
+    with _LEDGER_LOCK:
+        _USAGE_LEDGER.clear()
+
+
+def record_usage(entry: dict[str, Any]) -> None:
+    with _LEDGER_LOCK:
+        _USAGE_LEDGER.append(dict(entry))
+
+
+def usage_summary() -> dict[str, Any]:
+    """جمعِ هزینه/توکن و فهرستِ فراخوانی‌ها — برای متادیتای گزارش."""
+    with _LEDGER_LOCK:
+        entries = [dict(e) for e in _USAGE_LEDGER]
+    total_cost = round(sum(float(e.get("cost_usd") or 0.0) for e in entries), 8)
+    total_tokens = sum(int(e.get("total_tokens") or 0) for e in entries)
+    prompt_tokens = sum(int(e.get("prompt_tokens") or 0) for e in entries)
+    completion_tokens = sum(int(e.get("completion_tokens") or 0) for e in entries)
+    models = sorted({str(e.get("model") or "") for e in entries if e.get("model")})
+    return {
+        "calls": entries,
+        "call_count": len(entries),
+        "total_cost_usd": total_cost,
+        "total_tokens": total_tokens,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "models": models,
+    }
+
+
+def _log_usage(
+    provider: str,
+    response: AIResponse | None,
+    task_type: str,
+    success: bool,
+    error: str | None = None,
+    model_name: str = "",
+) -> None:
+    """ثبتِ هر فراخوانی — موفق یا ناموفق — با مدل، توکن، هزینه و زمان.
+
+    هزینه **جمع** می‌شود (``total_cost_usd``)، نه اینکه با تلاشِ آخر
+    جایگزین شود؛ توکنِ ورودی/خروجی هم جدا نگه داشته می‌شود.
+
+    خودِ خطای لاگ هرگز سیستم را نمی‌خواباند — ولی چاپِ کنسول همیشه انجام
+    می‌شود تا در لاگِ سرور ردِ فراخوانی بماند.
+    """
+    resolved_model = (response.model_name if response else "") or model_name
+    prompt_tokens = getattr(response, "prompt_tokens", 0) or 0
+    completion_tokens = getattr(response, "completion_tokens", 0) or 0
+    total_tokens = response.total_tokens if response else 0
+    cost = response.total_cost_usd if response else 0.0
+    stamp = datetime.utcnow().isoformat(timespec="seconds")
+
+    record_usage(
+        {
+            "timestamp": stamp,
+            "task_type": task_type,
+            "model": resolved_model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost_usd": cost,
+            "success": success,
+            "attempts": getattr(response, "attempts", 1) if response else 0,
+        }
+    )
+
+    print(
+        f"[AI-LOG] {stamp} task={task_type} model={resolved_model or '—'} "
+        f"prompt_tokens={prompt_tokens} completion_tokens={completion_tokens} "
+        f"total_tokens={total_tokens} cost_usd={cost} success={success}"
+        + (f" error={error}" if error else "")
+    )
+
     try:
         from models.database import SessionLocal
         from models.ai_log import AIUsageLog
@@ -1205,10 +1306,10 @@ def _log_usage(provider: str, response: AIResponse | None, task_type: str,
             db.add(
                 AIUsageLog(
                     provider=provider,
-                    model_name=response.model_name if response else "",
+                    model_name=resolved_model,
                     task_type=task_type,
-                    token_count=response.total_tokens if response else 0,
-                    cost_usd=response.total_cost_usd if response else 0.0,
+                    token_count=total_tokens,
+                    cost_usd=cost,
                     success=success,
                     error=error,
                     timestamp=datetime.utcnow(),
@@ -1217,8 +1318,8 @@ def _log_usage(provider: str, response: AIResponse | None, task_type: str,
             db.commit()
         finally:
             db.close()
-    except Exception:
-        print(f"[AI-LOG] {task_type} success={success} error={error}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[AI-LOG] (db write failed: {exc})")
 
 
 class ModelRouter:

@@ -102,7 +102,9 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
   ],
   "per_question": [
     {"question_id": 1, "order": 1, "stage_title": "...",
-     "status": "CORRECT | HALF_CORRECT | WRONG | INSUFFICIENT_EVIDENCE",
+     "status": "correct | partial | incorrect | insufficient",
+     "evidence_quote": "بریدهٔ عیناً از متنِ دانش‌آموز",
+     "wrong_claim": "ادعای غلطِ مشخص یا null",
      "cognitive_verdict": "یک جمله: چه چیزی را فهمیده و چه چیزی را نه",
      "expected_logic_missed": "کدام بخشِ منطقِ موردانتظار غایب است (اگر کامل است، null)",
      "evidence_type": "strong_confirming | weak_confirming | contradicting | none",
@@ -114,12 +116,29 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
   "improvement_suggestions": []
 }
 
-قواعدِ status (اجباری، برای همان پنج مرحله):
-  - CORRECT: پاسخ همان هستهٔ منطقیِ expected_logic را دارد.
-  - HALF_CORRECT: بخشی از استدلال درست است ولی هستهٔ منطقِ موردانتظار غایب
-    یا ناقص است. **پاسخِ درست در نتیجه ولی بدونِ توضیحِ چرایی = HALF_CORRECT.**
-  - WRONG: پاسخ به نتیجهٔ نادرست می‌رسد یا بدفهمی را تأیید می‌کند.
-  - INSUFFICIENT_EVIDENCE: پاسخی نیست، یا پاسخ هیچ ادعای قابلِ‌سنجش ندارد.
+قواعدِ status (اجباری، برای همان پنج مرحله) — **چهار حالت، بدونِ استثنا**:
+  - correct: پاسخ همان هستهٔ منطقیِ expected_logic را دارد.
+  - partial: بخشی از استدلال درست است ولی هستهٔ منطقِ موردانتظار غایب یا
+    ناقص است. **پاسخِ درست در نتیجه ولی با استدلالِ نادرست = partial.**
+  - incorrect: پاسخ به نتیجهٔ نادرست می‌رسد یا بدفهمی را تأیید می‌کند.
+  - insufficient: پاسخی نیست، یا پاسخ هیچ ادعای قابلِ‌سنجش ندارد.
+
+برای **مرحله‌های ۱، ۳ و ۴** علاوه بر status، این دو فیلد اجباری است:
+  - "evidence_quote": یک بریدهٔ کوتاه و **عیناً از متنِ خودِ دانش‌آموز**
+    (نه بازنویسیِ تو). اگر پاسخ خالی است، null.
+  - "wrong_claim": ادعای غلطِ مشخصی که در پاسخ آمده (یک جمله). اگر ادعای
+    غلطی نیست، null.
+
+قواعدِ سخت‌گیرانه (تخلف از آن‌ها حکم را باطل می‌کند):
+  ۱. جملهٔ «نتیجه درست است» به‌تنهایی correct نمی‌سازد. اگر دانش‌آموز
+     استدلالِ غلطی آورده که به نتیجهٔ درست رسیده، partial است.
+  ۲. اگر در پاسخِ مرحله ۴ ادعایی مثل «مقاومت تغییر می‌کند تا جریان ثابت
+     بماند» یا «مقاومت با ولتاژ زیاد می‌شود» باشد، حداکثر partial — حتی اگر
+     جملهٔ «امیر اشتباه می‌کند» را نوشته باشد.
+  ۳. MASTERED فقط وقتی مجاز است که مرحله ۳ و مرحله ۴ **هر دو** correct
+     باشند. در هر حالتِ دیگر MASTERED ممنوع است.
+  ۴. طولِ پاسخ هیچ نقشی ندارد. پاسخِ کوتاه ولی درست، correct است؛ پاسخِ
+     بلندِ ناقص، partial.
   برای هر مرحله فیلدِ expected_logic_missed را هم پر کن؛ این فیلد به
   دانش‌آموز نشان داده نمی‌شود و مبنایِ جمع‌بندیِ کد است.
 
@@ -175,26 +194,33 @@ def _word_count(text: str) -> int:
     return len(_normalize(text).split()) if text else 0
 
 
-def _chosen_option(answer: str, options: list[str]) -> Optional[int]:
-    """اندیسِ گزینهٔ انتخاب‌شده — متنِ گزینه اولویت دارد، عدد یک‌پایه است."""
+def _chosen_option(
+    answer: str, options: list[str], selected_index: Optional[int] = None
+) -> Optional[int]:
+    """اندیسِ گزینهٔ انتخاب‌شده — **منبعِ اول و اصلی: ``selected_index``**.
+
+    چرا این تغییر لازم شد: نسخهٔ قبلی هر عددی را در متنِ پاسخ «گزینه» تفسیر
+    می‌کرد. دانش‌آموزی که گزینهٔ «۳ آمپر» را می‌زد و در توضیحِ اختیاری
+    می‌نوشت «۱۲ تقسیم بر ۴»، انتخابش به گزینهٔ چهارم می‌رفت. حالا انتخاب از
+    یک منبعِ صریح و صفرمبنا می‌آید و توضیحِ آزاد هرگز در آن دخالت نمی‌کند.
+
+    متنِ گزینه به‌عنوانِ مسیرِ دوم فقط وقتی پذیرفته می‌شود که **دقیقاً** با
+    یکی از گزینه‌ها یکی باشد (نه هر عددی داخلِ جمله).
+    """
+    if selected_index is not None:
+        try:
+            index = int(selected_index)
+        except (TypeError, ValueError):
+            index = -1
+        if 0 <= index < max(1, len(options)):
+            return index
+        return None
     if not answer or not options:
         return None
     text = _normalize(answer)
     for index, option in enumerate(options):
         if _normalize(option) == text:
             return index
-    stripped = str(answer).strip()
-    if stripped.isdigit():
-        value = int(stripped)
-        if 1 <= value <= len(options):
-            return value - 1
-    # «گزینهٔ ۲» یا «2) ...»
-    match = re.search(r"(?:گزینه\s*)?([۱-۹\d])", stripped)
-    if match:
-        digits = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
-        value = int(match.group(1).translate(digits))
-        if 1 <= value <= len(options):
-            return value - 1
     return None
 
 
@@ -202,6 +228,29 @@ def _chosen_option(answer: str, options: list[str]) -> Optional[int]:
 # سیگنال‌های قطعی — به مدل داده می‌شوند و در لاگ می‌مانند
 # ---------------------------------------------------------------------------
 _SUGGESTION_KEYS = ("suggestion", "text", "description", "title", "action", "advice")
+
+#: پیشنهادهایی که «قدمِ عملی» نیستند: توصیهٔ احساسی/انگیزشی یا جملهٔ کلی.
+#: این‌ها در کارنامهٔ شناختی بی‌معنا هستند و در اجرای زنده هم دیده شدند.
+_NON_ACTIONABLE_PATTERNS = (
+    "نفس عمیق",
+    "آرام باش",
+    "استرس",
+    "نگران نباش",
+    "اعتماد به نفس",
+    "خودت را باور",
+    "بیشتر تلاش کن",
+    "بیشتر تمرین کن",
+    "تلاش بیشتری کن",
+)
+
+
+def _is_actionable(text: str) -> bool:
+    compact = str(text or "").replace("\u200c", "")
+    # حدِ طول فقط برای دورریختنِ آشغال (مثلِ «-» یا «ok») است، نه برای سنجشِ
+    # کیفیت؛ پیشنهادِ کوتاه ولی عملی هم معتبر است.
+    if len(compact.strip()) < 4:
+        return False
+    return not any(p.replace("\u200c", "") in compact for p in _NON_ACTIONABLE_PATTERNS)
 
 
 def normalize_suggestions(raw: Any) -> list[str]:
@@ -245,6 +294,8 @@ def normalize_suggestions(raw: Any) -> list[str]:
             continue
         if cleaned.startswith(("{", "[")) and cleaned.endswith(("}", "]")):
             continue
+        if not _is_actionable(cleaned):
+            continue
         if cleaned not in out:
             out.append(cleaned)
     return out
@@ -254,12 +305,15 @@ def collect_signals(
     question_rows: list[dict[str, Any]],
     answers: dict[int, str],
     concept_name: str = "",
+    selected_indices: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     """سیگنال‌های ساختاری که بدونِ مدل هم قابلِ محاسبه‌اند."""
     by_order = {int(q.get("order") or 0): q for q in question_rows}
     q2 = by_order.get(2) or {}
     options = q2.get("options") or []
-    chosen = _chosen_option(answers.get(2, ""), options)
+    chosen = _chosen_option(
+        answers.get(2, ""), options, (selected_indices or {}).get(2)
+    )
     correct = q2.get("correct_option_index")
     mcq_correct = (
         chosen is not None and correct is not None and int(chosen) == int(correct)
@@ -269,14 +323,10 @@ def collect_signals(
     forbidden = list(q5.get("forbidden_words") or [])
     hits = find_forbidden_hits(answers.get(5, ""), forbidden)
 
-    substantive = {
-        order: _word_count(answers.get(order, "")) >= 15 for order in (1, 3, 4)
-    }
-
-    # توجه: «طولِ پاسخ» هیچ‌جا شاهدِ درستی نیست. پیش‌تر `debugging_strong`
-    # از شمارشِ کلمات ساخته می‌شد و همین باعثِ حکمِ کاذبِ «مسلط» بود: پاسخِ
-    # بلندِ نیمه‌درست یا حتی بی‌ربط، «قوی» شمرده می‌شد. اکنون قوتِ عیب‌یابی
-    # فقط از حکمِ معناییِ مرحله‌های ۳ و ۴ می‌آید (compute_debugging_strength).
+    # توجه: «طولِ پاسخ» هیچ‌جا شاهدِ درستی نیست و در این ماژول هیچ سیگنالی
+    # از تعدادِ کلمات ساخته نمی‌شود. `substantive`، `any_substantive` و
+    # `debugging_strong` کاملاً حذف شده‌اند؛ تسلط فقط از برچسبِ ساختاریافتهٔ
+    # مرحله‌ها می‌آید (``compute_debugging_strength``).
 
     # سیگنالِ «بی‌ربط»: پاسخِ مفصل که هیچ واژهٔ کلیدیِ مفهوم را در خود ندارد.
     # مدل‌ها در پاسخِ off-topic استدلالِ قویِ بی‌ربط می‌بینند و «SYNERGY» می‌دهند؛
@@ -310,20 +360,14 @@ def collect_signals(
         "forbidden_words": forbidden,
         "forbidden_hits": hits,
         "jargon_violated": bool(hits),
-        "substantive": substantive,
-        "any_substantive": any(substantive.values()),
         # پاسخِ مرتبط و غیرِبی‌ربط برای مرحله‌های ۳ و ۴ — لازم ولی ناکافی.
         # این فقط «شرطِ لازم» است؛ درستیِ محتوایی جداگانه سنجیده می‌شود.
         "relevant_semantic_answers": (
             3 not in off_topic_orders and 4 not in off_topic_orders
         ),
-        # در `_hard_fallback` جایگزین می‌شود؛ این‌جا عمداً False است تا هیچ‌کس
-        # از شمارشِ کلمه به «تسلط» نرسد.
-        "debugging_strong": False,
         "off_topic_orders": off_topic_orders,
         "mostly_off_topic": mostly_off_topic,
         "answered_orders": sorted(o for o in answers if _normalize(answers.get(o, ""))),
-        "word_counts": {o: _word_count(answers.get(o, "")) for o in (1, 2, 3, 4, 5)},
     }
 
 
@@ -357,6 +401,10 @@ _STATUS_ALIASES = {
     "CONFIRMED": STAGE_STATUS_CORRECT,
     "LIKELY_UNDERSTOOD": STAGE_STATUS_CORRECT,
     "PARTIALLY_CORRECT": STAGE_STATUS_HALF,
+    # فرمِ چهارگانه‌ای که پرامپت می‌خواهد (حروفِ کوچک هم پذیرفته می‌شود)
+    "PARTIAL": STAGE_STATUS_HALF,
+    "INCORRECT": STAGE_STATUS_WRONG,
+    "INSUFFICIENT": STAGE_STATUS_INSUFFICIENT,
     "PARTIAL": STAGE_STATUS_HALF,
     "HALF_CORRECT": STAGE_STATUS_HALF,
     "MIXED": STAGE_STATUS_HALF,
@@ -385,6 +433,93 @@ def canonical_stage_status(raw: Any) -> str:
     return _STATUS_ALIASES.get(token, STAGE_STATUS_INSUFFICIENT)
 
 
+#: نشانه‌های ادعای مفهومیِ غلط در پاسخِ مرحله ۴. اگر مدل Q4 را «درست»
+#: بزند ولی متنِ دانش‌آموز یکی از این ادعاها را داشته باشد، برچسب به
+#: HALF_CORRECT تنزل می‌کند: نتیجهٔ درست با استدلالِ غلط، «درست» نیست.
+#: این گارد سمتِ کد است تا به حسنِ نیتِ مدل وابسته نباشد.
+_WRONG_Q4_CLAIMS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # «مقاومت (خودش را) تغییر می‌دهد تا جریان ثابت بماند» — بدفهمیِ اصلی
+    (
+        re.compile(
+            r"(?:مقاومت|R)[^.؟!]{0,45}"
+            r"(?:تغییر میکند|تغییر می‌کند|عوض میشود|عوض می‌شود|زیاد میشود|"
+            r"زیاد می‌شود|کم میشود|کم می‌شود|بیشتر میشود|بیشتر می‌شود)"
+            r"[^.؟!]{0,45}"
+            r"(?:جریان|I)[^.؟!]{0,30}(?:ثابت|همان مقدار|یکسان|تغییر نکند)"
+        ),
+        "ادعای «مقاومت تغییر می‌کند تا جریان ثابت بماند» — همان بدفهمیِ اصلی",
+    ),
+    # «مقاومت با بالا رفتنِ ولتاژ بیشتر می‌شود»
+    (
+        re.compile(
+            r"(?:ولتاژ|V)[^.؟!]{0,30}(?:زیاد|بیشتر|بالا)[^.؟!]{0,30}"
+            r"(?:مقاومت|R)[^.؟!]{0,25}(?:زیاد میشود|زیاد می‌شود|بیشتر میشود|"
+            r"بیشتر می‌شود|بالا میرود|بالا می‌رود)"
+        ),
+        "ادعای «مقاومت با افزایش ولتاژ زیاد می‌شود»",
+    ),
+    # «جریان تغییر می‌کند تا مقاومت ثابت بماند» (ترتیبِ معکوسِ همین بدفهمی)
+    (
+        re.compile(
+            r"(?:جریان|I)[^.؟!]{0,35}"
+            r"(?:تغییر میکند|تغییر می‌کند|کم میشود|کم می‌شود|زیاد میشود|"
+            r"زیاد می‌شود|عوض میشود|عوض می‌شود)"
+            r"[^.؟!]{0,35}"
+            r"(?:مقاومت|R)[^.؟!]{0,30}(?:ثابت بماند|ثابت میماند|ثابت می‌ماند|"
+            r"یکسان بماند|تغییر نکند)"
+        ),
+        "ادعای «جریان تغییر می‌کند تا مقاومت ثابت بماند» — وارونه‌گوییِ رابطه",
+    ),
+    # «جریان ثابت می‌ماند»
+    (
+        re.compile(r"(?:جریان|I)[^.؟!]{0,30}(?:ثابت میماند|ثابت می‌ماند|تغییر نمیکند|تغییر نمی‌کند)"),
+        "ادعای «جریان ثابت می‌ماند»",
+    ),
+    # «مدار/رسانا خودش را تنظیم می‌کند»
+    (
+        re.compile(
+            r"(?:مدار|سیستم|رسانا)[^.؟!]{0,30}(?:خودش|خود به خود|خودکار)"
+            r"[^.؟!]{0,25}(?:تنظیم میکند|تنظیم می‌کند|جبران میکند|جبران می‌کند|متعادل)"
+        ),
+        "ادعای «سیستم خودش را تنظیم می‌کند»",
+    ),
+)
+
+
+def wrong_q4_claim(text: str) -> Optional[str]:
+    """اگر پاسخِ مرحله ۴ ادعای مفهومیِ غلطی داشته باشد، توضیحش را برمی‌گرداند."""
+    body = re.sub(r"\$[^$]*\$", " ", str(text or "")).replace("\u200c", "")
+    # الگوها با آگاهی از ZWNJ نوشته شده‌اند؛ پس هر دو شکل را می‌آزماییم.
+    for pattern, reason in _WRONG_Q4_CLAIMS:
+        if pattern.search(body) or pattern.search(str(text or "")):
+            return reason
+    return None
+
+
+def apply_q4_claim_guard(
+    per_question: list[dict[str, Any]], answers: dict[int, str]
+) -> bool:
+    """Q4 را با ادعای مفهومیِ غلط، حداکثر ``HALF_CORRECT`` می‌کند.
+
+    برمی‌گرداند True اگر تنزیل انجام شده باشد (برای ثبتِ یافته).
+    """
+    record = next((r for r in per_question if int(r.get("order") or 0) == 4), None)
+    if record is None:
+        return False
+    if canonical_stage_status(record.get("status")) != STAGE_STATUS_CORRECT:
+        return False
+    reason = wrong_q4_claim(answers.get(4, ""))
+    if not reason:
+        return False
+    record["status"] = STAGE_STATUS_HALF
+    record["evidence_type"] = "contradicting"
+    record["expected_logic_missed"] = reason
+    if not record.get("missing_gear"):
+        record["missing_gear"] = reason
+    print(f"[CrossCheck] Q4 was marked correct but contains a wrong claim: {reason}")
+    return True
+
+
 def compute_debugging_strength(
     per_question: list[dict[str, Any]], signals: dict[str, Any]
 ) -> bool:
@@ -401,6 +536,93 @@ def compute_debugging_strength(
     # هستهٔ نقد را نگفته است — و همان هسته، دلیلِ وجودِ مرحله ۴ است.
     sem_ok = q3 == STAGE_STATUS_CORRECT and q4 == STAGE_STATUS_CORRECT
     return bool(sem_ok and signals.get("relevant_semantic_answers", True))
+
+
+def derive_status(
+    model_status: str, per_question: list[dict[str, Any]], signals: dict[str, Any]
+) -> tuple[str, Optional[str]]:
+    """حکمِ نهایی را از شواهدِ مرحله‌ای مشتق می‌کند — نه از حرفِ مدل.
+
+    این تابع «منبعِ واحدِ حقیقت» است: نشان، عنوان و خلاصه همه از خروجیِ همین
+    تابع ساخته می‌شوند، پس ترکیبِ «زنجیره کامل و درست است» با نشانِ «نامشخص»
+    یا «مسلط» با «استدلالِ ناقص» ممکن نیست.
+
+    برمی‌گرداند ``(status, note)``؛ ``note`` فقط وقتی پر می‌شود که حکمِ مدل
+    با شواهد نخوانده باشد.
+    """
+    by_order = {int(r.get("order") or 0): r for r in per_question}
+    q3 = canonical_stage_status(by_order.get(3, {}).get("status"))
+    q4 = canonical_stage_status(by_order.get(4, {}).get("status"))
+    q1 = canonical_stage_status(by_order.get(1, {}).get("status"))
+
+    jargon = bool(signals.get("jargon_violated"))
+    off_topic = bool(signals.get("mostly_off_topic"))
+
+    # ۱) بی‌ربطی و نقضِ کلماتِ ممنوعه، سقفِ سخت دارند.
+    if off_topic:
+        return "UNSTRUCTURED", (
+            "پاسخ‌هایت مفصل بود، اما به موضوعِ همین آزمون نمی‌پرداخت. "
+            "اول باید مکانیزم را دقیقاً برای همین مفهوم بگویی."
+        )
+    if jargon:
+        return "JARGON_DEPENDENT", (
+            "استدلالت ممکن است درست باشد، اما برای توضیحِ ساده ناچار شدی به "
+            "همان اصطلاحاتِ ممنوعه تکیه کنی. فهم، وقتی آزاد است که بدونِ آن "
+            "واژه‌ها هم بتوانی بگویی."
+        )
+
+    core_ok = q3 == STAGE_STATUS_CORRECT and q4 == STAGE_STATUS_CORRECT
+
+    # ۲) هستهٔ زنجیره درست است ⇒ مسلط. ضعفِ Q1/Q5 مانع نمی‌شود.
+    if core_ok:
+        return "MASTERED", None
+
+    # ۳) هسته ناقص است. اگر تست را درست زده، فاصله میان «فرمول» و «شهود».
+    if signals.get("mcq_correct") and q4 in (STAGE_STATUS_HALF, STAGE_STATUS_WRONG):
+        note = (
+            "رابطه را در تست درست به کار بردی، اما در نقدِ استدلال به همان "
+            "بدفهمی برگشتی."
+        )
+        return "ILLUSION_OF_COMPETENCE", note
+
+    # ۴) پاسخ‌ها هیچ ادعای قابلِ‌سنجشی ندارند (نمونه: «نمی‌دانم»).
+    measurable = [
+        canonical_stage_status(by_order.get(o, {}).get("status"))
+        for o in (1, 3, 4, 5)
+        if o in by_order
+    ]
+    if measurable and all(st == STAGE_STATUS_INSUFFICIENT for st in measurable):
+        return "UNSTRUCTURED", (
+            "پاسخ‌ها آن‌قدر کوتاه یا خالی بودند که نشود دربارهٔ فهمت حکم داد."
+        )
+
+    note = None
+    if q4 != STAGE_STATUS_CORRECT:
+        note = (
+            "ضعیف‌ترین حلقهٔ زنجیره، مرحلهٔ عیب‌یابی بود: هستهٔ استدلالِ غلط "
+            "به‌طور کامل رد نشد."
+        )
+    elif q3 != STAGE_STATUS_CORRECT:
+        note = "زنجیرهٔ علّیِ مرحلهٔ دستکاری به‌طور کامل درست نبود."
+    elif q1 == STAGE_STATUS_INSUFFICIENT:
+        note = "تصویرِ کلانِ مفهوم هنوز جای خالی دارد."
+    return "PARTIAL_FRAGMENTED", note
+
+
+def _verdict_culprit(per_question: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """حلقه‌ای که حکم را از «مسلط» برگرداند — به ترتیبِ اهمیت.
+
+    Q4 (عیب‌یابی) مهم‌ترین است، بعد Q3 (زنجیرهٔ علّی)، بعد Q1. اگر هیچ‌کدام
+    مشکل نداشتند، رفتارِ قبلی (ضعیف‌ترین مرحله) حفظ می‌شود.
+    """
+    by_order = {int(r.get("order") or 0): r for r in per_question}
+    for order in (4, 3, 1, 5):
+        record = by_order.get(order)
+        if not record:
+            continue
+        if canonical_stage_status(record.get("status")) != STAGE_STATUS_CORRECT:
+            return record
+    return _weakest_link(per_question)
 
 
 def _weakest_link(per_question: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -651,6 +873,16 @@ def _normalize_per_question(
             "question_id": row.get("question_id"),
             "order": order,
             "stage_title": row.get("stage_title") or _NAMES.get(order, f"مرحله {order}"),
+            # شاهدِ مستقیم از متنِ خودِ دانش‌آموز و ادعای غلطِ مشخص
+            "evidence_quote": (str(item.get("evidence_quote")).strip() or None)
+            if item.get("evidence_quote")
+            else None,
+            "wrong_claim": (str(item.get("wrong_claim")).strip() or None)
+            if item.get("wrong_claim")
+            else None,
+            "expected_logic_missed": (str(item.get("expected_logic_missed")).strip() or None)
+            if item.get("expected_logic_missed")
+            else None,
             "cognitive_verdict": str(item.get("cognitive_verdict") or "").strip()
             or "تحلیل‌گری برای این مرحله توضیحی نداد.",
             "missing_gear": (str(missing).strip() or None) if missing else None,
@@ -681,13 +913,50 @@ def _normalize_per_question(
             record["confidence"] = 0.0
     return [records[order] for order in sorted(records)]
 
-    return [records[order] for order in sorted(records)]
+
+def _filter_false_synergy(
+    findings: list[dict[str, str]], per_question: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    """SYNERGY فقط وقتی می‌ماند که دو مرحله واقعاً همسو و هر دو درست باشند.
+
+    پرامپت از مدل می‌خواهد میانگینِ عددی و زنجیرهٔ علّی را «هم‌افزا» بنامد، ولی
+    در اجرای زنده دیدیم که همین، حکمِ متناقض می‌سازد: کارتِ مرحلهٔ ۴ «نادرست»
+    است و کنارش نوشته «هم‌افزاییِ کامل». یافته‌ای که با شواهدِ خودش نمی‌خواند
+    حذف می‌شود.
+    """
+    if not findings:
+        return findings
+    statuses = {
+        int(r.get("order") or 0): canonical_stage_status(r.get("status"))
+        for r in per_question
+    }
+    # هم‌افزایی فقط دربارهٔ زوجِ «دستکاری + عیب‌یابی» معنا دارد؛ همان دو
+    # مرحله‌ای که یافته به آن‌ها اشاره می‌کند. وضعیتِ بقیهٔ مرحله‌ها این‌جا
+    # دخالت نمی‌کند (اگر لازم بود، حکمِ کلی جداگانه اصلاح می‌شود).
+    if statuses.get(3) == STAGE_STATUS_CORRECT and statuses.get(4) == STAGE_STATUS_CORRECT:
+        return findings
+    return [f for f in findings if str(f.get("type", "")).upper() != "SYNERGY"]
+
+
+def _usage_snapshot() -> dict[str, Any]:
+    """جمعِ هزینه/توکنِ فراخوانی‌های همین آزمون — برای متادیتای گزارش."""
+    try:
+        from ai.model_abstraction import usage_summary
+
+        return usage_summary()
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _hard_fallback(
     question_rows: list[dict[str, Any]], signals: dict[str, Any], reason: str
 ) -> dict[str, Any]:
-    """اگر مدل هیچ خروجیِ قابل‌اتکایی نداد، قواعدِ قطعی تنها مرجع می‌شوند."""
+    """اگر مدل هیچ خروجیِ قابل‌اتکایی نداد، قواعدِ قطعی تنها مرجع می‌شوند.
+
+    نکتهٔ مهم: در این مسیر هیچ برچسبِ مرحله‌ای در دست نیست، پس **هیچ‌وقت**
+    حکمِ MASTERED صادر نمی‌شود. «مسلط» ادعایی است که فقط با شاهدِ معناییِ
+    مرحلهٔ ۳ و ۴ پشتیبانی می‌شود؛ نبودِ تحلیل یعنی نبودِ شاهد، نه تسلط.
+    """
     findings: list[dict[str, str]] = []
     if signals["jargon_violated"]:
         findings.append(
@@ -697,12 +966,15 @@ def _hard_fallback(
                 "description": f"در توضیحِ ساده از «{'، '.join(signals['forbidden_hits'])}» استفاده کردی.",
             }
         )
-    if signals["debugging_strong"]:
+    if signals["mostly_off_topic"]:
         findings.append(
             {
-                "title": "عیب‌یابیِ منسجم",
-                "type": "SYNERGY",
-                "description": "استدلالِ تو در مرحله‌های دستکاری و عیب‌یابی مفصل و منسجم بود.",
+                "title": "پاسخ‌های خارج از موضوع",
+                "type": "BLUFF_DETECTED",
+                "description": (
+                    "پاسخ‌هایت مفصل بود، اما به موضوعِ همین آزمون نمی‌پرداخت. "
+                    "طولانی بودن، جای درست بودن را نمی‌گیرد."
+                ),
             }
         )
     if signals["jargon_violated"]:
@@ -711,9 +983,6 @@ def _hard_fallback(
     elif signals["mostly_off_topic"]:
         status = "UNSTRUCTURED"
         persona = "پاسخ‌های طولانی، بیرون از موضوع"
-    elif signals["debugging_strong"]:
-        status = "MASTERED"
-        persona = "معماری که ساعت را بست"
     elif signals["mcq_correct"]:
         status = "ILLUSION_OF_COMPETENCE"
         persona = "گرفتارِ تضادِ فرمول و شهود"
@@ -721,7 +990,7 @@ def _hard_fallback(
         status = "PARTIAL_FRAGMENTED"
         persona = "تفکرِ جزیره‌ای"
 
-    status, findings, note = _apply_supremacy(status, findings, signals["debugging_strong"])
+    status, findings, note = _apply_supremacy(status, findings, False)
 
     return {
         "needs_clarification": False,
@@ -752,6 +1021,7 @@ async def analyze_stage_chain(
     concept_name: str,
     question_rows: list[dict[str, Any]],
     answers: dict[int, str],
+    selected_indices: Optional[dict[int, int]] = None,
 ) -> dict[str, Any]:
     """زنجیرهٔ ۵ مرحله‌ای را به‌صورتِ کل‌نگر و مقایسه‌ای تحلیل می‌کند.
 
@@ -764,7 +1034,7 @@ async def analyze_stage_chain(
     """
     rows = [r for r in (question_rows or []) if isinstance(r, dict)]
     answers = {int(k): str(v or "") for k, v in (answers or {}).items()}
-    signals = collect_signals(rows, answers, concept_name)
+    signals = collect_signals(rows, answers, concept_name, selected_indices)
 
     expected = {
         int(r.get("order") or 0): r.get("expected_logic") or "" for r in rows
@@ -801,23 +1071,36 @@ async def analyze_stage_chain(
     # شواهدِ ساختاریافتهٔ هر مرحله *پیش از* حکمِ نهایی جمع می‌شود؛ حکمِ کلی
     # تابعِ همین شواهد است، نه مستقل از آن.
     per_question = _normalize_per_question(data, rows, answers)
-    signals["debugging_strong"] = compute_debugging_strength(per_question, signals)
+    # گاردِ متن: اگر مدل Q4 را «درست» زد ولی خودِ پاسخ ادعای مفهومیِ غلطی دارد،
+    # برچسب به HALF_CORRECT تنزل می‌کند. نتیجهٔ درست با استدلالِ غلط، درست نیست.
+    q4_downgraded = apply_q4_claim_guard(per_question, answers)
+    # قوتِ عیب‌یابی فقط از برچسبِ معناییِ Q3 و Q4 می‌آید. این متغیر محلی است،
+    # نه سیگنالِ عمومی — تا هیچ مصرف‌کننده‌ای دوباره به شمارشِ کلمه برنگردد.
+    debugging_strong = compute_debugging_strength(per_question, signals)
 
-    # گاردِ سازگاری: مدل می‌تواند کلی «مسلط» بدهد درحالی‌که خودش مرحلهٔ ۴ را
-    # نیمه‌درست علامت زده. حکم باید یکی باشد؛ شواهدِ مرحله‌ای مقدم است.
-    conflict = _verdict_conflict(status, per_question)
-    verdict_note: Optional[str] = None
-    if conflict:
-        status = (
-            "ILLUSION_OF_COMPETENCE"
-            if signals.get("mcq_correct") and not signals.get("jargon_violated")
-            else "PARTIAL_FRAGMENTED"
+    # ── منبعِ واحدِ حقیقت برای حکم ──
+    # حکمِ نهایی دیگر «حرفِ مدل + وصله‌پینه» نیست: از شواهدِ مرحله‌ای مشتق
+    # می‌شود. هر بار که مدل چیزی جز این بگوید، در لاگ می‌بینیم.
+    model_status = status
+    status, verdict_note = derive_status(model_status, per_question, signals)
+    if verdict_note or status != model_status:
+        print(
+            f"[CrossCheck] verdict derived from evidence: model={model_status} "
+            f"-> final={status}"
         )
-        verdict_note = conflict
-        print(f"[CrossCheck] verdict reconciled with per-stage evidence: {conflict}")
 
     findings = _clean_findings(data.get("cross_check_findings"))
     findings = _ensure_jargon_finding(findings, signals["forbidden_hits"])
+    if q4_downgraded:
+        findings.insert(0, {
+            "title": "نتیجهٔ درست، استدلالِ غلط",
+            "type": "BLUFF_DETECTED",
+            "description": (
+                "در مرحلهٔ عیب‌یابی نتیجهٔ درستی گفتی، اما دلیلی که آوردی خودش "
+                "همان بدفهمی است: فرض کردی مقاومت با ولتاژ یا جریان عوض می‌شود. "
+                "این مرحله حداکثر نیمه‌درست حساب می‌شود."
+            ),
+        })
     if signals["mostly_off_topic"] and not any(
         f["type"] == "BLUFF_DETECTED" for f in findings
     ):
@@ -834,7 +1117,7 @@ async def analyze_stage_chain(
     if signals["jargon_violated"] and status in ("MASTERED", "PARTIAL_FRAGMENTED", "UNSTRUCTURED"):
         status = "JARGON_DEPENDENT"
     status, findings, supremacy_note = _apply_supremacy(
-        status, findings, signals["debugging_strong"]
+        status, findings, debugging_strong
     )
     # پاسخِ بی‌ربطِ مفصل، استدلالِ خوب نیست. این گارد باید **بعد** از حاکمیتِ
     # عیب‌یابی بیاید تا مدل نتواند با SYNERGY خودش را به «مسلط» برساند.
@@ -845,6 +1128,7 @@ async def analyze_stage_chain(
             "اول باید مکانیزم را دقیقاً برای همین مفهوم بگویی."
         )
     findings = _dedupe(findings)
+    findings = _filter_false_synergy(findings, per_question)
 
     raw_persona = str(data.get("persona_title") or "").strip()
     # عنوان، خلاصه، یافته‌ها و نشان باید یک داستان بگویند. هر بار که کد حکم را
@@ -863,13 +1147,22 @@ async def analyze_stage_chain(
     # نقد استدلال لنگ زدی»). در آن حالت خلاصهٔ سازگار با شواهد نوشته می‌شود.
     executive_summary = str(data.get("executive_summary") or "").strip()
     if verdict_rewritten:
-        weakest = _weakest_link(per_question)
+        # «ضعیف‌ترین حلقه» یعنی حلقه‌ای که واقعاً حکم را برگرداند — نه هر
+        # مرحله‌ای که خالی مانده. اگر Q4 نیمه‌درست است، همان دلیلِ اصلی است.
+        culprit = _verdict_culprit(per_question)
         stage_name = (
-            weakest.get("stage_title") or _NAMES.get(int(weakest.get("order") or 0), "")
-            if weakest
+            culprit.get("stage_title") or _NAMES.get(int(culprit.get("order") or 0), "")
+            if culprit
             else ""
         )
-        if stage_name:
+        flaw = str(culprit.get("expected_logic_missed") or "").strip() if culprit else ""
+        if stage_name and flaw:
+            executive_summary = (
+                f"در «{stage_name}» جای خالی داشتی: {flaw} "
+                "بقیهٔ مرحله‌ها خوب پیش رفتند، اما تسلطِ کامل وقتی ساخته می‌شود "
+                "که همین حلقه هم بسته شود."
+            )
+        elif stage_name:
             executive_summary = (
                 f"ضعیف‌ترین حلقهٔ زنجیرهٔ تو «{stage_name}» بود. "
                 "بقیهٔ مرحله‌ها خوب پیش رفتند، اما تسلطِ کامل وقتی ساخته "
@@ -929,4 +1222,6 @@ async def analyze_stage_chain(
         "mastery_note": supremacy_note,
         "signals": signals,
         "analyzer": "cross-check",
+        # مصرفِ مدل برای همین آزمون (مدل، توکنِ ورودی/خروجی، هزینهٔ گزارش‌شده)
+        "ai_usage": _usage_snapshot(),
     }

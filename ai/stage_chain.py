@@ -74,19 +74,27 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
    موضوع را یا از فلسفهٔ پیدایشِ مفهوم بگیر یا از مکانیزمِ بنیادیِ پدیده —
    نه هر دو با هم. هدف: شناساییِ کسی که مفهومِ پایه را نمی‌داند و با کلماتِ
    قلمبه‌سلمبه بلوف می‌زند.
+   ⛔ **پاسخ را در خودِ سؤال لو نده.** جمله‌هایی مثل «نه ویژگیِ منبع تغذیه»،
+   «مستقل از ولتاژ است» یا «مقاومت به جنس و طول بستگی دارد» پاسخ را پیش‌پاافتاده
+   می‌کنند و سنجش را بی‌اثر؛ دانش‌آموز باید خودش به آن برسد.
+   واژگانِ کتابِ درسی بمان: ویژگیِ «ذاتی» رسانا، نه «محدودکنندهٔ ثابت مسیر».
 
 🔹 مرحله ۲ — «تست لایهٔ نقاب» (exam_type: "mask_mcq")
    **تستیِ ۴ گزینه‌ای.** فیلدهای لازم: "options" (آرایهٔ ۴ رشته) و
    "correct_option_index" (عددِ ۰ تا ۳ — **یک‌پایه نیست**، از ۰ شروع می‌شود).
    یک تستِ استانداردِ کتابی دربارهٔ قانونِ اصلی، همراه با **یک دادهٔ اضافیِ
-   کاملاً معقول** که در بافتِ مسئله طبیعی و از نظر فیزیکی ممکن است، ولی طبقِ
-   فرضِ صریحِ صورتِ سؤال در محاسبه نقشی ندارد.
+   کاملاً معقول** که در بافتِ مسئله طبیعی و از نظرِ فیزیکی ممکن است، ولی در
+   محاسبه به کار نمی‌آید.
    ✅ نمونهٔ درست: «در مداری با ولتاژ $۱۲$ ولت و مقاومتِ $۴$ اهم، جریان چند
-      آمپر است؟ مقاومتِ سیم‌های رابط ناچیز و طولِ آن‌ها $۵۰$ سانتی‌متر فرض
-      می‌شود.»
+      آمپر است؟ طولِ سیمِ رابط $۵۰$ سانتی‌متر است.»
    ❌ نمونهٔ غلط: «حجمِ منبع تغذیه $۲$ لیتر است» — دادهٔ پرت و نامعقول، تلهٔ
       شناختی نمی‌سازد، فقط سؤال را بی‌کیفیت می‌کند.
-   فرضِ بی‌اثر بودنِ دادهٔ اضافی باید **در خودِ صورتِ سؤال صریح** باشد.
+   ⛔ **مهم‌ترین قاعدهٔ این مرحله — تله نباید لو برود:** هرگز در صورتِ سؤال
+   نگو کدام داده مؤثر است و کدام نیست. جمله‌هایی مثل «این داده هیچ نقشی
+   ندارد»، «برای گمراه کردن آمده»، «ناچیز و بی‌اثر فرض می‌شود» یا «نه ویژگیِ
+   منبع تغذیه» **ممنوع** است؛ با این جمله‌ها تله بی‌معنا می‌شود و دانش‌آموز
+   فقط باید جملهٔ آخر را بخواند. دادهٔ اضافی را ساده و بی‌توضیح بیاور؛ خودِ
+   دانش‌آموز باید تصمیم بگیرد به محاسبه مربوط است یا نه.
    هدف: ثبتِ اینکه قانونِ رسمی را می‌داند یا نه، تا در مرحله ۵ با شهودش
    مقایسه شود.
 
@@ -198,19 +206,17 @@ _FALLBACK_STAGES: tuple[dict[str, Any], ...] = (
         "order": 2,
         "exam_type": "mask_mcq",
         "text": (
-            "یک دانش‌آموز می‌خواهد دربارهٔ «{concept}» تصمیم بگیرد. "
-            "در صورتِ مسئله سه داده آمده است: یکی از آن‌ها متغیرِ مؤثر است و "
-            "دو دادهٔ دیگر (شاملِ یک عددِ بزرگ و چشمگیر) هیچ نقشی در نتیجه "
-            "ندارند و فقط برای گمراه کردن آمده‌اند. کدام گزاره دربارهٔ «{concept}» "
-            "درست است؟"
+            "دربارهٔ «{concept}» و رابطه‌ای که در کلاس خوانده‌ای، کدام گزاره از "
+            "نظرِ علمی درست است؟ گزینه‌ای را انتخاب کن که با رفتارِ واقعیِ "
+            "سیستم در شرایطِ یکسان جور دربیاید."
         ),
         "difficulty": "medium",
         "cognitive_type": "conceptual",
         "options": [
-            "گزارهٔ استانداردِ کتاب‌درسی درست است و همان متغیرِ اصلی تعیین‌کننده است؛ داده‌های اضافی بی‌تأثیرند.",
-            "با بزرگ‌تر شدنِ مقدارِ دادهٔ اضافی، نتیجه هم به همان نسبت بزرگ‌تر می‌شود.",
-            "هیچ‌کدام از متغیرها به‌تنهایی تعیین‌کننده نیست و باید میانگین گرفت.",
-            "نمی‌توان گفت؛ چون داده‌های اضافی با هم در تضادند.",
+            "فقط متغیرِ اصلیِ رابطه تعیین‌کننده است و بقیهٔ کمیت‌ها نتیجه را عوض نمی‌کنند.",
+            "با بزرگ‌تر شدنِ هر کمیتِ دیگری که در صورتِ مسئله آمده، نتیجه هم بزرگ‌تر می‌شود.",
+            "هیچ‌کدام از کمیت‌ها به‌تنهایی تعیین‌کننده نیست و باید میانگین گرفت.",
+            "نمی‌توان گفت؛ چون کمیت‌های صورتِ مسئله با هم در تضادند.",
         ],
         "correct_option_index": 0,
     },
@@ -349,9 +355,13 @@ def _coerce_forbidden(raw: Any) -> list[str]:
 #: تعدادِ نشانه‌های پرسشی که بیش از آن یعنی متن چند سؤالِ مستقل است.
 _MAX_QUESTION_MARKS = 1
 
+# نشانهٔ فرمولِ *واقعی*: ریاضیِ درون‌خطی، یا یک انتسابِ نمادین مثل «I=V/R».
+# پیش‌تر هر عبارتی که با «فرمول/رابطه/معادله» شروع می‌شد علامت می‌خورد و
+# واژهٔ سادهٔ «رابطه‌ای» در یک سؤالِ کاملاً مفهومی، سؤال را رد می‌کرد.
 _FORMULA_HINT = re.compile(
-    r"\$[^$]+\$|\b[A-Za-z]\s*=\s*\d|"
-    r"(?:فرمول|رابطهٔ|معادلهٔ)\s*\S+",
+    r"\$[^$]+\$"
+    r"|[A-Za-z]\s*=\s*[^\s،.]"          # I=V/R ، P = VI
+    r"|(?:فرمول|معادلهٔ)\s*[A-Za-z0-9۰-۹$]"   # «فرمول I» / «معادلهٔ ۲»
 )
 _NUMBER_HINT = re.compile(r"[0-9۰-۹]")
 
@@ -421,6 +431,11 @@ def question_quality_issues(
         index = item.get("correct_option_index")
         if index is None or not isinstance(index, int) or not 0 <= index <= 3:
             issues.append("mcq_missing_key")
+        elif isinstance(options, list) and len(options) == 4:
+            # کلید باید با محاسبهٔ مستقل از متن بخواند، نه با ادعای مدل.
+            ok, reason = verify_mcq_key(text, [str(o) for o in options], index)
+            if not ok and reason:
+                issues.append(reason)
 
     # ── مرحله ۵: کلماتِ ممنوعهٔ دقیق ──
     if exam_type == "feynman_synthesis":
@@ -430,6 +445,10 @@ def question_quality_issues(
         generic = {"علم", "چیز", "مفهوم", "موضوع", "کلمه", "سؤال"}
         if words and all(str(w).strip() in generic for w in words):
             issues.append("feynman_generic_forbidden_words")
+
+    # ── لو رفتنِ تله یا پاسخ ──
+    if leaked_phrases(text, philosophy=(exam_type == "philosophy")):
+        issues.append("question_leaks_answer")
 
     # ── اصطلاح‌شناسی: «دایره» در بافتِ الکتریکی ──
     if "دایره" in text and (
@@ -441,6 +460,44 @@ def question_quality_issues(
 
 
 #: گاردهایی که فقط با تولیدِ مجدد یا قالبِ قطعی حل می‌شوند (اصلاحِ متن ممکن نیست).
+#: عبارت‌هایی که تلهٔ مرحله ۲ یا پاسخِ مرحله ۱ را لو می‌دهند.
+#: اگر در متنِ سؤال بیایند، سنجش بی‌اثر می‌شود — نه «کیفیتِ پایین»، بلکه
+#: «سنجشِ نامعتبر». پس در گاردِ کشنده می‌نشینند و سؤال دور ریخته می‌شود.
+LEAKY_PHRASES: tuple[str, ...] = (
+    "هیچ نقشی",
+    "هیچ تأثیری",
+    "بی‌تأثیر",
+    "بی اثر",
+    "برای گمراه",
+    "گمراه کردن",
+    "نه ویژگی منبع",
+    "ویژگی منبع تغذیه نیست",
+    "ناچیز و بی‌اثر",
+    "ناچیز و بی اثر",
+    "در محاسبه به کار نمی‌رود",
+    "در محاسبه نقشی ندارد",
+    "ربطی به جواب ندارد",
+)
+
+#: پاسخ‌های لو‌دهنده در صورتِ سؤالِ مرحله ۱.
+ANSWER_LEAKS: tuple[str, ...] = (
+    "نه ویژگی منبع",
+    "به ولتاژ بستگی ندارد",
+    "مستقل از ولتاژ",
+    "ویژگی ذاتی رسانا",
+    "خودش را تنظیم نمی‌کند",
+)
+
+
+def leaked_phrases(text: str, *, philosophy: bool = False) -> list[str]:
+    """عبارت‌های لو‌دهندهٔ موجود در متن را برمی‌گرداند."""
+    body = str(text or "")
+    found = [p for p in LEAKY_PHRASES if p in body]
+    if philosophy:
+        found += [p for p in ANSWER_LEAKS if p in body]
+    return found
+
+
 FATAL_QUALITY_ISSUES = frozenset(
     {
         "empty_text",
@@ -448,6 +505,11 @@ FATAL_QUALITY_ISSUES = frozenset(
         "mcq_empty_option",
         "mcq_duplicate_options",
         "mcq_missing_key",
+        # سؤالی که تله یا پاسخش را لو می‌دهد، سنجش را بی‌اعتبار می‌کند.
+        "question_leaks_answer",
+        # کلیدِ نادرست یا گزینهٔ تکراری، درست‌زدنِ دانش‌آموز را نادرست ثبت می‌کند.
+        "mcq_key_mismatch",
+        "mcq_key_duplicated",
     }
 )
 
@@ -467,6 +529,91 @@ def apply_quality_fixes(item: dict[str, Any]) -> dict[str, Any]:
             fix_terminology(str(w)) for w in item["forbidden_words"]
         ]
     return item
+
+
+# ---------------------------------------------------------------------------
+# اعتبارسنجیِ کلیدِ تست — تطبیقِ گزینهٔ صحیح با محاسبهٔ واقعی
+# ---------------------------------------------------------------------------
+# مدل کلید را «اعلام» می‌کند، ولی هیچ‌کس آن را حساب نمی‌کند. یک کلیدِ غلط
+# بدترین نوع خرابی است: دانش‌آموزِ درست را نادرست ثبت می‌کند. این‌جا برای
+# سؤال‌هایی که یک محاسبهٔ سادهٔ دو-کمیتی دارند، عدد از خودِ متن حساب می‌شود و
+# با گزینهٔ کلید مقایسه می‌گردد.
+
+_FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
+
+#: عددِ داخلِ متن، با پشتیبانی از ارقامِ فارسی و اعشارِ «٫/».
+_NUM = r"[0-9۰-۹]+(?:[./][0-9۰-۹]+)?"
+# اعراب و کشیده بینِ واژه و عدد می‌نشینند («مقاومتِ ۴»)؛ باید نادیده گرفته شوند.
+_DIACRITICS = "[\u064B-\u0652\u0640\u200c]?"
+_OHM_PATTERN = re.compile(
+    rf"(?:ولتاژ|اختلاف{_DIACRITICS}\s*پتانسیل|V)\s*{_DIACRITICS}\s*"
+    rf"(?:برابر{_DIACRITICS}?|=\s*)?\s*({_NUM})\s*"
+    rf"(?:ولت|V)?"
+    rf"[\s،,؛;.:]*?"
+    rf"(?:و\s*)?(?:مقاومت|R)\s*{_DIACRITICS}\s*"
+    rf"(?:برابر{_DIACRITICS}?|=\s*)?\s*({_NUM})\s*(?:اهم|Ω|ohm)?",
+    re.IGNORECASE,
+)
+
+
+def _to_float(token: str) -> Optional[float]:
+    text = str(token or "").strip().translate(_FA_DIGITS).replace("٫", ".").replace("/", ".")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _option_numbers(options: list[str]) -> list[Optional[float]]:
+    """عددِ اصلیِ هر گزینه (اولین عددی که در متنش آمده)."""
+    out: list[Optional[float]] = []
+    for option in options:
+        match = re.search(_NUM, str(option or "").translate(_FA_DIGITS))
+        out.append(_to_float(match.group(0)) if match else None)
+    return out
+
+
+def verify_mcq_key(
+    text: str, options: list[str], correct_index: Optional[int]
+) -> tuple[bool, Optional[str]]:
+    """آیا گزینهٔ کلید با محاسبهٔ مستقل از متن می‌خواند؟
+
+    برمی‌گرداند ``(ok, reason)``. ``ok=False`` یعنی سؤال باید رد شود.
+    اگر سؤال محاسبهٔ قابلِ‌بازسازی نداشته باشد (مفهومی محض)، ``(True, None)``
+    برمی‌گردد — این تابع فقط وقتی حکم می‌دهد که بتواند خودش حساب کند.
+    """
+    opts = [str(o or "") for o in (options or [])]
+    if len(opts) != 4:
+        return False, "mcq_needs_four_options"
+    if correct_index is None or not (0 <= int(correct_index) < 4):
+        return False, "mcq_missing_key"
+
+    key_number = _option_numbers(opts)[int(correct_index)]
+    if key_number is None:
+        return True, None  # گزینهٔ کلید عددی نیست ⇒ محاسبهٔ عددی در کار نیست
+
+    # قانون اهم: I = V / R
+    match = _OHM_PATTERN.search(str(text or "").translate(_FA_DIGITS))
+    if not match:
+        return True, None
+    voltage = _to_float(match.group(1))
+    resistance = _to_float(match.group(2))
+    if not voltage or not resistance or resistance == 0:
+        return True, None
+
+    expected = voltage / resistance
+    tolerance = max(abs(expected) * 0.02, 0.01)
+    if abs(key_number - expected) > tolerance:
+        return False, "mcq_key_mismatch"
+    # هیچ گزینهٔ غلطی نباید با کلید برابر باشد
+    for index, value in enumerate(_option_numbers(opts)):
+        if index == int(correct_index) or value is None:
+            continue
+        if abs(value - key_number) <= tolerance:
+            return False, "mcq_key_duplicated"
+    return True, None
 
 
 def normalize_stage_items(items: Any) -> list[dict[str, Any]]:
@@ -544,9 +691,12 @@ def normalize_stage_items(items: Any) -> list[dict[str, Any]]:
             options = _coerce_options(raw.get("options"))
             if options:
                 item["options"] = options[:4]
-                # پرامپت صریحاً «۱ تا ۴» می‌خواهد ⇒ ایندکسِ مدل یک‌پایه است.
+                # پرامپت صریحاً می‌گوید «۰ تا ۳ — از ۰ شروع می‌شود»، پس ایندکسِ
+                # مدل صفرمبناست. پیش‌تر این‌جا one_based=True بود و هر کلید یک
+                # واحد جابه‌جا می‌شد: گزینهٔ «۳ آمپر» (اندیس ۱) به «۰/۳۳»
+                # (اندیس ۰) تبدیل می‌شد و سؤالِ درست هم رد می‌شد.
                 item["correct_option_index"] = _coerce_index(
-                    raw.get("correct_option_index"), len(item["options"]), one_based=True
+                    raw.get("correct_option_index"), len(item["options"])
                 )
         elif exam_type == "feynman_synthesis" and len(item["forbidden_words"]) < 3:
             item["forbidden_words"] = ["فرمول", "قانون", "تعریف", "اصطلاح"]

@@ -33,6 +33,22 @@ async def lifespan(app: FastAPI):
             seed_all(db=db)
     finally:
         db.close()
+
+    # مدلِ ارزیابی هنگام بالا آمدنِ سرور صریح چاپ می‌شود. اگر این خط نباشد،
+    # تنها راهِ فهمیدنِ «با کدام مدل آزمون دادیم» خواندنِ لاگِ درخواست‌هاست —
+    # و همین باعث شده بود مدلِ اشتباه بی‌سروصدا کار کند.
+    try:
+        from ai.model_abstraction import assessment_model_name
+
+        print(
+            f"[AI] assessment model = {assessment_model_name()} "
+            f"(source: OPENROUTER_ASSESSMENT_MODEL; "
+            f"timeout={settings.OPENROUTER_TIMEOUT_SECONDS}s)"
+        )
+        if not (settings.OPENROUTER_API_KEY or "").strip():
+            print("[AI] ⚠ OPENROUTER_API_KEY خالی است — فراخوانی‌های مدل شکست می‌خورند.")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[AI] could not resolve assessment model: {exc}")
     yield
 
 

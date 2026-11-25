@@ -91,13 +91,22 @@ def test_pinned_model_never_silently_switches_to_a_free_model():
 
 def test_cost_comes_from_usage_not_from_a_hardcoded_price_table():
     """هزینه فقط از ``usage.cost`` پاسخِ OpenRouter خوانده می‌شود."""
-    tokens, cost = ma.OpenRouterProvider._usage_from(
+    tokens, cost, prompt_tokens, completion_tokens = ma.OpenRouterProvider._usage_from(
         {"usage": {"total_tokens": 1000, "cost": 0.0123}}, "p", "t", "some/model"
     )
     assert (tokens, cost) == (1000, 0.0123)
 
+    # تفکیکِ ورودی/خروجی از همان usage خوانده می‌شود
+    tokens2, _, pt, ct = ma.OpenRouterProvider._usage_from(
+        {"usage": {"prompt_tokens": 900, "completion_tokens": 100, "total_tokens": 1000}},
+        "p", "t", "some/model",
+    )
+    assert (tokens2, pt, ct) == (1000, 900, 100)
+
     # بدونِ usage.cost هیچ قیمتی از خودمان نمی‌سازیم.
-    _, cost_unknown = ma.OpenRouterProvider._usage_from({}, "p" * 400, "t" * 400, "some/model")
+    _, cost_unknown, _, _ = ma.OpenRouterProvider._usage_from(
+        {}, "p" * 400, "t" * 400, "some/model"
+    )
     assert cost_unknown == 0.0
 
     # جدولِ قیمتِ هاردکد باید حذف شده باشد.
@@ -347,8 +356,10 @@ def test_real_scenario_model_says_mastered_but_q4_is_half_correct(monkeypatch):
     # نشان و خلاصه نباید داستانِ متفاوت بگویند
     assert "ساعت را بست" not in str(result["persona_title"])
     assert "کامل بلدی" not in result["executive_summary"]
-    # Q2+Q3 تنها کافی نیست
-    assert result["signals"]["debugging_strong"] is False
+    # Q2+Q3 تنها کافی نیست — و سیگنالِ طول/کلمه دیگر وجود ندارد
+    assert "debugging_strong" not in result["signals"]
+    assert "substantive" not in result["signals"]
+    assert "word_counts" not in result["signals"]
 
 
 def test_honest_scenario_with_true_core_critique_can_be_mastered(monkeypatch):

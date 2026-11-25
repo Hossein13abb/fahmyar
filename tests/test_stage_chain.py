@@ -92,8 +92,9 @@ def test_normalize_orders_stages_and_one_based_index():
     items = normalize_stage_items(raw)
     assert [i["exam_type"] for i in items] == ["philosophy", "mask_mcq", "feynman_synthesis"]
     mcq = next(i for i in items if i["exam_type"] == "mask_mcq")
-    # پرامپت یک‌پایه است: «۲» یعنی گزینهٔ دوم ⇒ اندیسِ صفر‌پایهٔ ۱
-    assert mcq["correct_option_index"] == 1
+    # پرامپت صریحاً صفر‌مبناست («۰ تا ۳ — از ۰ شروع می‌شود»)، پس «۲» یعنی
+    # اندیسِ ۲. پیش‌تر این‌جا یک واحد جابه‌جا می‌شد و کلیدِ درست را خراب می‌کرد.
+    assert mcq["correct_option_index"] == 2
     assert len(mcq["options"]) == 4
     feynman = next(i for i in items if i["exam_type"] == "feynman_synthesis")
     assert "فشار" in feynman["forbidden_words"]
@@ -255,7 +256,9 @@ def test_debugging_supremacy_upgrades_harsh_model_verdict(monkeypatch):
         "improvement_suggestions": [],
     })
     assert result["mastery_status"] == "MASTERED"
-    assert result["mastery_note"]
+    # هستهٔ زنجیره واقعاً درست بود ⇒ حکمِ مدل («بی‌ساختار») اصلاح می‌شود و
+    # هیچ یادداشتِ عذرخواهی‌ای لازم نیست.
+    assert result["mastery_note"] is None
 
 
 def test_jargon_verdict_survives_debugging_supremacy(monkeypatch):
@@ -453,7 +456,11 @@ def test_contradiction_without_clarification_is_dropped(monkeypatch):
             {"title": "ناپایداری", "type": "CONTRADICTION", "description": "d"},
             {"title": "عیب‌یابی خوب", "type": "SYNERGY", "description": "s"},
         ],
-        "per_question": [],
+        # SYNERGY فقط با شاهدِ واقعی می‌ماند: Q3 و Q4 باید هر دو درست باشند.
+        "per_question": [
+            {"order": 3, "status": "correct"},
+            {"order": 4, "status": "correct"},
+        ],
         "improvement_suggestions": [],
     })
     types = [f["type"] for f in result["cross_check_findings"]]

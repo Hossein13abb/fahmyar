@@ -34,8 +34,10 @@ class Settings:
     OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     # مهلت پاسخ OpenRouter (ثانیه)
     OPENROUTER_TIMEOUT_SECONDS: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "180"))
-    # سقفِ توکنِ خروجی — بدونِ آن مدل‌های استدلالی پاسخِ نهایی نمی‌دهند
-    OPENROUTER_MAX_TOKENS: int = int(os.getenv("OPENROUTER_MAX_TOKENS", "8000"))
+    # سقفِ توکنِ پاسخ. مدل‌های استدلالی (مثلِ deepseek-v4.1-flash) بخشی از این
+    # سقف را صرفِ زنجیرهٔ فکر می‌کنند؛ ۸۰۰۰ در اجرای واقعی برای تحلیلِ کاملِ
+    # پنج‌مرحله‌ای کم آمد (finish_reason=length) و نیاز به تلاشِ دوباره شد.
+    OPENROUTER_MAX_TOKENS: int = int(os.getenv("OPENROUTER_MAX_TOKENS", "16000"))
     # فاصله‌گذاری ملایم بین فراخوانی‌ها (ثانیه) — برای پلن‌های رایگان مفید است
     OPENROUTER_MIN_INTERVAL_SECONDS: float = float(os.getenv("OPENROUTER_MIN_INTERVAL_SECONDS", "1.0"))
     # اختیاری: شناساندن برنامه به OpenRouter (HTTP-Referer و X-Title)

@@ -331,6 +331,17 @@ const isEmptyDimension = (d) => {
   return statusEmpty && findingEmpty && dimEmpty
 }
 
+const hasOptions = (q) => Array.isArray(q?.options) && q.options.length > 0
+
+// انتخاب فقط از اندیسِ ذخیره‌شده می‌آید — نه از مقایسهٔ متن یا عددی در توضیح.
+const pickedOptionIndex = (q) => {
+  if (!hasOptions(q)) return null
+  const raw = q?.selected_option_index
+  if (raw === null || raw === undefined || raw === '') return null
+  const n = Number(raw)
+  return Number.isInteger(n) && n >= 0 && n < q.options.length ? n : null
+}
+
 const faStageTitle = (q, index) => {
   const raw = String(q?.stage_title ?? '').trim()
   if (raw && !latinHeavy(raw)) return faDigits(raw)
@@ -479,6 +490,7 @@ function ExamReport({ report, mode, onBackToDashboard }) {
   const stageDimensions = perQuestion
     .filter((q) => q && (q.status || q.cognitive_verdict || q.qualitative_feedback))
     .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+  const aiUsage = report.ai_usage && typeof report.ai_usage === 'object' ? report.ai_usage : null
   const hasStageEvidence = stageDimensions.length > 0
   const openGears = stageDimensions.filter(
     (q) => String(q.missing_gear ?? '').trim().length > 0,
@@ -658,11 +670,40 @@ function ExamReport({ report, mode, onBackToDashboard }) {
                     <MathText content={q.question_text || ''} />
                   </div>
                 )}
-                {q.response !== undefined && (
-                  <details className="mt-2">
+                {/* ── انتخابِ گزینه (MCQ): منبعِ واحد، اندیسِ صفرمبنا + ۱ ──
+                    قبلاً فقط متنِ پاسخ با گزینه‌ها مقایسه می‌شد و عددی در
+                    توضیحِ آزاد می‌توانست انتخاب را جابه‌جا نشان دهد. */}
+                {hasOptions(q) && (
+                  <div className="mt-2 rounded-2xl border border-brand-100 bg-brand-50/40 p-3">
+                    <p className="text-[11px] font-black text-brand-800">پاسخ شما</p>
+                    {pickedOptionIndex(q) === null ? (
+                      <p className="mt-1 text-[12px] font-bold text-slate-500">بدون پاسخ</p>
+                    ) : (
+                      <p className="mt-1 text-[12px] leading-7 text-slate-700">
+                        گزینهٔ {toFarsiNumber(pickedOptionIndex(q) + 1)}:{' '}
+                        <span className="math-inline font-black text-brand-950">
+                          <MathText content={String(q.options?.[pickedOptionIndex(q)] ?? '')} />
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {!hasOptions(q) && (
+                  <details className="mt-2" open>
                     <summary className="cursor-pointer text-[11px] font-bold text-slate-400">پاسخ شما</summary>
                     <p className="mt-1 whitespace-pre-line rounded-2xl bg-slate-50 p-3 text-[12px] leading-7 text-slate-700">
-                      {rawStudentAnswer(q.response) || '— پاسخی ثبت نشده بود —'}
+                      {rawStudentAnswer(q.response) || 'بدون پاسخ'}
+                    </p>
+                  </details>
+                )}
+
+                {/* توضیحِ اختیاریِ صاحبِ MCQ — جدا از انتخاب، و هرگز جایش نمی‌نشیند */}
+                {hasOptions(q) && String(q.response ?? '').trim() && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[11px] font-bold text-slate-400">توضیحِ اختیاریِ تو</summary>
+                    <p className="mt-1 whitespace-pre-line rounded-2xl bg-slate-50 p-3 text-[12px] leading-7 text-slate-700">
+                      {rawStudentAnswer(q.response)}
                     </p>
                   </details>
                 )}
@@ -706,6 +747,34 @@ function ExamReport({ report, mode, onBackToDashboard }) {
               </li>
             ))}
           </ul>
+        </SectionCard>
+      )}
+
+      {/* ── ردیابیِ مدل/هزینه (فقط برای معلم) ── */}
+      {mode === 'teacher' && aiUsage && aiUsage.call_count > 0 && (
+        <SectionCard Icon={ScanSearch} title="ردیابیِ مدل و هزینه (برای معلم)" tone="amber">
+          <div className="grid gap-2 text-[12px] leading-7 text-slate-700 sm:grid-cols-2">
+            <p>
+              <span className="font-black text-slate-900">مدل: </span>
+              <span dir="ltr" className="font-mono text-[11px]">
+                {(aiUsage.models ?? []).join(' , ') || '—'}
+              </span>
+            </p>
+            <p>
+              <span className="font-black text-slate-900">فراخوانی: </span>
+              {toFarsiNumber(aiUsage.call_count ?? 0)}
+            </p>
+            <p>
+              <span className="font-black text-slate-900">توکن (ورودی + خروجی): </span>
+              {toFarsiNumber(aiUsage.prompt_tokens ?? 0)} + {toFarsiNumber(aiUsage.completion_tokens ?? 0)}
+              {' = '}
+              {toFarsiNumber(aiUsage.total_tokens ?? 0)}
+            </p>
+            <p>
+              <span className="font-black text-slate-900">هزینهٔ گزارش‌شده: </span>
+              <span dir="ltr">${Number(aiUsage.total_cost_usd ?? 0).toFixed(6)}</span>
+            </p>
+          </div>
         </SectionCard>
       )}
 

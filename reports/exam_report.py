@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -55,10 +55,42 @@ def _looks_like_model_output(text: str) -> bool:
             obj = json.loads(t)
         except Exception:
             return False
+        # کلیدهای اختصاصیِ تحلیل‌گر: اگر یکی از این‌ها در JSON بود، این رشته
+        # خروجیِ مدل است، نه چیزی که دانش‌آموز تایپ کرده.
         return isinstance(obj, dict) and any(
-            k in obj for k in ("per_question", "dimension_findings", "root_cause_hypotheses", "improvement_suggestions")
+            k in obj
+            for k in (
+                "per_question",
+                "dimension_findings",
+                "root_cause_hypotheses",
+                "improvement_suggestions",
+                "cognitive_verdict",
+                "qualitative_feedback",
+                "missing_gear",
+                "mastery_status",
+                "evidence_type",
+                "expected_logic",
+            )
         )
     return False
+
+
+def _coerce_options_for_report(raw: Any) -> list[str]:
+    """گزینه‌ها برای نمایش در کارنامه — بدونِ کلیدِ صحیح."""
+    if not isinstance(raw, list):
+        return []
+    return [str(o) for o in raw if str(o or "").strip()]
+
+
+def _coerce_selected(raw: Any) -> Optional[int]:
+    """اندیسِ انتخاب‌شده را سالم می‌کند؛ فقط ۰..۳ معتبر است، بقیه None."""
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if 0 <= value <= 3 else None
 
 
 def _raw_student_answer(entry: dict[str, Any]) -> str:
@@ -96,7 +128,13 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             "status": record.get("status", EvidenceStatus.UNCLEAR.value),
             "evidence_type": record.get("evidence_type"),
             "error_type": record.get("error_type", "none"),
+            # پاسخِ دانش‌آموز — فقط متنِ واقعیِ خودش (هرگز حکم/بازخوردِ مدل).
             "response": _raw_student_answer(entry),
+            # انتخابِ گزینه در MCQ: صفرمبنا ذخیره، یک‌مبنا نمایش.
+            "selected_option_index": _coerce_selected(entry.get("selected_option_index")),
+            # متنِ گزینه‌ها لازم است تا کارنامه بتواند «گزینهٔ ۲: ۳ آمپر» را
+            # نشان دهد. خودِ correct_option_index هرگز به فرانت نمی‌رود.
+            "options": _coerce_options_for_report(entry.get("options")),
             "reasoning": fa_text(record.get("reasoning", ""), feedback_fallback(record.get("status", ""))),
             "qualitative_feedback": fa_text(
                 record.get("qualitative_feedback") or record.get("reasoning") or "",
@@ -129,6 +167,8 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
     persona_title = meta.get("persona_title")
     executive_summary = meta.get("executive_summary")
     needs_clarification = bool(meta.get("needs_clarification"))
+    # مصرفِ مدل: مجموعِ هزینه/توکنِ همین آزمون (از usage واقعیِ OpenRouter)
+    ai_usage = meta.get("ai_usage") if isinstance(meta.get("ai_usage"), dict) else {}
     clarification_data = meta.get("clarification_data") if needs_clarification else None
     root_causes = [
         {"concept_name": root_cause_text(h.get("concept_name") or h.get("area")),
@@ -215,6 +255,14 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             ] or ["موردِ مبهمی باقی نمانده است."],
         },
         # --- فاز ۷: کارنامهٔ X-Ray ---
+        "ai_usage": {
+            "models": ai_usage.get("models") or [],
+            "call_count": ai_usage.get("call_count") or 0,
+            "total_tokens": ai_usage.get("total_tokens") or 0,
+            "prompt_tokens": ai_usage.get("prompt_tokens") or 0,
+            "completion_tokens": ai_usage.get("completion_tokens") or 0,
+            "total_cost_usd": ai_usage.get("total_cost_usd") or 0.0,
+        },
         "mastery_status": mastery_status,
         "persona_title": persona_title,
         "executive_summary": executive_summary,

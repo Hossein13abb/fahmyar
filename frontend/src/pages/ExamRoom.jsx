@@ -138,6 +138,9 @@ const renderQuestionText = (text) => {
   )
 }
 
+// کلیدِ جداگانه برای انتخابِ گزینه — تا با متنِ پاسخ قاطی نشود
+const selectionsKey = (sid) => `fahmyar_selections_${sid}`
+
 export default function ExamRoom() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
@@ -147,6 +150,13 @@ export default function ExamRoom() {
   const [answers, setAnswers] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(answersKey(sessionId)) || '{}')
+    } catch {
+      return {}
+    }
+  })
+  const [selections, setSelections] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(selectionsKey(sessionId)) || '{}')
     } catch {
       return {}
     }
@@ -193,14 +203,33 @@ export default function ExamRoom() {
     if (questions && index > questions.length - 1) setIndex(0)
   }, [questions, index])
 
+  // انتخابِ گزینه و متنِ آزاد دو چیزِ جدایند:
+  //   answers[qid]         → متنِ پاسخ (تشریحی) یا توضیحِ اختیاریِ صاحبِ MCQ
+  //   selections[qid]      → اندیسِ صفرمبنای گزینهٔ انتخاب‌شده
+  // قبلاً هر دو در یک رشتهٔ مشترک نگه داشته می‌شدند و مقایسهٔ متنیِ گزینه
+  // باعث می‌شد توضیحِ حاوی عدد، انتخاب را عوض کند.
+  const persist = (key, next) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(next))
+    } catch {
+      /* ذخیره‌سازی محلی غیرفعال است — آزمون همچنان ادامه دارد */
+    }
+  }
+
   const setAnswer = (qid, value) => {
     setAnswers((prev) => {
       const next = { ...prev, [qid]: value }
-      try {
-        localStorage.setItem(answersKey(sessionId), JSON.stringify(next))
-      } catch {
-        /* ذخیره‌سازی محلی غیرفعال است — آزمون همچنان ادامه دارد */
-      }
+      persist(answersKey(sessionId), next)
+      return next
+    })
+  }
+
+  const setSelection = (qid, optionIndex) => {
+    setSelections((prev) => {
+      const next = { ...prev }
+      if (optionIndex === null || optionIndex === undefined) delete next[qid]
+      else next[qid] = Number(optionIndex)
+      persist(selectionsKey(sessionId), next)
       return next
     })
   }
@@ -208,9 +237,18 @@ export default function ExamRoom() {
   const total = questions?.length ?? 0
   const current = total > 0 ? questions[index] : null
   const currentAnswer = current ? answers[current.id] ?? '' : ''
+  // «پاسخ داده شده» برای تستِ چهارگزینه‌ای یعنی گزینه‌ای انتخاب شده؛
+  // توضیحِ اختیاری به‌تنهایی پاسخ حساب نمی‌شود.
+  const isAnswered = (q) => {
+    if (!q) return false
+    if (Array.isArray(q.options) && q.options.length > 0) {
+      return Number.isInteger(Number(selections[q.id])) && selections[q.id] !== undefined
+    }
+    return String(answers[q.id] ?? '').trim().length > 0
+  }
   const answeredCount = useMemo(
-    () => (questions ?? []).filter((q) => String(answers[q.id] ?? '').trim().length > 0).length,
-    [questions, answers],
+    () => (questions ?? []).filter((q) => isAnswered(q)).length,
+    [questions, answers, selections],
   )
   const unanswered = total - answeredCount
   const isLast = total > 0 && index === total - 1
@@ -238,6 +276,7 @@ export default function ExamRoom() {
         { timeout: 180000 },
       )
       localStorage.removeItem(answersKey(sessionId))
+      localStorage.removeItem(selectionsKey(sessionId))
       navigate(`/report/${sessionId}`, { replace: true })
     } catch (err) {
       setClarifyError(friendlyError(err))
@@ -250,16 +289,27 @@ export default function ExamRoom() {
     setSubmitting(true)
     setError('')
     try {
-      const payload = (questions ?? []).map((q) => ({
-        question_id: q.id,
-        response_text: String(answers[q.id] ?? '').trim(),
-      }))
+      const payload = (questions ?? []).map((q) => {
+        const entry = {
+          question_id: q.id,
+          response_text: String(answers[q.id] ?? '').trim(),
+        }
+        // انتخاب فقط برای سؤالِ واقعاً چهارگزینه‌ای و فقط از روی اندیس
+        if (Array.isArray(q.options) && q.options.length > 0) {
+          const picked = selections[q.id]
+          if (picked !== undefined && picked !== null && Number.isInteger(Number(picked))) {
+            entry.selected_option_index = Number(picked)
+          }
+        }
+        return entry
+      })
       const { data } = await client.post(
         `/api/assess/${sessionId}/submit-test`,
         { answers: payload },
         { timeout: 240000 },
       )
       localStorage.removeItem(answersKey(sessionId))
+      localStorage.removeItem(selectionsKey(sessionId))
       if (data?.needs_clarification && data?.clarification?.mirror_prompt) {
         // موتور تشخیص داد دو پاسخ در تضادند: پیش از هر حکمی، آینه را نشان بده.
         setClarification(data.clarification)
@@ -353,7 +403,7 @@ export default function ExamRoom() {
       {/* ── نوار گام‌ها (Stepper) ── */}
       <nav aria-label="گام‌های آزمون" className="flex flex-wrap items-center justify-center gap-2 rounded-3xl border border-brand-100/70 bg-white/70 px-4 py-3">
         {(questions ?? []).map((q, i) => {
-          const done = String(answers[q.id] ?? '').trim().length > 0
+          const done = isAnswered(q)
           const currentStep = i === index
           return (
             <button
@@ -439,12 +489,13 @@ export default function ExamRoom() {
             <legend className="label">یکی از گزینه‌ها را انتخاب کن</legend>
             <div className="mt-2 grid gap-2">
               {current.options.map((opt, i) => {
-                const selected = String(currentAnswer).trim() === String(opt).trim()
+                // فقط اندیس تعیین می‌کند؛ متنِ گزینه یا توضیحِ آزاد هرگز.
+                const selected = Number(selections[current.id]) === i
                 return (
                   <button
                     key={`${current.id}-opt-${i}`}
                     type="button"
-                    onClick={() => setAnswer(current.id, String(opt))}
+                    onClick={() => setSelection(current.id, i)}
                     aria-pressed={selected}
                     className={[
                       'flex items-start gap-3 rounded-2xl border-2 p-3 text-right transition',

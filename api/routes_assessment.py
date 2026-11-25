@@ -57,7 +57,11 @@ class StartTestRequest(BaseModel):
 
 class ExamAnswerIn(BaseModel):
     question_id: int
-    response_text: str = Field(min_length=0, max_length=20000)
+    response_text: str = Field(default="", min_length=0, max_length=20000)
+    # انتخابِ صریحِ گزینه در تستِ ۴ گزینه‌ای — صفرمبنا.
+    # این تنها منبعِ معتبرِ انتخاب است؛ response_text (توضیحِ اختیاری/پاسخِ
+    # تشریحی) هرگز برای استخراجِ انتخاب پارس نمی‌شود.
+    selected_option_index: Optional[int] = Field(default=None, ge=0, le=3)
 
 
 class SubmitTestRequest(BaseModel):
@@ -256,6 +260,12 @@ async def start_test(
     if concept is None:
         raise HTTPException(status_code=404, detail="مفهوم مورد نظر پیدا نشد.")
 
+    # دفترِ مصرف پیش از تولید باز می‌شود تا فراخوانیِ تولید هم در مجموعِ
+    # هزینهٔ همین آزمون حساب شود (پیش‌تر فقط تحلیل شمرده می‌شد).
+    from ai.model_abstraction import reset_usage_ledger
+
+    reset_usage_ledger()
+
     # ابتدا دفترچه تولید می‌شود؛ هنوز هیچ تراکنشِ نوشتنی روی این اتصال باز نیست،
     # تا لاگِ فراخوانیِ AI بتواند از اتصال جداگانه خود را ثبت کند.
     wrong = body.wrong_answer.model_dump() if body.wrong_answer else None
@@ -310,7 +320,30 @@ def get_exam(
 def _answer_map(questions: list[Question], answers) -> dict[int, str]:
     """پاسخ‌ها را از question_id به order نگاشت می‌کند (منبعِ تحلیل: ترتیبِ مرحله)."""
     id_to_order = {q.id: i + 1 for i, q in enumerate(questions)}
-    return {id_to_order[a.question_id]: a.response_text.strip() for a in answers if a.question_id in id_to_order}
+    return {
+        id_to_order[a.question_id]: (a.response_text or "").strip()
+        for a in answers
+        if a.question_id in id_to_order
+    }
+
+
+def _selected_map(questions: list[Question], answers) -> dict[int, int]:
+    """انتخابِ صریحِ گزینه، بر اساسِ ترتیبِ مرحله — فقط برای سؤالِ چهارگزینه‌ای."""
+    id_to_order = {q.id: i + 1 for i, q in enumerate(questions)}
+    by_id = {q.id: q for q in questions}
+    chosen: dict[int, int] = {}
+    for a in answers:
+        order = id_to_order.get(a.question_id)
+        if order is None:
+            continue
+        rubric = by_id[a.question_id].rubric or {}
+        options = rubric.get("options") or []
+        index = a.selected_option_index
+        if index is None or not options:
+            continue
+        if 0 <= int(index) < len(options):
+            chosen[order] = int(index)
+    return chosen
 
 
 def _rows_for(questions: list[Question]) -> list[dict[str, Any]]:
@@ -340,6 +373,7 @@ def _persist_analysis(
     questions: list[Question],
     answers: dict[int, str],
     status: str,
+    selected_indices: Optional[dict[int, int]] = None,
 ) -> None:
     """نتیجهٔ تحلیل را در جلسه می‌نشاند — ساختار سازگار با PDF و گزارش‌های قدیمی."""
     now_iso = datetime.utcnow().isoformat()
@@ -355,7 +389,16 @@ def _persist_analysis(
                 "exam_type": (question.question_type if question else None),
                 "stage_title": record.get("stage_title"),
                 "question_text": (question.text if question else None),
+                # گزینه‌ها برای نمایشِ «پاسخ شما» در کارنامه ذخیره می‌شوند؛
+                # کلیدِ صحیح عمداً این‌جا نیست.
+                "options": ((question.rubric or {}).get("options") if question else None),
+                # response فقط متنِ واقعیِ ثبت‌شدهٔ دانش‌آموز است.
+                # cognitive_verdict / qualitative_feedback / reasoning هرگز
+                # جای آن نمی‌نشیند — این فیلد در کارنامه «پاسخِ تو» نام دارد.
                 "response": answers.get(order, ""),
+                # انتخابِ گزینه با اندیسِ صفرمبنا ذخیره می‌شود؛ نمایشِ
+                # «گزینهٔ n» همیشه از index+1 ساخته می‌شود.
+                "selected_option_index": (selected_indices or {}).get(order),
                 "answered_at": now_iso,
                 "evidence": [
                     {
@@ -386,6 +429,8 @@ def _persist_analysis(
         "mastery_note": result.get("mastery_note"),
         "signals": result.get("signals") or {},
         "analyzer": result.get("analyzer"),
+        # ردیابیِ مدل/توکن/هزینه — مجموعِ همهٔ فراخوانی‌های همین آزمون
+        "ai_usage": result.get("ai_usage") or {},
     }
     root_causes = [
         {
@@ -432,6 +477,7 @@ async def submit_test(
         raise HTTPException(status_code=422, detail="دفترچهٔ این جلسه قابل بازیابی نیست.")
 
     answers = _answer_map(questions, body.answers)
+    selected_indices = _selected_map(questions, body.answers)
     concept = db.query(Concept).filter(Concept.id == session.concept_id).first() if session.concept_id else None
 
     from ai.cross_check import analyze_stage_chain
@@ -440,12 +486,14 @@ async def submit_test(
         concept.name if concept else "مفهوم",
         _rows_for(questions),
         answers,
+        selected_indices=selected_indices,
     )
 
     needs_clarification = bool(result.get("needs_clarification"))
     _persist_analysis(
         session, result, questions, answers,
         "awaiting_clarification" if needs_clarification else "completed",
+        selected_indices=selected_indices,
     )
     db.commit()
     db.refresh(session)
