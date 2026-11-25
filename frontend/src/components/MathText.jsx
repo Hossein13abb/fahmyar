@@ -77,10 +77,16 @@ export default function MathText({ content, className = '' }) {
     .join('')
 
   return (
-    <div className={`math-text-container font-vazirmatn inline-block ${className}`.trim()}>
+    // dir="auto" باعث می‌شود متنِ فارسی RTL بماند ولی فرمولِ تنها (مثلِ
+    // «$F = ma$») LTR خوانده شود. بدونِ آن، علامت‌های ریاضی در سطرِ فارسی
+    // جابه‌جا دیده می‌شوند.
+    <div
+      dir="auto"
+      className={`math-text-container font-vazirmatn inline-block ${className}`.trim()}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
-        rehypePlugins={[[rehypeKatex, { strict: false }]]}
+        rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
       >
         {text}
       </ReactMarkdown>

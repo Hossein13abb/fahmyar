@@ -158,3 +158,64 @@ tests/test_stage_chain.py  ۱۷ آزمون: prompt_safe، نرمال‌سازی�
 2. آرگومان‌های LaTeX (`\vec{n}`، `\frac{a}{b}`، `\begin{bmatrix}`) به‌عنوان
    جای‌نگهدار شناخته نمی‌شوند.
 3. `test_no_format_calls_in_ai_package` هر `.format()` را در `ai/` قرمز می‌کند.
+
+---
+
+## ۹. فاز ۸ — پین‌کردن مدل، اعتبارسنجیِ سؤال، و حکمِ سازگار
+
+### ۹.۱ مدل
+- `OPENROUTER_ASSESSMENT_MODEL` (پیش‌فرض `deepseek/deepseek-v4.1-flash-1017`) فقط
+  مسیرِ ارزیابی را می‌گیرد: `generate_test_booklet`، `analyze_exam`،
+  `analyze_response` (فهرست در `ai.model_abstraction.ASSESSMENT_TASKS`).
+- `implementation`: `ModelRouter.generate()` وقتی `model_override` نداده باشیم و
+  `task_type` ارزیابی باشد، خودش مدلِ پین‌شده را تزریق می‌کند.
+- **هیچ سوییچِ خاموشی وجود ندارد.** `_initial_candidates` با override فقط همان
+  یک مدل را برمی‌گرداند؛ `_generate_with_fallback` برای مدلِ پین‌شده حداکثر
+  `PINNED_MODEL_MAX_ATTEMPTS` (پیش‌فرض ۳) روی *همان* مدل تلاش می‌کند و بعد
+  شکست می‌دهد. مسیرِ `OPENROUTER_MODEL=auto` رفتارِ قبلیِ خودش را دارد.
+- **هزینه**: `_PRICING_PER_1K` و `_estimate_cost` حذف شدند. هزینه صرفاً از
+  `usage.cost` پاسخِ OpenRouter خوانده می‌شود (`_usage_from`)؛ اگر سرور هزینه
+  ندهد، صفرِ صادق ثبت می‌شود، نه حدسِ ساختگی.
+- `AIResponse.total_cost_usd` / `.total_tokens` مجموعِ تلاش‌های موفق و
+  شکست‌خورده را می‌دهد؛ `_log_usage` همین مجموع را ثبت می‌کند.
+- هر فراخوانی در لاگ با `task`، `model`، `attempts`، `tokens`، `cost` دیده می‌شود.
+
+### ۹.۲ کیفیتِ سؤال (`ai/stage_chain.py`)
+پرامپت بازنویسی شد (قانونِ «یک پرسش، یک هدف» برای Q1؛ دادهٔ انحرافیِ معقول و
+صریحاً بی‌اثر برای Q2؛ شرط‌های صریح برای Q3؛ دقتِ علمی برای Q4؛ کلماتِ ممنوعهٔ
+دقیق برای Q5) و **در کد هم اعمال می‌شود**:
+
+| گارد | کار |
+|---|---|
+| `question_quality_issues` | تشخیص: چندپرسشی/عدد/فرمول در Q1، تعداد یا تکرارِ گزینه و کلیدِ نامعتبر در Q2، فرمول در Q3، تعدادِ کلماتِ ممنوعه در Q5، «دایره» در بافتِ الکتریکی |
+| `FATAL_QUALITY_ISSUES` | مرحلهٔ دارای این ایرادها دور ریخته می‌شود و جای خالی با قالبِ قطعی پر می‌شود |
+| `fix_terminology` | «دایره» → «مدار» **فقط** در بافتِ مدار؛ هندسه استثناست |
+| `apply_quality_fixes` | اصلاحِ موضعی روی text/options/forbidden_words در جریانِ نرمال‌سازی |
+
+### ۹.۳ حکم (`ai/cross_check.py`)
+- وضعیتِ هر مرحله به چهار حالت نگاشت می‌شود: `CORRECT` / `HALF_CORRECT` /
+  `WRONG` / `INSUFFICIENT_EVIDENCE` (`canonical_stage_status`).
+- **طولِ پاسخ دیگر شاهد نیست.** `debugging_strong` از `compute_debugging_strength`
+  می‌آید و فقط وقتی True است که Q3 و Q4 هر دو `CORRECT` باشند و پاسخ‌ها بی‌ربط
+  نباشند.
+- `_verdict_conflict`: اگر مدل کلی `MASTERED` بدهد ولی Q4 (یا Q3) درست نباشد،
+  حکم به `ILLUSION_OF_COMPETENCE`/`PARTIAL_FRAGMENTED` اصلاح می‌شود.
+- هر بار که کد حکم را بازنویسی کند، `persona_title` و `executive_summary` هم
+  بازنویسی می‌شوند تا نشان/عنوان/خلاصه یک داستان بگویند.
+- پاسخِ نداده هرگز `CORRECT` نمی‌شود.
+
+### ۹.۴ گزارش
+- `normalize_suggestions` در سه مرز اجرا می‌شود (تحلیل، API، گزارش و PDF):
+  دیکشنری → `suggestion`/`text`/`description` → رشته؛ آیتمِ خالی حذف.
+- `scrub_english_leaks` واژه‌های انگلیسیِ ترجمه‌پذیر (`intrinsic`, `analogy`,
+  `intuition`, …) را جایگزین می‌کند و `$...$`/LaTeX را دست نمی‌زند.
+- فرانت: بخشِ «ابعاد فهم» فقط با دادهٔ واقعیِ ۵ مرحله‌ای رندر می‌شود؛ «موارد هنوز
+  روشن‌نشده» فقط از `missing_gear` واقعی؛ نشانِ هر کارت عنوانِ مرحله + وضعیتِ
+  فارسی (`CORRECT`/`HALF_CORRECT`/`WRONG` به Badge اضافه شدند).
+- گزینه‌های MCQ هم با `MathText` رندر می‌شوند و `MathText` با `dir="auto"` و
+  `throwOnError:false` کار می‌کند.
+
+### ۹.۵ آزمون‌ها
+`tests/test_phase8_assessment.py` — ۲۹ تست، از جمله سناریوی واقعیِ «قانون اهم»
+که در آن مدل کلی `MASTERED` می‌دهد ولی Q4 نیمه‌درست است و لایهٔ سازگارسازی باید
+آن را اصلاح کند. کلِ مجموعه: **۹۴ passed** (mock، بدونِ درخواستِ واقعی).

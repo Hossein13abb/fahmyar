@@ -23,6 +23,10 @@ STATUS_FA = {
     EvidenceStatus.UNCLEAR.value: "نامشخص",
     EvidenceStatus.NEEDS_REVIEW.value: "بدفهمی شناسایی‌شده",
     EvidenceStatus.INSUFFICIENT_EVIDENCE.value: "فاقد شواهد کافی",
+    # فاز ۸ — حکمِ ساختاریافتهٔ هر مرحله (نه برچسبِ شاهد)
+    "CORRECT": "درست",
+    "HALF_CORRECT": "نیمه‌درست",
+    "WRONG": "نادرست",
 }
 
 # مقادیر معتبر question_type

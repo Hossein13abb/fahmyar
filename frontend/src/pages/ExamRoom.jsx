@@ -461,7 +461,12 @@ export default function ExamRoom() {
                     >
                       {toFarsiNumber(i + 1)}
                     </span>
-                    <span className="text-[13px] font-bold leading-7 text-slate-800">{opt}</span>
+                    {/* گزینه‌ها هم می‌توانند فرمول داشته باشند؛ همان مسیرِ ریاضیِ
+                        امنِ متنِ سؤال (MathText) به کار می‌رود تا `$12$` خام
+                        نماند. MathText به‌صورتِ پیش‌فرض HTML خام را رندر نمی‌کند. */}
+                    <span className="math-inline text-[13px] font-bold leading-7 text-slate-800">
+                      <MathText content={String(opt ?? '')} />
+                    </span>
                   </button>
                 )
               })}

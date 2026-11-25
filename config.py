@@ -24,6 +24,13 @@ class Settings:
     # OpenRouter
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-super-vl:free")
+    # مدلِ اختصاصیِ زنجیرهٔ فهم‌سنجی (تولیدِ ۵ مرحله + تحلیلِ مقایسه‌ای + بازپرسی).
+    # این یک تنظیمِ مستقل است، نه تکرارِ OPENROUTER_MODEL: OPENROUTER_MODEL برای
+    # بقیهٔ وظایف (تولیدِ پیش‌نمایشِ کنکور، گراف، ...) به کار می‌رود و این یکی
+    # فقط مسیرِ ارزیابی را می‌گیرد. اگر خالی باشد، به OPENROUTER_MODEL برمی‌گردد.
+    OPENROUTER_ASSESSMENT_MODEL: str = os.getenv(
+        "OPENROUTER_ASSESSMENT_MODEL", "deepseek/deepseek-v4.1-flash-1017"
+    )
     OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     # مهلت پاسخ OpenRouter (ثانیه)
     OPENROUTER_TIMEOUT_SECONDS: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "180"))

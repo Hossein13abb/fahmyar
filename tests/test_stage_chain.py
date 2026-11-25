@@ -234,20 +234,24 @@ def test_mcq_secret_is_sent_to_model_but_never_returned():
 
 
 def test_debugging_supremacy_upgrades_harsh_model_verdict(monkeypatch):
-    # پاسخِ پنجم بدونِ کلمهٔ ممنوعه بازنویسی می‌شود؛ وگرنه شاهدِ سخت حکم را سقف می‌زند.
+    """حاکمیتِ عیب‌یابی فقط با شواهدِ معناییِ Q3 و Q4 اعمال می‌شود.
+
+    پیش‌تر همین تست با «پاسخِ بلند» قبول می‌شد؛ آن منطق حذف شد چون طولِ متن
+    شاهدِ درستی نیست. اکنون مدل باید Q3 و Q4 را CORRECT علامت بزند.
+    """
     clean_answers = dict(ANSWERS)
     clean_answers[5] = (
         "وقتی می‌ری زیر آب، وزن آبِ روی سرت زیاد می‌شود و همین سنگینی است که "
         "تو را می‌فشارد؛ هرچه پایین‌تر، آبِ بیشتری روی سرت است."
     )
-    monkeypatch.setattr(
-        cross_check, "analyze_stage_chain", cross_check.analyze_stage_chain
-    )
     result = _analyze_with(monkeypatch, clean_answers, {
         "mastery_status": "UNSTRUCTURED",
         "persona_title": "بی‌ساختار",
         "cross_check_findings": [],
-        "per_question": [],
+        "per_question": [
+            {"order": 3, "status": "CORRECT", "cognitive_verdict": "زنجیرهٔ علّی درست"},
+            {"order": 4, "status": "CORRECT", "cognitive_verdict": "هستهٔ نقد دقیق"},
+        ],
         "improvement_suggestions": [],
     })
     assert result["mastery_status"] == "MASTERED"
@@ -259,7 +263,10 @@ def test_jargon_verdict_survives_debugging_supremacy(monkeypatch):
     result = _analyze(monkeypatch, {
         "mastery_status": "UNSTRUCTURED",
         "persona_title": "بی‌ساختار",
-        "per_question": [],
+        "per_question": [
+            {"order": 3, "status": "CORRECT"},
+            {"order": 4, "status": "CORRECT"},
+        ],
         "cross_check_findings": [],
         "improvement_suggestions": [],
     })

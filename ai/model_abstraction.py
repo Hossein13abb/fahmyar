@@ -37,9 +37,18 @@ class AIProviderError(Exception):
     retryable=False یعنی اشکال ساختاری است (مثلاً ۴۰۱ کلید نامعتبر) و تعویض مدل فایده‌ای ندارد.
     """
 
-    def __init__(self, message: str, retryable: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        retryable: bool = False,
+        cost_usd: float = 0.0,
+        token_count: int = 0,
+    ) -> None:
         super().__init__(message)
         self.retryable = retryable
+        # هزینه/توکنِ همین تلاشِ شکست‌خورده — تا در حسابداریِ کل گم نشود.
+        self.cost_usd = cost_usd
+        self.token_count = token_count
 
 
 @dataclass
@@ -50,6 +59,20 @@ class AIResponse:
     cost_usd: float = 0.0
     task_type: str = ""
     raw: Optional[dict[str, Any]] = field(default=None, repr=False)
+    # حسابداریِ تلاش‌ها: هزینهٔ فراخوانیِ موفق *به‌تنهایی* گزارش نشود؛
+    # تلاش‌های شکست‌خورده‌ای که سمتِ سرویس‌دهنده توکن سوزانده‌اند هم حساب‌اند.
+    attempts: int = 1
+    failed_cost_usd: float = 0.0
+    failed_tokens: int = 0
+
+    @property
+    def total_cost_usd(self) -> float:
+        """جمعِ هزینهٔ همهٔ تلاش‌ها — آنچه باید در بودجه و لاگ بنشیند."""
+        return round(self.cost_usd + self.failed_cost_usd, 6)
+
+    @property
+    def total_tokens(self) -> int:
+        return self.token_count + self.failed_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +168,9 @@ _free_models_cache: dict[str, Any] = {"ts": 0.0, "models": []}
 _free_models_lock = threading.Lock()
 
 MAX_FALLBACK_ATTEMPTS = 8
+#: برای مدلِ پین‌شدهٔ ارزیابی، سه تلاش روی همان مدل و تمام. هیچ مدلِ دیگری
+#: جایش را نمی‌گیرد و صفِ retry بی‌نهایت نمی‌شود.
+PINNED_MODEL_MAX_ATTEMPTS = int(os.getenv("OPENROUTER_PINNED_MAX_ATTEMPTS", "3"))
 
 
 def _preference_rank(model_id: str) -> int:
@@ -189,16 +215,8 @@ class OpenRouterProvider(AIProvider):
 
     name = "openrouter"
 
-    # هزینهٔ تقریبی مدل‌های پرداختی رایج (USD per 1K tokens) — برای مدل‌های `:free` صفر است
-    _PRICING_PER_1K = {
-        # مدل‌های رایگان
-        "google/gemini-2.0-flash-exp:free": 0.0,
-        "meta-llama/llama-3.3-70b-instruct:free": 0.0,
-        "mistralai/mistral-7b-instruct:free": 0.0,
-        "qwen/qwen-2.5-72b-instruct:free": 0.0,
-        "deepseek/deepseek-chat:free": 0.0,
-        "deepseek/deepseek-r1:free": 0.0,
-    }
+    # قیمت هیچ‌جا هاردکد نمی‌شود: هزینه فقط از usage.cost پاسخِ OpenRouter
+    # خوانده می‌شود (نگاه کنید به _usage_from).
 
     def __init__(self, api_key: str | None = None, model_name: str | None = None) -> None:
         # پاکسازی کلید: فاصلهٔ انتهایی/خط جدید (.strip()) علت رایج خطای 401 است
@@ -262,18 +280,36 @@ class OpenRouterProvider(AIProvider):
                 return "\n".join(lines).strip()
         return stripped
 
-    def _estimate_cost(self, token_count: int) -> float:
-        """تخمین هزینه. برای مدل‌های `:free` همیشه صفر است."""
-        if (self.model_name or "").endswith(":free"):
-            return 0.0
-        price = self._PRICING_PER_1K.get(self.model_name)
-        if price is None:
-            # مدل ناشناخته — اگر در .env اعلام شده، از آن استفاده کن
+    @staticmethod
+    def _usage_from(
+        data: dict[str, Any], prompt: str, text: str, model: str
+    ) -> tuple[int, float]:
+        """توکن و هزینهٔ **واقعیِ گزارش‌شدهٔ OpenRouter** را برمی‌گرداند.
+
+        قیمت هیچ‌جا هاردکد نمی‌شود: اگر پاسخ فیلد ``usage.cost`` داشت، همان
+        مرجع است. تخمینِ توکن فقط وقتی زده می‌شود که سرور ``usage`` نداده باشد،
+        و هزینه در آن حالت صفر می‌ماند — چون «حدسِ قیمت» بدتر از «صفرِ صادق»
+        است: بودجه را بی‌دلیل می‌بلعد و عددی در گزارش می‌نشاند که واقعی نیست.
+        """
+        usage = data.get("usage") or {}
+        try:
+            token_count = int(usage.get("total_tokens") or 0)
+        except (TypeError, ValueError):
+            token_count = 0
+        if token_count <= 0:
+            token_count = max(1, (len(prompt) + len(text)) // 4)
+
+        cost_usd = 0.0
+        for key in ("cost", "total_cost"):
+            raw = usage.get(key)
+            if raw is None:
+                continue
             try:
-                price = float(os.getenv("OPENROUTER_PRICE_PER_1K", "0") or 0.0)
-            except ValueError:
-                price = 0.0
-        return round((token_count / 1000.0) * price, 6)
+                cost_usd = float(raw)
+                break
+            except (TypeError, ValueError):
+                continue
+        return token_count, round(cost_usd, 8)
 
     # ------------------------------------------------------------------
     # کشف مدل‌های رایگان فعال — کش ۱۵ دقیقه‌ای
@@ -412,20 +448,7 @@ class OpenRouterProvider(AIProvider):
         if not text:
             raise AIProviderError(f"پاسخ خالی از OpenRouter (مدل {model}).", retryable=True)
 
-        usage = data.get("usage") or {}
-        try:
-            token_count = int(usage.get("total_tokens") or 0)
-        except (TypeError, ValueError):
-            token_count = 0
-        if token_count <= 0:
-            token_count = max(1, (len(prompt) + len(text)) // 4)
-        try:
-            cost_usd = float(usage.get("cost") or 0.0)
-        except (TypeError, ValueError):
-            cost_usd = 0.0
-        if cost_usd == 0.0 and not model.endswith(":free"):
-            # اگر مدل رایگان نباشد و سرور هزینه را صفر/خالی داده باشد، تخمین بزن
-            cost_usd = self._estimate_cost(token_count)
+        token_count, cost_usd = self._usage_from(data, prompt, text, model)
 
         return AIResponse(
             text=text,
@@ -452,15 +475,18 @@ class OpenRouterProvider(AIProvider):
         )
 
     def _initial_candidates(self, model_override: str | None = None) -> list[str]:
+        """مدل‌های نامزد، به ترتیب.
+
+        ``model_override`` (یا مدلِ پین‌شدهٔ ارزیابی) **صریح** است: فقط همان
+        مدل امتحان می‌شود و هیچ مدلِ رایگانِ دیگری جایش را نمی‌گیرد. دلیلش
+        این است که سوییچِ خاموش به مدلِ دیگر، کیفیتِ ارزیابی را بی‌آنکه کسی
+        بفهمد عوض می‌کند و هزینه هم قابلِ پیش‌بینی نیست.
+
+        فقط در حالتِ ``OPENROUTER_MODEL=auto`` (بقیهٔ وظایف) فهرستِ رایگان
+        کشف می‌شود — همان رفتارِ قبلیِ همان مسیر.
+        """
         if model_override and model_override.strip():
-            base = [model_override.strip()]
-            if self.model_name.lower() == "auto":
-                for m in self.fetch_active_free_models():
-                    if m not in base:
-                        base.append(m)
-            elif self.model_name not in base:
-                base.append(self.model_name)
-            return base
+            return [model_override.strip()]
         if self.model_name.lower() == "auto":
             return self.fetch_active_free_models()
         return [self.model_name]
@@ -472,41 +498,76 @@ class OpenRouterProvider(AIProvider):
         temperature: float,
         model_override: str | None = None,
     ) -> AIResponse:
-        attempted: set[str] = set()
-        last_error: str | None = None
-        current: str | None = None
+        """فراخوانیِ مدل با تلاشِ محدود و حسابداریِ کاملِ تلاش‌ها.
 
+        * مدلِ پین‌شده هرگز به مدلِ دیگری سوییچ نمی‌کند؛ تلاشِ دوباره فقط روی
+          همان مدل و فقط برای خطاهای گذرا (شبکه/۴۲۹/۵xx) انجام می‌شود.
+        * هزینه و توکنِ تلاش‌های شکست‌خورده هم جمع می‌شوند، چون سرویس‌دهنده
+          آن‌ها را مصرف کرده است. هزینهٔ آخرین تلاش جایگزینِ مجموع نمی‌شود.
+        """
+        pinned = bool(model_override and model_override.strip())
         initial = self._initial_candidates(model_override=model_override)
         if not initial:
-            raise AIProviderError("هیچ مدل رایگان فعالی در OpenRouter یافت نشد.", retryable=False)
-        queue = list(initial)
+            raise AIProviderError("هیچ مدلِ فعالی برای فراخوانی یافت نشد.", retryable=False)
 
-        for _ in range(MAX_FALLBACK_ATTEMPTS):
+        max_attempts = (
+            PINNED_MODEL_MAX_ATTEMPTS if pinned else MAX_FALLBACK_ATTEMPTS
+        )
+        queue = list(initial)
+        attempted: set[str] = set()
+        last_error: str | None = None
+        attempts = 0
+        failed_cost = 0.0
+        failed_tokens = 0
+
+        while attempts < max_attempts:
             current = queue.pop(0) if queue else None
             if current is None:
-                # صف تمام شد — با رفرش اجباری فهرست، مدل‌های نزده را پیدا کن
+                if pinned:
+                    break  # مدلِ پین‌شده تمام شد — هیچ جایگزینی وجود ندارد
                 free = self.fetch_active_free_models(force_refresh=True)
                 current = next((m for m in free if m not in attempted), None)
-            if current is None:
-                break
+                if current is None:
+                    break
+            attempts += 1
             attempted.add(current)
             try:
-                return self._attempt(current, prompt, task_type, temperature)
+                response = self._attempt(current, prompt, task_type, temperature)
             except AIProviderError as exc:
                 last_error = str(exc)
+                print(
+                    f"[AI] {task_type}: تلاشِ {attempts}/{max_attempts} با مدل "
+                    f"{current} شکست خورد: {last_error[:160]}"
+                )
                 if not exc.retryable:
-                    raise  # ۴۰۱ و اشکال‌های ساختاری — تعویض مدل بی‌فایده است
-                # رفرش اجباری فهرست پس از شکست (یعنی مدل پولی/حذف‌شده شده)
+                    raise
+                # توکن/هزینه‌ای که این تلاش سوزاند را نگه دار (اگر سرویس داد)
+                failed_cost += float(getattr(exc, "cost_usd", 0.0) or 0.0)
+                failed_tokens += int(getattr(exc, "token_count", 0) or 0)
+                if pinned:
+                    # همان مدل، تلاش دوباره؛ هیچ مدلِ دیگری امتحان نمی‌شود
+                    queue = [current]
+                    continue
                 free = self.fetch_active_free_models(force_refresh=True)
-                # ادغام: مدل‌های تازه‌کشف‌شده اولویت دارند؛ سپس بقیهٔ صف؛ بدون تکرار
-                merged_q = [m for m in free if m not in attempted] + [m for m in queue if m not in attempted]
-                queue = list(dict.fromkeys(merged_q))
+                merged = [m for m in free if m not in attempted] + [
+                    m for m in queue if m not in attempted
+                ]
+                queue = list(dict.fromkeys(merged))
                 upcoming = queue[0] if queue else None
                 print(f"[OpenRouter Dynamic Fallback] Switched from {current} to {upcoming}")
+                continue
+
+            print(
+                f"[AI] {task_type}: موفق با «{response.model_name}» در تلاشِ "
+                f"{attempts} — توکن {response.token_count}, هزینه ${response.cost_usd}"
+            )
+            response.attempts = attempts
+            response.failed_cost_usd = round(failed_cost, 8)
+            response.failed_tokens = failed_tokens
+            return response
 
         raise AIProviderError(
-            f"همهٔ تلاش‌ها برای فراخوانی OpenRouter شکست خورد ({len(attempted)} مدل امتحان شد). "
-            f"آخرین خطا: {last_error}",
+            f"فراخوانیِ مدل پس از {attempts} تلاش شکست خورد. آخرین خطا: {last_error}",
             retryable=True,
         )
 
@@ -1107,6 +1168,19 @@ _TASK_ROUTE_DEFAULT = {
     "build_graph": "gemini_free",
 }
 
+#: وظایفی که زنجیرهٔ فهم‌سنجی را می‌سازند. این‌ها همیشه روی
+#: OPENROUTER_ASSESSMENT_MODEL اجرا می‌شوند (بدونِ سوییچِ خاموش).
+ASSESSMENT_TASKS = frozenset(
+    {"generate_test_booklet", "analyze_exam", "analyze_response"}
+)
+
+
+def assessment_model_name() -> str:
+    """مدلِ ارزیابی — یک منبعِ حقیقت، نه دو تنظیمِ موازی."""
+    pinned = (getattr(settings, "OPENROUTER_ASSESSMENT_MODEL", "") or "").strip()
+    return pinned or (getattr(settings, "OPENROUTER_MODEL", "") or "").strip()
+
+
 _OPENROUTER_ROUTE = {
     "cognitive_generate": "openrouter",
     "cognitive_evaluate": "openrouter",
@@ -1133,8 +1207,8 @@ def _log_usage(provider: str, response: AIResponse | None, task_type: str,
                     provider=provider,
                     model_name=response.model_name if response else "",
                     task_type=task_type,
-                    token_count=response.token_count if response else 0,
-                    cost_usd=response.cost_usd if response else 0.0,
+                    token_count=response.total_tokens if response else 0,
+                    cost_usd=response.total_cost_usd if response else 0.0,
                     success=success,
                     error=error,
                     timestamp=datetime.utcnow(),
@@ -1213,6 +1287,10 @@ class ModelRouter:
                 f"سقف بودجهٔ هوش مصنوعی ({settings.BUDGET_LIMIT_USD} دلار) تمام شده است."
             )
         provider = self.get_provider(task_type)
+        # زنجیرهٔ فهم‌سنجی همیشه روی مدلِ پین‌شده می‌رود؛ مگر کسی صریحاً
+        # override داده باشد (تست/ابزار).
+        if model_override is None and task_type in ASSESSMENT_TASKS:
+            model_override = assessment_model_name() or None
         try:
             try:
                 response = await provider.generate(
@@ -1220,6 +1298,12 @@ class ModelRouter:
                 )
             except TypeError:
                 response = await provider.generate(prompt, task_type, temperature)
+            # در لاگ باید معلوم باشد هر فراخوانی کدام مدل را به کار برده است.
+            print(
+                f"[AI] task={task_type} model={response.model_name} "
+                f"attempts={response.attempts} tokens={response.total_tokens} "
+                f"cost=${response.total_cost_usd}"
+            )
             _log_usage(provider.name, response, task_type, success=True)
             return response
         except BudgetExceededError:

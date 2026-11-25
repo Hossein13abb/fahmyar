@@ -1,5 +1,21 @@
 // نشان وضعیت‌های کیفی فهم‌یار — هرگز عددی نیستند، فقط برچسب فارسی + رنگ پاستلی
 const STATUS = {
+  // فاز ۸ — حکمِ ساختاریافتهٔ هر مرحله از زنجیرهٔ ۵ مرحله‌ای
+  CORRECT: {
+    label: '✅ درست',
+    cls: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
+    dot: 'bg-emerald-500',
+  },
+  HALF_CORRECT: {
+    label: '🟡 نیمه‌درست',
+    cls: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
+    dot: 'bg-amber-400',
+  },
+  WRONG: {
+    label: '⚠️ نادرست',
+    cls: 'bg-orange-100 text-orange-900 ring-1 ring-orange-300',
+    dot: 'bg-orange-500',
+  },
   CONFIRMED: {
     label: '✅ درک کامل',
     cls: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
@@ -49,8 +65,9 @@ const STATUS = {
 }
 
 export default function Badge({ status, className = '' }) {
+  // هرگز برچسبِ انگلیسیِ خام به دانش‌آموز نشان داده نمی‌شود
   const s = STATUS[status] || {
-    label: status || 'نامشخص',
+    label: /^[A-Za-z_]+$/.test(String(status ?? '')) ? 'نامشخص' : (status || 'نامشخص'),
     cls: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
     dot: 'bg-slate-400',
   }

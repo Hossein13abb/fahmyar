@@ -13,6 +13,7 @@ import json
 from datetime import datetime
 
 from api.routes_auth import get_current_user
+from ai.cross_check import normalize_suggestions
 from ai.question_generator import generate_test_booklet
 from config import settings
 from engine.session_manager import SessionManager, SessionError, question_to_student_dict
@@ -22,6 +23,7 @@ from models.database import get_db
 from models.question import QUESTION_TYPES, AssessmentSession, Question
 from models.user import User
 from reports.exam_report import build_exam_report
+from reports.fa_map import scrub_english_leaks
 from reports.report_generator import build_report
 from reports.report_pdf import build_report_pdf
 from reports.session_status import COMPREHENSION_LABELS, comprehension_status, is_exam_session
@@ -90,7 +92,9 @@ def _question_to_exam_dict(q: Question, order: int) -> dict[str, Any]:
         "id": q.id,
         "order": order,
         "concept_id": q.concept_id,
-        "text": q.text,
+        # نشتِ واژه‌های انگلیسیِ ترجمه‌پذیر، پیش از رسیدن به دانش‌آموز پاک می‌شود
+        # (فرمول‌های داخل `$...$` دست‌نخورده می‌مانند).
+        "text": scrub_english_leaks(q.text),
         "type": q.question_type,
         "question_type": q.question_type,
         "difficulty": q.difficulty,
@@ -101,7 +105,7 @@ def _question_to_exam_dict(q: Question, order: int) -> dict[str, Any]:
     }
     options = rubric.get("options")
     if isinstance(options, list) and options:
-        data["options"] = [str(o) for o in options]
+        data["options"] = [scrub_english_leaks(str(o)) for o in options]
     forbidden = rubric.get("forbidden_words")
     if isinstance(forbidden, list) and forbidden:
         data["forbidden_words"] = [str(w) for w in forbidden]
@@ -368,7 +372,9 @@ def _persist_analysis(
         "engine": "stage_chain_5",
         "question_ids": [q.id for q in questions],
         "dimensions": result.get("dimension_findings") or [],
-        "suggestions": result.get("improvement_suggestions") or [],
+        # پیشنهادها در مرزِ API به رشته‌های تمیز نرمال می‌شوند؛ هیچ دیکشنریِ
+        # خامی به فرانت/PDF نمی‌رسد.
+        "suggestions": normalize_suggestions(result.get("improvement_suggestions")),
         "mastery_status": result.get("mastery_status"),
         "persona_title": result.get("persona_title"),
         "executive_summary": result.get("executive_summary"),

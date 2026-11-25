@@ -27,6 +27,7 @@ from reportlab.platypus import (
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
+from ai.cross_check import normalize_suggestions
 from models.question import STATUS_FA
 from reports.pdf_shared import (
     BRAND_ACCENT,
@@ -270,7 +271,10 @@ def build_report_pdf(
         story.append(Spacer(1, 1 * mm))
         story.append(_section_banner("پیشنهادهای بهبود (کیفی)", accent=BRAND_ACCENT, bg=BRAND_SOFT, fg=BRAND_DARK))
         story.append(Spacer(1, 3 * mm))
-        story += _bullets([f"دانش‌آموز: {s}" if not str(s).startswith("دانش‌آموز") else str(s) for s in (report.get("suggestions") or [])], "sugg", "#064E3B")
+        # پیشنهادها از API رشتهٔ تمیز می‌آیند، ولی دادهٔ قدیمی هم ممکن است
+        # دیکشنری باشد؛ در PDF چیزی جز متنِ فارسی چاپ نمی‌شود.
+        _sugg = normalize_suggestions(report.get("suggestions"))
+        story += _bullets([f"دانش‌آموز: {s}" if not str(s).startswith("دانش‌آموز") else str(s) for s in _sugg], "sugg", "#064E3B")
     else:
         story.append(_section_banner("مشاهدات (چه چیزی دیدیم؟)"))
         story.append(Spacer(1, 3 * mm))

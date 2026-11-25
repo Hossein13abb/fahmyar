@@ -123,11 +123,66 @@ def latin_heavy(text: Any) -> bool:
     return en >= 8 and en > fa
 
 
+#: واژه‌های انگلیسی که در متنِ فارسی جا می‌مانند و ترجمهٔ کتابِ درسی دارند.
+#: عمداً فهرستِ کوچک و قطعی است: هیچ واژهٔ علمی/اصطلاحِ ریاضیِ خاصی که
+#: ترجمهٔ روشنی ندارد (V/I/R، نامِ واحدها، نمادهای LaTeX) دست‌کاری نمی‌شود.
+_EN_LEAKS = {
+    "intrinsic": "ذاتی",
+    "intrinsic property": "ویژگیِ ذاتی",
+    "analogy": "تمثیل",
+    "analogies": "تمثیل‌ها",
+    "conceptual": "مفهومی",
+    "conceptually": "به‌صورتِ مفهومی",
+    "intuition": "شهود",
+    "intuitive": "شهودی",
+    "misconception": "بدفهمی",
+    "misconceptions": "بدفهمی‌ها",
+    "scaffolding": "داربست‌بندی",
+    "metacognition": "فراشناخت",
+}
+
+#: نمادهایی که در ریاضی/فیزیک باید لاتین بمانند.
+_MATH_TOKEN = re.compile(r"\$[^$]*\$|\\[A-Za-z]+")
+_EN_LEAK_RE = re.compile(
+    r"\b(" + "|".join(sorted((re.escape(k) for k in _EN_LEAKS), key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def scrub_english_leaks(text: Any) -> str:
+    """واژه‌های انگلیسیِ ترجمه‌پذیر را با معادلِ کتابِ درسی جایگزین می‌کند.
+
+    داخلِ `$...$` و دستورهای LaTeX دست نمی‌خورد، تا فرمول‌ها سالم بمانند.
+    """
+    s = str(text or "")
+    if not s:
+        return s
+    # بخش‌های ریاضی را موقتاً کنار بگذار
+    holds: list[str] = []
+
+    def _stash(match: re.Match) -> str:
+        holds.append(match.group(0))
+        return f"\ue000{len(holds) - 1}\ue001"
+
+    guarded = _MATH_TOKEN.sub(_stash, s)
+    guarded = _EN_LEAK_RE.sub(
+        lambda m: _EN_LEAKS.get(m.group(1).lower()) or _EN_LEAKS.get(m.group(1)) or m.group(0),
+        guarded,
+    )
+    for index, original in enumerate(holds):
+        guarded = guarded.replace(f"\ue000{index}\ue001", original)
+    return guarded
+
+
 def fa_text(text: Any, fallback_fa: str) -> str:
     s = str(text or "").strip()
     if not s:
         return fallback_fa
-    return fallback_fa if latin_heavy(s) else s
+    if latin_heavy(s):
+        return fallback_fa
+    # متنِ فارسی با یک واژهٔ انگلیسیِ جامانده (مثلاً «ویژگیِ intrinsic») خوب
+    # است؛ فقط واژه ترجمه می‌شود، کلِ متن دور ریخته نمی‌شود.
+    return scrub_english_leaks(s)
 
 
 def normalize_dimension(name: Any) -> str:

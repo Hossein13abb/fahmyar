@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from models.concept import Concept
 from models.question import AssessmentSession, EvidenceStatus, STATUS_FA
+from ai.cross_check import normalize_suggestions
 from reports.fa_map import (
     root_cause_text,
     normalize_dimension,
@@ -167,7 +168,12 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             r["concept_name"] = r["area"] = "عنوان ریشه ثبت نشد — معلم باید شخصاً بررسی کند"
         if not r["reasoning"]:
             r["reasoning"] = "تحلیل ریشه‌ای برای این بند ثبت نشد — معلم باید شخصاً بررسی کند"
-    suggestions = [fa_text(x, suggestion_fallback()) for x in suggestions]
+    # دادهٔ قدیمیِ ذخیره‌شده هم ممکن است دیکشنری باشد؛ مرزِ گزارش هم تمیز می‌کند
+    # تا نه فرانت `[object Object]` ببیند و نه PDF دیکشنریِ خام.
+    suggestions = [
+        fa_text(x, suggestion_fallback())
+        for x in normalize_suggestions(suggestions)
+    ]
 
     dimension_lines = [
         f"«{d['dimension']}» — {STATUS_FA.get(d['status'], d['status'])}: {d['finding']}" for d in dimensions

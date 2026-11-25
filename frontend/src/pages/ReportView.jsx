@@ -285,10 +285,66 @@ const latinHeavy = (text) => {
   return en >= 8 && en > fa
 }
 
-const validBadgeStatus = (status) =>
-  ['CONFIRMED', 'LIKELY_UNDERSTOOD', 'UNCLEAR', 'NEEDS_REVIEW', 'INSUFFICIENT_EVIDENCE', 'completed', 'active', 'paused'].includes(status)
-    ? status
-    : 'UNCLEAR'
+const BADGE_STATUSES = [
+  'CORRECT',
+  'HALF_CORRECT',
+  'WRONG',
+  'CONFIRMED',
+  'LIKELY_UNDERSTOOD',
+  'UNCLEAR',
+  'NEEDS_REVIEW',
+  'INSUFFICIENT_EVIDENCE',
+  'completed',
+  'active',
+  'paused',
+]
+
+const validBadgeStatus = (status) => (BADGE_STATUSES.includes(status) ? status : 'UNCLEAR')
+
+// عنوانِ فارسیِ مرحله — هرگز «نامشخص» به‌جای عنوانِ مرحله نمی‌نشیند.
+const STAGE_NAMES = [
+  'فلسفه و تصویر کلان',
+  'تستِ لایهٔ نقاب',
+  'دستکاریِ سیستم',
+  'عیب‌یابیِ ساعتِ خراب',
+  'چالشِ فاینمن',
+]
+
+const faDigits = (text) =>
+  String(text ?? '').replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)])
+
+// بُعدی که فاقد هر دادهٔ معنادار است، «بُعد فهم» نیست؛ کارتِ خالی است.
+// placeholderهایی که بک‌اند فقط برای پر نماندنِ ساختار می‌گذارد
+const PLACEHOLDER_DIMENSIONS = [
+  'تحلیل ابعادی انجام نشد',
+  'تحلیل ابعادی ثبت نشده',
+]
+
+const isEmptyDimension = (d) => {
+  const status = String(d?.status ?? '').toUpperCase()
+  const finding = String(d?.finding ?? '').trim()
+  const dim = String(d?.dimension ?? '').trim()
+  if (PLACEHOLDER_DIMENSIONS.some((p) => finding.includes(p))) return true
+  const statusEmpty = !status || status === 'UNCLEAR'
+  const findingEmpty = !finding || finding.length < 3
+  const dimEmpty = !dim
+  return statusEmpty && findingEmpty && dimEmpty
+}
+
+const faStageTitle = (q, index) => {
+  const raw = String(q?.stage_title ?? '').trim()
+  if (raw && !latinHeavy(raw)) return faDigits(raw)
+  const order = Number(q?.order) || index + 1
+  return `مرحله ${toFarsiNumber(order)}: ${STAGE_NAMES[order - 1] ?? 'مرحلهٔ زنجیره'}`
+}
+
+const stageFallback = (status) => {
+  const st = String(status ?? '').toUpperCase()
+  if (st === 'CORRECT') return 'این مرحله با استدلالِ درست پاسخ داده شده است.'
+  if (st === 'HALF_CORRECT') return 'بخشی از استدلال درست بود، اما هستهٔ منطقِ مورد انتظار کامل گفته نشد.'
+  if (st === 'WRONG') return 'پاسخِ این مرحله به نتیجه یا استدلالِ نادرست می‌رسد.'
+  return 'برای این مرحله شاهدِ کافی ثبت نشده است.'
+}
 
 const faDimension = (name) => {
   const hit = faAliasLookup(name)
@@ -319,6 +375,36 @@ const faText = (text, fallbackFa) => {
   const s = String(text ?? '').trim()
   if (!s) return fallbackFa
   return latinHeavy(s) ? fallbackFa : s
+}
+
+// پیشنهادها ممکن است از دادهٔ قدیمی/مدل به شکلِ دیکشنری آمده باشند.
+// هر شکلِ معقولی به یک رشتهٔ فارسی تبدیل می‌شود؛ هیچ `[object Object]`ی
+// نباید به چشمِ دانش‌آموز برسد.
+const suggestionText = (raw) => {
+  if (raw === null || raw === undefined) return ''
+  if (typeof raw === 'string') return raw.trim()
+  if (typeof raw === 'number') return String(raw)
+  if (Array.isArray(raw)) return raw.map(suggestionText).filter(Boolean).join(' ')
+  if (typeof raw === 'object') {
+    for (const key of ['suggestion', 'text', 'description', 'title', 'action', 'advice']) {
+      const value = raw[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+    const first = Object.values(raw).find((v) => typeof v === 'string' && v.trim())
+    return typeof first === 'string' ? first.trim() : ''
+  }
+  return ''
+}
+
+const cleanSuggestions = (list) => {
+  const out = []
+  for (const item of Array.isArray(list) ? list : []) {
+    const text = suggestionText(item).replace(/\s+/g, ' ').trim()
+    if (!text) continue
+    if (/^[[{].*[}\]]$/.test(text)) continue
+    if (!out.includes(text)) out.push(text)
+  }
+  return out
 }
 
 const faSuggestion = (text) =>
@@ -386,10 +472,19 @@ function ExamReport({ report, mode, onBackToDashboard }) {
   const navigate = useNavigate()
   const handleBack = onBackToDashboard ?? (() => navigate(mode === 'teacher' ? '/staff' : '/dashboard'))
   const backLabel = mode === 'teacher' ? 'بازگشت به داشبورد مدرسه' : 'بازگشت به داشبورد'
-  const dimensions = report.dimensions ?? []
+  const dimensions = Array.isArray(report.dimensions) ? report.dimensions.filter((d) => d && !isEmptyDimension(d)) : []
   const perQuestion = report.per_question ?? []
+  // «ابعاد فهم» فقط با شواهدِ واقعیِ ۵ مرحله‌ای معنا دارد؛ کارتِ خالی
+  // («نامشخص») نشانهٔ ابهامِ دانش‌آموز نیست، نشانهٔ نبودِ تحلیل است.
+  const stageDimensions = perQuestion
+    .filter((q) => q && (q.status || q.cognitive_verdict || q.qualitative_feedback))
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+  const hasStageEvidence = stageDimensions.length > 0
+  const openGears = stageDimensions.filter(
+    (q) => String(q.missing_gear ?? '').trim().length > 0,
+  )
   const rootCauses = report.root_causes ?? []
-  const suggestions = report.suggestions ?? []
+  const suggestions = cleanSuggestions(report.suggestions)
   const crossCheck = Array.isArray(report.cross_check_findings) ? report.cross_check_findings : []
   const mastery = report.mastery_status ?? null
   const personaTitle = report.persona_title ?? null
@@ -507,21 +602,44 @@ function ExamReport({ report, mode, onBackToDashboard }) {
         </section>
       )}
 
-      {/* ── (الف) نمای کلی وضعیت ── */}
-      <SectionCard Icon={Layers} title="نمای کلی وضعیت — ابعاد فهم" tone="teal">
-        <div className="grid gap-2 md:grid-cols-2">
-          {dimensions.map((d, i) => (
-            <div key={i} className="flex items-start gap-3 rounded-2xl border border-teal-100 bg-white/80 p-4">
-              <Badge status={validBadgeStatus(d.status)} className="mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[13px] font-black text-brand-950">{faDimension(d.dimension)}</p>
-                <p className="mt-1 text-[12px] leading-6 text-slate-600">{faText(d.finding, dimensionFallback(d.status))}</p>
+      {/* ── (الف) ابعاد فهم ──
+          فقط زمانی رندر می‌شود که دادهٔ واقعیِ ۵ مرحله‌ای در per_question باشد.
+          پیش‌تر وقتی تحلیلی نبود، همین‌جا پنج کارتِ «نامشخص» ساخته می‌شد و
+          دانش‌آموز آن را «ابهام واقعی» می‌خواند؛ حالا معیار، وجودِ داده است. */}
+      {hasStageEvidence && (
+        <SectionCard Icon={Layers} title="ابعاد فهم — پنج مرحلهٔ زنجیره" tone="teal">
+          <div className="grid gap-2 md:grid-cols-2">
+            {stageDimensions.map((q, i) => (
+              <div key={i} className="flex items-start gap-3 rounded-2xl border border-teal-100 bg-white/80 p-4">
+                <Badge status={validBadgeStatus(q.status)} className="mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[13px] font-black text-brand-950">{faStageTitle(q, i)}</p>
+                  <p className="mt-1 text-[12px] leading-6 text-slate-600">
+                    {faText(q.cognitive_verdict || q.qualitative_feedback || '', stageFallback(q.status))}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
-          {dimensions.length === 0 && <p className="text-[13px] text-slate-500">تحلیل ابعادی ثبت نشده است.</p>}
-        </div>
-      </SectionCard>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* تحلیل ابعادیِ آزادِ مدل — جدا از زنجیره، و فقط با دادهٔ معتبر */}
+      {dimensions.length > 0 && (
+        <SectionCard Icon={Layers} title="ابعاد فهم — تحلیل کلی" tone="teal">
+          <div className="grid gap-2 md:grid-cols-2">
+            {dimensions.map((d, i) => (
+              <div key={i} className="flex items-start gap-3 rounded-2xl border border-teal-100 bg-white/80 p-4">
+                <Badge status={validBadgeStatus(d.status)} className="mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[13px] font-black text-brand-950">{faDimension(d.dimension)}</p>
+                  <p className="mt-1 text-[12px] leading-6 text-slate-600">{faText(d.finding, dimensionFallback(d.status))}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
 
       {/* ── (ب) تحلیل تفصیلی تک‌تک سوالات ── */}
       <SectionCard Icon={FileText} title="تحلیل تفصیلی تک‌تک سوالات">
@@ -575,12 +693,17 @@ function ExamReport({ report, mode, onBackToDashboard }) {
         </ol>
       </SectionCard>
 
-      {/* ── موارد هنوز روشن‌نشده ── */}
-      {Array.isArray(report.sections?.['موارد هنوز روشن‌نشده']) && report.sections['موارد هنوز روشن‌نشده'].length > 0 && (
+      {/* ── موارد هنوز روشن‌نشده ──
+          فقط «چرخ‌دندهٔ گمشده»ی واقعی نمایش داده می‌شود. فهرستِ ساختگیِ
+          «سؤال ۳ (نامشخص)» که از نبودِ تحلیل ساخته می‌شد، حذف شده است. */}
+      {openGears.length > 0 && (
         <SectionCard Icon={HelpCircle} title="موارد هنوز روشن‌نشده" tone="amber">
           <ul className="space-y-2">
-            {report.sections['موارد هنوز روشن‌نشده'].map((u, i) => (
-              <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 px-4 py-2.5 text-[12px] leading-6 text-amber-950">{u}</li>
+            {openGears.map((g, i) => (
+              <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 px-4 py-2.5 text-[12px] leading-6 text-amber-950">
+                <span className="font-black">{faStageTitle(g, i)}: </span>
+                {faText(g.missing_gear, 'این بخش هنوز روشن نشده است.')}
+              </li>
             ))}
           </ul>
         </SectionCard>
