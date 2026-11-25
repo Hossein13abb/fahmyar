@@ -62,6 +62,10 @@ class ExamAnswerIn(BaseModel):
     # این تنها منبعِ معتبرِ انتخاب است؛ response_text (توضیحِ اختیاری/پاسخِ
     # تشریحی) هرگز برای استخراجِ انتخاب پارس نمی‌شود.
     selected_option_index: Optional[int] = Field(default=None, ge=0, le=3)
+    # متنِ گزینهٔ انتخاب‌شده — کلاینت آن را می‌فرستد و بک‌اند با گزینهٔ همان
+    # اندیس در rubric تطبیق می‌دهد. اگر ناهمخوان بود، متنِ rubric حاکم است؛
+    # به این ترتیب داده‌ای که به مدل و کارنامه می‌رود همیشه از منبعِ معتبر است.
+    selected_option_text: Optional[str] = Field(default=None, max_length=500)
 
 
 class SubmitTestRequest(BaseModel):
@@ -367,6 +371,33 @@ def _rows_for(questions: list[Question]) -> list[dict[str, Any]]:
     return rows
 
 
+def _option_text(question: Optional[Question], index: Optional[int]) -> Optional[str]:
+    """متنِ گزینهٔ انتخاب‌شده از rubricِ همان سؤال — نه از حافظهٔ کلاینت."""
+    if question is None or index is None:
+        return None
+    try:
+        options = (question.rubric or {}).get("options") or []
+        i = int(index)
+        if 0 <= i < len(options):
+            return str(options[i])
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def _assessment_model_name(ai_usage: dict[str, Any]) -> str:
+    """نامِ مدلی که این آزمون را تولید/ارزیابی کرده — ترجیحاً از usageِ واقعی."""
+    models = [str(m).strip() for m in (ai_usage.get("models") or []) if str(m).strip()]
+    if models:
+        return models[0]
+    try:
+        from config import settings
+
+        return str(settings.OPENROUTER_ASSESSMENT_MODEL or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _persist_analysis(
     session: AssessmentSession,
     result: dict[str, Any],
@@ -399,6 +430,11 @@ def _persist_analysis(
                 # انتخابِ گزینه با اندیسِ صفرمبنا ذخیره می‌شود؛ نمایشِ
                 # «گزینهٔ n» همیشه از index+1 ساخته می‌شود.
                 "selected_option_index": (selected_indices or {}).get(order),
+                # متنِ گزینهٔ انتخاب‌شده هم صریحاً ذخیره می‌شود تا کارنامه
+                # برای خواندنِ «پاسخ شما» به بازسازیِ آن وابسته نباشد.
+                "selected_option_text": _option_text(
+                    question, (selected_indices or {}).get(order)
+                ),
                 "answered_at": now_iso,
                 "evidence": [
                     {
@@ -431,6 +467,8 @@ def _persist_analysis(
         "analyzer": result.get("analyzer"),
         # ردیابیِ مدل/توکن/هزینه — مجموعِ همهٔ فراخوانی‌های همین آزمون
         "ai_usage": result.get("ai_usage") or {},
+        # نامِ مدلِ ارزیاب، برای بجِ بالای کارنامه (بندِ ۳)
+        "assessment_model": _assessment_model_name(result.get("ai_usage") or {}),
     }
     root_causes = [
         {

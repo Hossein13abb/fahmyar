@@ -22,6 +22,7 @@ import {
   Layers,
   FileDown,
   Loader2,
+  Cpu,
 } from 'lucide-react'
 import client, { friendlyError } from '../api/client'
 import Badge from '../components/Badge'
@@ -342,6 +343,16 @@ const pickedOptionIndex = (q) => {
   return Number.isInteger(n) && n >= 0 && n < q.options.length ? n : null
 }
 
+// متنِ گزینهٔ انتخاب‌شده: اول از فیلدِ صریحِ ذخیره‌شده، بعد از لیستِ گزینه‌ها.
+// این ترتیب یعنی کارنامه هرگز به بازسازیِ حدسی وابسته نیست.
+const selectedText = (q) => {
+  const stored = String(q?.selected_option_text ?? '').trim()
+  if (stored) return stored
+  const idx = pickedOptionIndex(q)
+  if (idx === null) return null
+  return String(q?.options?.[idx] ?? '')
+}
+
 const faStageTitle = (q, index) => {
   const raw = String(q?.stage_title ?? '').trim()
   if (raw && !latinHeavy(raw)) return faDigits(raw)
@@ -362,6 +373,42 @@ const faDimension = (name) => {
   if (hit) return hit
   const s = String(name ?? '').trim()
   return latinHeavy(s) ? 'بُعد فهم' : (s || 'بُعد فهم')
+}
+
+// پنج بُعدِ استاندارد — کلیدها قراردادِ مشترک با بک‌اند (reports/dimensions.py)
+const DIM_LABEL = {
+  conceptual_knowledge: 'دانش مفهومی',
+  distractor_resistance: 'مقاومت در برابر دادهٔ انحرافی',
+  causal_reasoning: 'استدلال علّی',
+  critical_debugging: 'نقد استدلال',
+  simple_communication: 'انتقال ساده',
+}
+
+const DIM_STYLE = {
+  mastered: {
+    card: 'border-emerald-200 bg-emerald-50/40',
+    chip: 'bg-emerald-100 text-emerald-900 ring-emerald-300',
+    label: 'تسلط',
+    fallback: 'این بُعد با استدلالِ روشن در پاسخ‌ها ثبت شده است.',
+  },
+  developing: {
+    card: 'border-amber-200 bg-amber-50/40',
+    chip: 'bg-amber-100 text-amber-900 ring-amber-300',
+    label: 'در حال رشد',
+    fallback: 'هستهٔ این بُعد درست است، اما بیان باید کامل‌تر شود.',
+  },
+  needs_work: {
+    card: 'border-rose-200 bg-rose-50/40',
+    chip: 'bg-rose-100 text-rose-900 ring-rose-300',
+    label: 'نیازمند کار',
+    fallback: 'این بُعد بدفهمیِ روشن دارد و باید بازسازی شود.',
+  },
+  not_assessed: {
+    card: 'border-slate-200 bg-slate-50/60',
+    chip: 'bg-slate-100 text-slate-600 ring-slate-300',
+    label: 'بدون پاسخ',
+    fallback: 'به این مرحله پاسخی نداده است؛ داوری ممکن نیست.',
+  },
 }
 
 const dimensionFallback = (status) => {
@@ -498,6 +545,11 @@ function ExamReport({ report, mode, onBackToDashboard }) {
   const rootCauses = report.root_causes ?? []
   const suggestions = cleanSuggestions(report.suggestions)
   const crossCheck = Array.isArray(report.cross_check_findings) ? report.cross_check_findings : []
+  // نامِ مدلِ ارزیاب — از متادیتای کارنامه (بک‌اند: model_name)
+  const modelName = String(
+    report.model_name ?? (report.ai_usage?.models ?? [])[0] ?? '',
+  ).trim()
+  const stageDims = Array.isArray(report.stage_dimensions) ? report.stage_dimensions : []
   const mastery = report.mastery_status ?? null
   const personaTitle = report.persona_title ?? null
   const executiveSummary = report.executive_summary ?? null
@@ -519,6 +571,18 @@ function ExamReport({ report, mode, onBackToDashboard }) {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Badge status="completed" />
             <span className="chip bg-slate-100 text-slate-600 ring-1 ring-slate-200">{toFarsiNumber(report.questions_answered ?? perQuestion.length)} سؤال تحلیل شد</span>
+            {/* بجِ مدلِ ارزیاب — کاربر همیشه می‌داند کارنامه با چه مدلی ساخته شده */}
+            {modelName && (
+              <span
+                className="chip inline-flex items-center gap-1.5 border border-brand-200 bg-white text-brand-800 shadow-sm"
+                dir="ltr"
+                title="مدل هوش مصنوعی که این آزمون را تولید و ارزیابی کرده است"
+              >
+                <Cpu className="h-3.5 w-3.5 text-brand-600" />
+                <span className="font-black">مدل ارزیاب:</span>
+                <code className="font-mono text-[11px] font-bold">{modelName}</code>
+              </span>
+            )}
           </div>
         </div>
         <div className="no-print flex shrink-0 flex-col gap-2">
@@ -636,19 +700,33 @@ function ExamReport({ report, mode, onBackToDashboard }) {
         </SectionCard>
       )}
 
-      {/* تحلیل ابعادیِ آزادِ مدل — جدا از زنجیره، و فقط با دادهٔ معتبر */}
-      {dimensions.length > 0 && (
+      {/* ── ابعاد فهم — تحلیل کلی ──
+          پنج بُعدِ استاندارد با کلیدهای ثابت (conceptual_knowledge …). داده از
+          report.stage_dimensions می‌آید که بک‌اند آن را از شواهدِ خودِ پنج مرحله
+          می‌سازد؛ پس کلیدها هرگز با فرانت ناهمخوان نمی‌شوند و «نامشخص» فقط برای
+          مرحله‌ای است که واقعاً بی‌پاسخ مانده. */}
+      {stageDims.length > 0 && (
         <SectionCard Icon={Layers} title="ابعاد فهم — تحلیل کلی" tone="teal">
           <div className="grid gap-2 md:grid-cols-2">
-            {dimensions.map((d, i) => (
-              <div key={i} className="flex items-start gap-3 rounded-2xl border border-teal-100 bg-white/80 p-4">
-                <Badge status={validBadgeStatus(d.status)} className="mt-0.5 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-[13px] font-black text-brand-950">{faDimension(d.dimension)}</p>
-                  <p className="mt-1 text-[12px] leading-6 text-slate-600">{faText(d.finding, dimensionFallback(d.status))}</p>
+            {stageDims.map((d, i) => {
+              const st = String(d.status ?? 'not_assessed').toLowerCase()
+              const style = DIM_STYLE[st] ?? DIM_STYLE.not_assessed
+              return (
+                <div key={d.key ?? i} className={`flex items-start gap-3 rounded-2xl border p-4 ${style.card}`}>
+                  <span className={`mt-0.5 shrink-0 rounded-lg px-2 py-1 text-[10px] font-black ring-1 ${style.chip}`}>
+                    {d.status_fa ?? style.label}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-black text-brand-950">
+                      {DIM_LABEL[d.key] ?? d.label ?? 'بُعد فهم'}
+                    </p>
+                    <p className="mt-1 text-[12px] leading-6 text-slate-600">
+                      {faText(d.finding, style.fallback)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </SectionCard>
       )}
@@ -682,7 +760,7 @@ function ExamReport({ report, mode, onBackToDashboard }) {
                       <p className="mt-1 text-[12px] leading-7 text-slate-700">
                         گزینهٔ {toFarsiNumber(pickedOptionIndex(q) + 1)}:{' '}
                         <span className="math-inline font-black text-brand-950">
-                          <MathText content={String(q.options?.[pickedOptionIndex(q)] ?? '')} />
+                          <MathText content={String(selectedText(q) ?? '')} />
                         </span>
                       </p>
                     )}

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from models.concept import Concept
 from models.question import AssessmentSession, EvidenceStatus, STATUS_FA
 from ai.cross_check import normalize_suggestions
+from reports.dimensions import build_stage_dimensions, DIMENSION_STATUS_FA
 from reports.fa_map import (
     root_cause_text,
     normalize_dimension,
@@ -26,6 +27,30 @@ from reports.fa_map import (
     feedback_fallback,
     suggestion_fallback,
 )
+
+def _model_name(meta: dict[str, Any], ai_usage: dict[str, Any]) -> str:
+    """نامِ دقیقِ مدلی که این کارنامه را ارزیابی کرده است (بندِ ۳).
+
+    ترتیبِ اولویت:
+      ۱) مدلی که واقعاً فراخوانی شده (از usage واقعیِ OpenRouter) —
+         صادقانه‌ترین منبع، چون همان مدل پول خورده است.
+      ۲) مدلِ پین‌شدهٔ ارزیابی از تنظیمات.
+    هرگز رشتهٔ ساختگی برنمی‌گرداند؛ اگر هیچ‌کدام نبود، «نامشخص» — نه نامِ مدلِ دیگر.
+    """
+    models = [str(m).strip() for m in (ai_usage.get("models") or []) if str(m).strip()]
+    if models:
+        # مدلِ غالب = پرارتباط‌ترین؛ اگر یکی بود همان.
+        return models[0]
+    pinned = str(meta.get("assessment_model") or "").strip()
+    if pinned:
+        return pinned
+    try:
+        from config import settings
+
+        return str(settings.OPENROUTER_ASSESSMENT_MODEL or "").strip() or "نامشخص"
+    except Exception:  # noqa: BLE001
+        return "نامشخص"
+
 
 def _strip_hedges_local(text: str) -> str:
     """تردیدهای لفظیِ رایج را از متنِ ریشه پاک می‌کند (بدون تغییر محتوای آموزشی)."""
@@ -75,6 +100,15 @@ def _looks_like_model_output(text: str) -> bool:
     return False
 
 
+#: وضعیتِ پنج‌گانهٔ ابعاد → وضعیتِ شاهد (همان واژگانی که نرمال‌سازِ گزارش می‌فهمد)
+_EVIDENCE_STATUS_FOR_DIM = {
+    "mastered": EvidenceStatus.CONFIRMED.value,
+    "developing": EvidenceStatus.LIKELY_UNDERSTOOD.value,
+    "needs_work": EvidenceStatus.NEEDS_REVIEW.value,
+    "not_assessed": EvidenceStatus.INSUFFICIENT_EVIDENCE.value,
+}
+
+
 def _coerce_options_for_report(raw: Any) -> list[str]:
     """گزینه‌ها برای نمایش در کارنامه — بدونِ کلیدِ صحیح."""
     if not isinstance(raw, list):
@@ -91,6 +125,22 @@ def _coerce_selected(raw: Any) -> Optional[int]:
     except (TypeError, ValueError):
         return None
     return value if 0 <= value <= 3 else None
+
+
+def _selected_text_for_report(entry: dict[str, Any]) -> Optional[str]:
+    """متنِ گزینهٔ انتخاب‌شده — ذخیره‌شده در evidence_log، با بازسازی از options.
+
+    اگر متنِ ذخیره‌شده نبود (دادهٔ قدیمی)، از همان اندیس و لیستِ گزینه‌ها
+    بازسازی می‌شود تا کارنامه هرگز «گزینهٔ ۲: » با متنِ خالی نشان ندهد.
+    """
+    stored = str(entry.get("selected_option_text") or "").strip()
+    if stored:
+        return stored
+    index = _coerce_selected(entry.get("selected_option_index"))
+    options = _coerce_options_for_report(entry.get("options"))
+    if index is not None and 0 <= index < len(options):
+        return options[index]
+    return None
 
 
 def _raw_student_answer(entry: dict[str, Any]) -> str:
@@ -132,6 +182,8 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             "response": _raw_student_answer(entry),
             # انتخابِ گزینه در MCQ: صفرمبنا ذخیره، یک‌مبنا نمایش.
             "selected_option_index": _coerce_selected(entry.get("selected_option_index")),
+            # متنِ گزینهٔ انتخاب‌شده، صریح و مستقل از گزینه‌ها (بندِ ۱-الف)
+            "selected_option_text": _selected_text_for_report(entry),
             # متنِ گزینه‌ها لازم است تا کارنامه بتواند «گزینهٔ ۲: ۳ آمپر» را
             # نشان دهد. خودِ correct_option_index هرگز به فرانت نمی‌رود.
             "options": _coerce_options_for_report(entry.get("options")),
@@ -148,6 +200,12 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             "missing_gear": record.get("missing_gear"),
         })
     per_question.sort(key=lambda q: (q.get("order") or 999))
+
+    # ── فاز ۱۰: پنج بُعدِ استاندارد، از شواهدِ واقعیِ پنج مرحله ──
+    # دیگر از dimension_findings آزادِ مدل ساخته نمی‌شود؛ کلیدها ثابت‌اند
+    # (conceptual_knowledge … simple_communication) و هیچ بعدی «نامشخص»
+    # نمی‌ماند مگر آن مرحله واقعاً بی‌پاسخ باشد.
+    stage_dimensions = build_stage_dimensions(per_question)
 
     hypotheses = list(session.current_hypotheses or [])
     meta = next((h for h in hypotheses if h.get("type") == "exam_meta"), {})
@@ -178,9 +236,18 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
     ]
 
     if not dimensions:
-        # گزارش بدون تحلیل مدل (مثلاً شکست کامل) — ساختار را خالی نمی‌گذاریم
-        dimensions = [{"dimension": "تحلیل یکپارچهٔ آزمون", "status": EvidenceStatus.UNCLEAR.value,
-                       "finding": "تحلیل ابعادی انجام نشد؛ معلم باید شخصاً بررسی کند."}]
+        # گزارش بدون تحلیلِ آزادِ مدل: پنج بُعدِ استاندارد جای خالی را پر می‌کنند.
+        # وضعیت‌ها با کلیدِ *انگلیسیِ* شناخته‌شده داده می‌شوند تا نرمال‌سازِ
+        # پایین‌دست آن‌ها را به «نامشخص» برنگرداند (برچسبِ فارسی این‌جا
+        # شناخته نمی‌شود و به UNCLEAR می‌افتاد — همان باگِ «همه نامشخص»).
+        dimensions = [
+            {
+                "dimension": d["label"],
+                "status": _EVIDENCE_STATUS_FOR_DIM[d["status"]],
+                "finding": d["finding"],
+            }
+            for d in stage_dimensions
+        ]
     if not suggestions:
         suggestions = ["معلم باید بر اساس پاسخ‌ها مسیر مرور را شخصاً تعیین کند."]
 
@@ -263,6 +330,10 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             "completion_tokens": ai_usage.get("completion_tokens") or 0,
             "total_cost_usd": ai_usage.get("total_cost_usd") or 0.0,
         },
+        # پنج بُعدِ استاندارد — منبعِ «ابعاد فهم — تحلیل کلی» در فرانت
+        "stage_dimensions": stage_dimensions,
+        # نامِ دقیقِ مدلِ ارزیاب (بندِ ۳) — برای بجِ بالای کارنامه
+        "model_name": _model_name(meta, ai_usage),
         "mastery_status": mastery_status,
         "persona_title": persona_title,
         "executive_summary": executive_summary,

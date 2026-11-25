@@ -299,6 +299,9 @@ export default function ExamRoom() {
           const picked = selections[q.id]
           if (picked !== undefined && picked !== null && Number.isInteger(Number(picked))) {
             entry.selected_option_index = Number(picked)
+            // متنِ گزینه هم صریح می‌رود تا بک‌اند برای خواندنِ «پاسخ شما»
+            // مجبور به حدس‌زدن از متن نشود (بندِ ۱-الف).
+            entry.selected_option_text = String(q.options[Number(picked)] ?? '')
           }
         }
         return entry
