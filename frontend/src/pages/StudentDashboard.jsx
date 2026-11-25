@@ -61,9 +61,9 @@ const HISTORY_CHIP = {
 }
 
 const HOW_STEPS = [
-  { Icon: SearchCheck, title: '۱. دفترچهٔ ۹ سؤالی', text: 'از مفهومی تا نموداری — کل ابعاد فهم در یک آزمون.' },
+  { Icon: SearchCheck, title: '۱. زنجیرهٔ ۵ مرحله‌ای', text: 'فلسفه، لایهٔ نقاب، دستکاری، عیب‌یابی، فاینمن — کل به جزء.' },
   { Icon: Waypoints, title: '۲. بدون بازخورد لحظه‌ای', text: 'حین آزمون چیزی فاش نمی‌شود؛ پاسخ‌ها جمع می‌شوند تا تحلیل یکپارچه انجام شود.' },
-  { Icon: Map, title: '۳. گزارش تشخیصی', text: 'ابعاد فهم، ریشهٔ بدفهمی‌ها و راهکارهای کیفی.' },
+  { Icon: Map, title: '۳. کارنامهٔ اشعهٔ ایکس', text: 'شکارِ تناقض میان پاسخ‌ها، چرخ‌دندهٔ گمشده و راهکار کیفی.' },
 ]
 
 export default function StudentDashboard() {
@@ -140,25 +140,41 @@ export default function StudentDashboard() {
   const [xrayError, setXrayError] = useState('')
 
   const startCognitiveAssessment = async () => {
-    const topic = (xrayTopic || selectedConcept?.name || '').trim()
+    // مفهومِ انتخاب‌شده اولویت دارد؛ متنِ آزاد فقط وقتی معنا دارد که مفهوم نباشد.
+    const typed = xrayTopic.trim()
+    const conceptIdToUse = selectedConcept?.id ?? null
+    const topic = (selectedConcept?.name || typed).trim()
+    if (typed && conceptIdToUse && typed !== selectedConcept?.name) {
+      setXrayError(
+        `«${typed}» با مفهومِ انتخاب‌شده («${selectedConcept?.name}») یکی نیست. ` +
+          'یا کادر را خالی کن یا همان مفهومِ فهرست را نگه دار.',
+      )
+      return
+    }
+    if (!conceptIdToUse) {
+      setXrayError('این مبحث در بانک مفاهیم نیست؛ از فهرستِ پایین یکی را انتخاب کن یا مبحث را با معلمت اضافه کن.')
+      return
+    }
     if (topic.length < 2) {
-      setXrayError('نامِ مبحث را بنویس یا از فهرستِ مفاهیم یکی را انتخاب کن.')
+      setXrayError('از فهرستِ پایین یک مفهوم انتخاب کن.')
       return
     }
     setXrayStarting(true)
     setXrayError('')
     try {
+      // یک موتور، یک مسیر: زنجیرهٔ ۵ مرحله‌ای از /api/assess/start ساخته می‌شود.
+      // مبحث باید یکی از مفاهیمِ بانک باشد تا سؤال‌ها به گزاره‌های اصلی لنگر بگیرند.
+
       const { data } = await client.post(
-        '/api/assessment/generate',
-        {
-          topic,
-          subject: selectedConcept?.subject ?? '',
-          grade: selectedConcept?.grade ? String(selectedConcept.grade) : '',
-          concept_id: selectedConcept?.id ?? null,
-        },
-        { timeout: 180000 },
+        '/api/assess/start',
+        { trigger_type: 'topic_selection', concept_id: Number(conceptIdToUse), wrong_answer: null },
+        { timeout: 240000 },
       )
-      navigate(`/exam/xray/${data.session_id}`)
+      const sessionId = data?.session_id ?? data?.session?.id
+      if (!sessionId) throw new Error('شناسهٔ جلسه از سرور دریافت نشد.')
+      navigate('/exam/' + sessionId, {
+        state: { startData: data, conceptName: data?.concept_name ?? topic },
+      })
     } catch (err) {
       setXrayError(friendlyError(err))
     } finally {
@@ -315,15 +331,15 @@ export default function StudentDashboard() {
               آماده‌ای برای آزمون جامع تشخیصی؟
             </h1>
             <p className="mt-2 max-w-lg text-[13px] leading-7 text-brand-100/90">
-              دفترچهٔ ۹ سؤالی از همین مفهوم آماده است.
-              در پایان، گزارش تشخیصیِ کامل با ریشه‌یابی بدفهمی‌هایت می‌سازیم.
+              یک زنجیرهٔ فهم‌سنجی ۵ مرحله‌ای از همین مفهوم آماده است.
+              در پایان، کارنامهٔ اشعهٔ ایکس با شکارِ تناقض‌های ذهنت می‌سازیم.
             </p>
           </div>
           <div className="hidden shrink-0 flex-col items-center gap-2 rounded-3xl bg-white/10 px-6 py-4 text-center ring-1 ring-white/15 backdrop-blur md:flex">
             <HeartHandshake className="h-9 w-9 text-amber-200" />
             <p className="text-[11px] font-bold leading-5 text-brand-100">
-              دفترچهٔ ۹ سؤالی
-              <br /> تحلیل تک‌تک سؤال‌ها
+              زنجیرهٔ ۵ مرحله‌ای
+              <br /> تحلیلِ مقایسه‌ای
             </p>
           </div>
         </div>
@@ -395,8 +411,8 @@ export default function StudentDashboard() {
       {/* ── تب‌های مسیر شروع ── */}
       <div className="grid gap-3 sm:grid-cols-2" role="tablist" aria-label="دو مسیر شروع آزمون جامع">
         {[
-          { key: 'topic', Icon: Route, title: 'مسیر الف — آزمون جامع یک موضوع', sub: 'یک مفهوم درسی را انتخاب کن؛ دفترچهٔ ۹ سؤالی از همان مفهوم بساز' },
-          { key: 'wrong_answer', Icon: GitBranch, title: 'مسیر ب — شروع از پاسخ اشتباه', sub: 'جواب اشتباهت را بفرست؛ دفترچهٔ ۹ سؤالی طوری ساخته می‌شود که ریشهٔ خطا را ردیابی کند' },
+          { key: 'topic', Icon: Route, title: 'مسیر الف — آزمون جامع یک موضوع', sub: 'یک مفهوم درسی را انتخاب کن؛ زنجیرهٔ ۵ مرحله‌ای از همان مفهوم ساخته می‌شود' },
+          { key: 'wrong_answer', Icon: GitBranch, title: 'مسیر ب — شروع از پاسخ اشتباه', sub: 'جواب اشتباهت را بفرست؛ زنجیره طوری ساخته می‌شود که ریشهٔ خطا را ردیابی کند' },
         ].map(({ key, Icon, title, sub }) => (
           <button
             key={key}

@@ -265,7 +265,7 @@ export default function LandingPage() {
                 <h3 className="mt-5 text-xl font-black text-brand-950 sm:text-2xl">ورود دانش‌آموز</h3>
                 <p className="mt-1.5 text-[13px] font-bold text-brand-700">فهم‌سنجی بدون نمره و استرس</p>
                 <ul className="mt-5 space-y-2.5 text-[12px] leading-7 text-slate-600">
-                  <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-brand-600" /> فهم‌سنجی ۹ سؤالیِ انطباقی — هیچ نمره‌ای در کار نیست</li>
+                  <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-brand-600" /> فهم‌سنجی ۵ مرحله‌ای با شکارِ تناقض — هیچ نمره‌ای در کار نیست</li>
                   <li className="flex items-center gap-2"><Brain className="h-4 w-4 shrink-0 text-brand-600" /> ریشه‌یابی بدفهمی‌ها، حتی بین‌درسی</li>
                   <li className="flex items-center gap-2"><BookOpenCheck className="h-4 w-4 shrink-0 text-brand-600" /> کارنامهٔ کیفی با مسیرِ اثر و پیشنهاد جبران</li>
                 </ul>

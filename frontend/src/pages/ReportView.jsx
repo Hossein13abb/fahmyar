@@ -17,6 +17,7 @@ import {
   FlaskConical,
   CheckCircle2,
   ScanSearch,
+  Search,
   FileText,
   Layers,
   FileDown,
@@ -330,6 +331,40 @@ const faExamType = (t) => {
 
 
 // پاسخِ خامِ دانش‌آموز — اگر رشته شبیه خروجی/JSONِ مدل باشد، آن را نشان نمی‌دهیم (بک‌اند هم تطهیر می‌کند)
+// ── نقشهٔ رنگ و برچسبِ کارنامهٔ X-Ray ─────────────────────────────────────
+const MASTERY_LABEL = {
+  MASTERED: 'مسلط',
+  ILLUSION_OF_COMPETENCE: 'توهمِ دانایی',
+  JARGON_DEPENDENT: 'وابسته به اصطلاح',
+  PARTIAL_FRAGMENTED: 'تکه‌تکه اما امیدبخش',
+  UNSTRUCTURED: 'بی‌ساختار',
+}
+
+const MASTERY_STYLE = {
+  MASTERED: { head: 'bg-emerald-700' },
+  ILLUSION_OF_COMPETENCE: { head: 'bg-rose-700' },
+  JARGON_DEPENDENT: { head: 'bg-orange-600' },
+  PARTIAL_FRAGMENTED: { head: 'bg-amber-600' },
+  UNSTRUCTURED: { head: 'bg-slate-600' },
+}
+
+const FINDING_LABEL = {
+  CONTRADICTION: 'تناقض',
+  SYNERGY: 'هم‌افزایی',
+  JARGON_VIOLATION: 'نقضِ کلماتِ ممنوعه',
+  BLUFF_DETECTED: 'بلوف',
+  SLIP_RESOLVED: 'حل‌شده',
+}
+
+// قرمز/نارنجی = یافتهٔ منفی؛ سبز/آبی = یافتهٔ مثبت
+const FINDING_STYLE = {
+  CONTRADICTION: { wrap: 'border-rose-300 bg-rose-50', chip: 'bg-rose-600 text-white' },
+  JARGON_VIOLATION: { wrap: 'border-orange-300 bg-orange-50', chip: 'bg-orange-600 text-white' },
+  BLUFF_DETECTED: { wrap: 'border-rose-300 bg-rose-50', chip: 'bg-rose-700 text-white' },
+  SYNERGY: { wrap: 'border-emerald-300 bg-emerald-50', chip: 'bg-emerald-600 text-white' },
+  SLIP_RESOLVED: { wrap: 'border-sky-300 bg-sky-50', chip: 'bg-sky-600 text-white' },
+}
+
 const _modelMarkers = ['<<<', '"per_question"', '"dimension_findings"', '"root_cause_hypotheses"', '"improvement_suggestions"']
 const rawStudentAnswer = (text) => {
   const s = String(text ?? '').trim()
@@ -355,6 +390,11 @@ function ExamReport({ report, mode, onBackToDashboard }) {
   const perQuestion = report.per_question ?? []
   const rootCauses = report.root_causes ?? []
   const suggestions = report.suggestions ?? []
+  const crossCheck = Array.isArray(report.cross_check_findings) ? report.cross_check_findings : []
+  const mastery = report.mastery_status ?? null
+  const personaTitle = report.persona_title ?? null
+  const executiveSummary = report.executive_summary ?? null
+  const mentorNote = report.mastery_note ?? null
   const generatedAt = report.generated_at
     ? new Date(report.generated_at).toLocaleDateString('fa-IR', { dateStyle: 'long' })
     : ''
@@ -389,6 +429,83 @@ function ExamReport({ report, mode, onBackToDashboard }) {
           </button>
         </div>
       </section>
+
+      {/* ── کارنامهٔ اشعهٔ ایکس — حکمِ شناختی ── */}
+      {(mastery || personaTitle || crossCheck.length > 0 || executiveSummary) && (
+        <section className="card overflow-hidden p-0">
+          <div className={`px-6 py-5 ${MASTERY_STYLE[mastery]?.head ?? MASTERY_STYLE.UNSTRUCTURED.head}`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-white/25 px-2.5 py-1 text-[10px] font-black text-white">
+                کارنامهٔ اشعهٔ ایکس
+              </span>
+              <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-brand-900">
+                {MASTERY_LABEL[mastery] ?? 'وضعیتِ نامشخص'}
+              </span>
+            </div>
+            {personaTitle && (
+              <h2 className="mt-2 text-xl font-black text-white sm:text-2xl">«{personaTitle}»</h2>
+            )}
+            {executiveSummary && (
+              <p className="mt-2 max-w-3xl text-[13px] font-bold leading-8 text-white/95">{executiveSummary}</p>
+            )}
+          </div>
+
+          {mentorNote && (
+            <div className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-[12px] font-bold leading-7 text-slate-700">
+              {mentorNote}
+            </div>
+          )}
+
+          <div className="p-6">
+            <h3 className="flex items-center gap-2 text-[13px] font-black text-brand-950">
+              <Search className="h-4 w-4 text-brand-600" />
+              شکارِ تناقض — مقایسهٔ پاسخ‌ها با هم
+            </h3>
+            {crossCheck.length === 0 ? (
+              <p className="mt-2 text-[12px] text-slate-500">تناقضِ روشنی میان پاسخ‌هایت پیدا نشد.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {crossCheck.map((f, i) => {
+                  const style = FINDING_STYLE[f.type] ?? FINDING_STYLE.SYNERGY
+                  return (
+                    <li key={i} className={`rounded-2xl border-2 p-4 ${style.wrap}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black ${style.chip}`}>
+                          {FINDING_LABEL[f.type] ?? f.type}
+                        </span>
+                        <p className="text-[13px] font-black text-slate-900">{f.title}</p>
+                      </div>
+                      {f.description && (
+                        <p className="mt-1.5 text-[12px] font-medium leading-7 text-slate-700">{f.description}</p>
+                      )}
+                      {f.resolution && (
+                        <p className="mt-1.5 rounded-xl bg-white/70 p-2 text-[11px] font-bold leading-6 text-emerald-800">
+                          توضیحِ خودت: {f.resolution}
+                        </p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+
+            {perQuestion.some((q) => q.missing_gear) && (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-[12px] font-black text-amber-900">چرخ‌دندهٔ گمشده</p>
+                <ul className="mt-1.5 space-y-1">
+                  {perQuestion
+                    .filter((q) => q.missing_gear)
+                    .map((q, i) => (
+                      <li key={i} className="text-[11px] font-bold leading-6 text-amber-900">
+                        {q.stage_title || `مرحلهٔ ${toFarsiNumber(q.order ?? i + 1)}`}: {q.missing_gear}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── (الف) نمای کلی وضعیت ── */}
       <SectionCard Icon={Layers} title="نمای کلی وضعیت — ابعاد فهم" tone="teal">

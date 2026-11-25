@@ -38,7 +38,7 @@
 ## ۳. چهار قانونِ شناختی
 
 هر قانون **دو بار** پیاده شده است: یک بار در پرامپت (به‌عنوان درخواست از مدل)
-و یک بار در `cognition/rules.py` (به‌عنوان تورِ ایمنیِ قطعی). دلیلش این است که
+و یک بار در `ai/cross_check.py` (به‌عنوان تورِ ایمنیِ قطعی). دلیلش این است که
 مدل می‌تواند تناقضی را که دیده نادیده بگیرد، یا تناقضی بسازد که در داده نیست.
 
 ### قانون ۱ — تضادِ نقاب و شهود (Q2 ↔ Q5)
@@ -63,22 +63,23 @@
 ## ۴. جریانِ چهار‌مرحله‌ای
 
 ```
-POST /api/assessment/generate
-  → موضوع + نقشهٔ مفهومی + ۵ سؤال (پاسخِ درست برای دانش‌آموز پنهان می‌شود)
-  → جلسه ساخته می‌شود، stage = "answering"
+POST /api/assess/start
+  → مفهوم + ۵ مرحله (پاسخِ درست و منطقِ موردانتظار برای دانش‌آموز پنهان می‌شود)
+  → جلسه ساخته می‌شود، status = "active"
 
-   [دانش‌آموز هر ۵ سؤال را پاسخ می‌دهد — بدونِ هیچ بازخوردی]
+   [دانش‌آموز هر ۵ مرحله را پاسخ می‌دهد — بدونِ هیچ بازخوردی]
 
-POST /api/assessment/evaluate
+POST /api/assess/{id}/submit-test
   → همهٔ پاسخ‌ها یک‌جا به مدل، همراهِ سیگنال‌های قطعیِ کد
-  → needs_clarification = false ⇒ stage = "report_ready"
-  → needs_clarification = true  ⇒ stage = "awaiting_clarification"
+  → needs_clarification = false ⇒ status = "completed"
+  → needs_clarification = true  ⇒ status = "awaiting_clarification"
 
-POST /api/assessment/clarify        (فقط اگر بازپرسی باز باشد)
+POST /api/assess/{id}/clarify        (فقط اگر بازپرسی باز باشد)
   → پاسخِ دانش‌آموز ضمیمه می‌شود، حکمِ نهایی صادر می‌شود
   → یافتهٔ SLIP_RESOLVED به کارنامه اضافه می‌شود
 
-GET /api/assessment/{id}  ← کارنامهٔ اشعهٔ ایکس
+GET /api/assess/{id}/exam-report      ← کارنامهٔ اشعهٔ ایکس
+GET /api/assess/{id}/report-pdf       ← همان کارنامه به‌صورتِ PDF
 ```
 
 **چرا پاسخِ درست در سمتِ سرور پنهان می‌شود؟** اگر `correct_option_index` به
@@ -123,121 +124,37 @@ GET /api/assessment/{id}  ← کارنامهٔ اشعهٔ ایکس
 ## ۷. ساختارِ فایل‌ها
 
 ```
-cognition/
-  contract.py      اعتبارسنجی و نرمال‌سازیِ خروجیِ مدل
-  rules.py         چهار قانونِ شناختی — قطعی و آزمون‌پذیر
-  prompts.py       متنِ پرامپت‌ها (قابلِ مرور در گیت)
-  personas.py      پنج پرسونا + برچسب‌های فارسی
-  service.py       تولید / ارزیابی / بازپرسی
-  mock_engine.py   موتورِ آفلاین برای آزمونِ کاملِ زنجیره بدونِ API
-
-api/routes_cognitive.py        چهار اندپوینت + دسترسیِ معلم
+ai/prompt_safe.py      جای‌گذاریِ امنِ متغیر — فقط .replace()، هرگز .format()
+ai/stage_chain.py      تولیدِ پنج مرحله + نرمال‌سازی + زنجیرهٔ اضطراری
+ai/cross_check.py      تحلیلِ مقایسه‌ای — چهار قانون + بازپرسی
+ai/question_generator.py  generate_test_booklet → delegate به stage_chain
+ai/response_analyzer.py   analyze_exam → delegate به cross_check
+api/routes_assessment.py  start / submit-test / clarify / exam-report / report-pdf
+reports/exam_report.py    کارنامه (mastery_status، cross_check_findings، ...)
 frontend/src/pages/
-  CognitiveExamRoom.jsx        آزمونِ پنج‌مرحله‌ای
-  CognitiveClarify.jsx         ایستگاهِ بازپرسی
-  CognitiveReport.jsx          کارنامهٔ اشعهٔ ایکس
-frontend/src/components/cognitive/
-  StageStepper.jsx             استپرِ مرحله‌ها
-  ForbiddenWords.jsx           باکسِ کلماتِ ممنوعه با بررسیِ زنده
-  icons.js                     نمادهای تأییدشدهٔ lucide
-
-tests/test_cognition.py        ۲۲ آزمون برای قرارداد و قواعد
+  ExamRoom.jsx           زنجیرهٔ پنج‌مرحله‌ای + کلماتِ ممنوعه + مودالِ بازپرسی
+  ReportView.jsx         کارنامهٔ اشعهٔ ایکس
+tests/test_stage_chain.py  ۱۷ آزمون: prompt_safe، نرمال‌سازی، قوانین، بازپرسی
 ```
+
+> **حذف‌شده در فاز ۷:** پوشهٔ `cognition/`، `api/routes_cognitive.py` و
+> سه صفحهٔ `Cognitive*.jsx`. منطقشان به `ai/stage_chain.py` + `ai/cross_check.py`
+> منتقل شد و UI به مسیرهای استانداردِ `/exam/:id` و `/report/:id` برگشت.
+> جلسه‌های قدیمی در پایگاه‌داده دست‌نخورده ماندند.
 
 ---
 
-## ۸. آنچه دست‌نخورده ماند
+## ۸. باگِ `.format()` و چرا برای همیشه بسته شد
 
-- **آزمون‌سازِ PDF دبیر** (`/api/teacher/generate-exam-*`) — ابزارِ جداگانه
-- **موتور PDF مرورگری** (`reports/pdf_browser/`) — پایدار و اثبات‌شده
-- **گزارش‌های کیفیِ قدیمی** — مسیرهای `/report/:sessionId` برای آزمون‌های
-  تاریخی هنوز کار می‌کنند
-- **جداولِ دیتابیس** — فقط دو ستونِ JSON اضافه شد (`cognitive_payload`،
-  `cognitive_report`) با مهاجرتِ خودکار؛ هیچ جدول یا داده‌ای حذف نشد
+پرامپت‌ها آکولادِ LaTeX دارند: `\frac{4}{9}`، `\cos^{-1}`، `\begin{bmatrix}`.
+متدِ `str.format` هر آکولاد را یک فیلد می‌بیند، پس `\cos^{-1}` به
+**`KeyError: '-1'`** می‌رسد و کلِ تولیدِ دفترچه می‌شکند — همان خطایی که در لاگ
+به‌صورت `[start-test-attach] booklet generation failed: '-1'` دیده شد.
 
----
+راه‌حل: تابعِ `ai.prompt_safe.fill()` که فقط الگوی دقیقِ `{name}` را جایگزین
+می‌کند و آکولادهای LaTeX را دست نمی‌زند. سه گاردِ رگرسیون:
 
-## ۹. حالتِ mock
-
-با `AI_PROVIDER=mock` کلِ زنجیره بدونِ کلیدِ API و بدونِ شبکه کار می‌کند.
-mock رفتارِ مدل را *تقلید* می‌کند ولی تلاش نمی‌کند هوشمند باشد: پاسخ‌ها را
-با قواعدِ ساختاری می‌سنجد تا نتیجه قابلِ پیش‌بینی و آزمون‌پذیر بماند.
-
-```bash
-AI_PROVIDER=mock uvicorn main:app --port 8000
-```
-
-برای استفاده از OpenRouter واقعی، در `.env`:
-
-```bash
-AI_PROVIDER=openrouter
-OPENROUTER_API_KEY=sk-or-...      # از https://openrouter.ai/keys
-OPENROUTER_MODEL=auto              # ← خودش بهترین مدلِ رایگان را انتخاب می‌کند
-```
-
----
-
-## ۱۰. انتخابِ خودکارِ مدل (`ai/model_catalog.py`)
-
-با `OPENROUTER_MODEL=auto` فهرستِ **زندهٔ** مدل‌های رایگان از
-`https://openrouter.ai/api/v1/models` گرفته و رتبه‌بندی می‌شود (کش: ۱۵ دقیقه).
-
-معیارها، به ترتیبِ وزن:
-
-| معیار | وزن | چرا |
-|---|---|---|
-| `response_format` (JSON) | **+۱۰۰ / −۶۰** | موتور، خروجی را با `json.loads` می‌خواند. مدلِ بدونِ JSON کلِ ارزیابی را می‌شکند. این وزن از حداکثرِ امتیازِ هوش (۵۴) بیشتر است تا هرگز جبران نشود. |
-| شاخصِ هوشِ AA | ×۰.۹ | کیفیتِ محتواییِ تحلیل |
-| حالتِ `reasoning` | +۱۲ | استدلالِ چندمرحله‌ای برای عیب‌یابی لازم است |
-| پنجرهٔ زمینه | +۱۰ | پرامپتِ ارزیاب می‌تواند چند ده هزار توکن شود |
-| فیلترِ محتوا | −۸ | پاسخِ آموزشی نباید رد شود |
-| تازگی | تا +۶ | مدلِ بازنشسته بالا نیاید |
-| روتر (`openrouter/free`) | −۱۵ | هر بار مدلِ تصادفی — غیرقابلِ بازتولید |
-
-مدل‌هایی که خروجیِ غیرمتنی دارند (صوتی، موسیقی، تصویری) پیش از رتبه‌بندی
-حذف می‌شوند.
-
-### دیدن و آزمودنِ مدل‌ها
-
-```bash
-GET  /api/ai/models          # رتبه‌بندی + دلیلِ هر امتیاز
-POST /api/ai/models/refresh  # کراولِ اجباری
-POST /api/ai/models/probe    # صدا زدنِ واقعیِ یک مدل روی پرامپتِ کوچک
-```
-
-`probe` تنها راهِ مطمئن شدن است: «در فهرست بودن» یعنی مدل وجود دارد، نه
-اینکه همین حالا جواب می‌دهد — سهمیهٔ مدل‌های رایگان ممکن است تمام شده باشد.
-
-### آزمونِ واقعیِ مدل‌ها (`ai/model_probe.py`)
-
-فراداده می‌گوید مدل *چه قابلیتی اعلام می‌کند*؛ probe می‌گوید *چه کاری واقعاً
-انجام می‌دهد*. این دو یکی نیستند.
-
-در آزمونِ واقعی روی ۸ مدلِ رایگان:
-
-| مدل | زمان | کیفیتِ فارسی |
-|---|---|---|
-| `particle-ai/particle-1` | **۲.۱s** | ✓ روان |
-| `baidu/ernie-5.5-flash` | **۲.۷s** | ✓ روان |
-| `nvidia/nemotron-3.5-super-vl` (رتبهٔ ۱ فراداده) | ۹s | ✗ ترکیبِ فارسی و لاتین |
-
-مدلی که فراداده‌اش بهترین بود، در عمل بدترین شد. پس انتخابِ نهایی بر پایهٔ
-probe است، نه امتیازِ نظری.
-
-```bash
-POST /api/ai/models/benchmark    # ۸ مدلِ اول را با پرامپتِ فارسی می‌آزماید
-GET  /api/ai/models/recommended  # بهترین مدل بر اساسِ آخرین آزمون
-```
-
-نتیجه ۶ ساعت در `.model_probe_cache.json` کش می‌شود.
-
-معیارِ کیفیت: JSON معتبر (۴۰)، فارسیِ سالم (۳۰)، سرعت (تا ۳۰)،
-جریمهٔ −۳۵ برای خطِ مختلط (ترکیبِ فارسی و لاتین در یک واژه — همان چیزی که
-متن را برای دانش‌آموز بی‌معنا می‌کند).
-
-### نکتهٔ تاریخی
-
-نسخهٔ قبلی یک فهرستِ دستی از نام‌ها را ترجیح می‌داد
-(`llama-3.3-70b`، `qwen-2.5-72b`). هیچ‌کدام دیگر در فهرستِ رایگان نیستند،
-پس هر مدلی به گروهِ آخر می‌افتاد و ترتیب عملاً تصادفی بود. اکنون معیارها
-از دادهٔ زندهٔ خودِ OpenRouter می‌آیند.
+1. `fill` اگر جای‌نگهدارِ واقعی پر نشده باشد، `TemplateError` می‌دهد.
+2. آرگومان‌های LaTeX (`\vec{n}`، `\frac{a}{b}`، `\begin{bmatrix}`) به‌عنوان
+   جای‌نگهدار شناخته نمی‌شوند.
+3. `test_no_format_calls_in_ai_package` هر `.format()` را در `ai/` قرمز می‌کند.

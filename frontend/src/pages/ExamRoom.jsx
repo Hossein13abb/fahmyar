@@ -22,6 +22,23 @@ import { toFarsiNumber } from '../utils/faNumbers'
 
 const answersKey = (id) => `fahmyar_exam_${id}`
 
+// همان قاعدهٔ سمتِ سرور: تطبیقِ واژهٔ کامل، نه زیررشته.
+const _normalizeFa = (t) =>
+  String(t || '')
+    .replace(/[ي]/g, 'ی')
+    .replace(/[ك]/g, 'ک')
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, '')
+    .replace(/\u200c/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const usedForbidden = (answer, word) => {
+  const w = _normalizeFa(word)
+  if (!w) return false
+  const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, 'u').test(_normalizeFa(answer))
+}
+
 // فقط تگ‌های پایه مجازند: svg/rect/circle/line/polyline/text — ساختار کانونیکال اجباری است
 const _ALLOWED_SVG_TAGS = new Set(['svg', 'rect', 'circle', 'line', 'polyline', 'text'])
 const _CANONICAL_SVG_OPEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
@@ -202,6 +219,32 @@ export default function ExamRoom() {
     textareaRef.current?.focus({ preventScroll: true })
   }, [index, current?.id])
 
+  const [clarification, setClarification] = useState(null)
+  const [clarifyText, setClarifyText] = useState('')
+  const [clarifyError, setClarifyError] = useState('')
+
+  const submitClarification = async () => {
+    const text = clarifyText.trim()
+    if (text.length < 3) {
+      setClarifyError('کمی بیشتر توضیح بده — همین جملهٔ کوتاه کافی نیست.')
+      return
+    }
+    setClarifyError('')
+    setSubmitting(true)
+    try {
+      await client.post(
+        `/api/assess/${sessionId}/clarify`,
+        { clarification_response: text },
+        { timeout: 180000 },
+      )
+      localStorage.removeItem(answersKey(sessionId))
+      navigate(`/report/${sessionId}`, { replace: true })
+    } catch (err) {
+      setClarifyError(friendlyError(err))
+      setSubmitting(false)
+    }
+  }
+
   const submitTest = async () => {
     setConfirming(false)
     setSubmitting(true)
@@ -211,8 +254,18 @@ export default function ExamRoom() {
         question_id: q.id,
         response_text: String(answers[q.id] ?? '').trim(),
       }))
-      await client.post(`/api/assess/${sessionId}/submit-test`, { answers: payload }, { timeout: 180000 })
+      const { data } = await client.post(
+        `/api/assess/${sessionId}/submit-test`,
+        { answers: payload },
+        { timeout: 240000 },
+      )
       localStorage.removeItem(answersKey(sessionId))
+      if (data?.needs_clarification && data?.clarification?.mirror_prompt) {
+        // موتور تشخیص داد دو پاسخ در تضادند: پیش از هر حکمی، آینه را نشان بده.
+        setClarification(data.clarification)
+        setSubmitting(false)
+        return
+      }
       navigate(`/report/${sessionId}`, { replace: true })
     } catch (err) {
       setError(friendlyError(err))
@@ -325,11 +378,13 @@ export default function ExamRoom() {
 
       {/* ── کارت سؤال ── */}
       <div className="card border-brand-100/80 p-6 sm:p-8">
-        <div className="flex items-center justify-between gap-3 border-b border-brand-100/70 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-100/70 pb-4">
           <p className="text-[13px] font-black text-brand-700">سؤال {toFarsiNumber(index + 1)} از {toFarsiNumber(total)}</p>
-          <span className="inline-flex items-center gap-2 text-[10px] font-bold text-slate-400">
-            آزمون جامع تشخیصی
-          </span>
+          {current.stage_title && (
+            <span className="rounded-full bg-brand-50 px-3 py-1 text-[11px] font-black text-brand-800 ring-1 ring-brand-200">
+              {current.stage_title}
+            </span>
+          )}
         </div>
 
         <div className="mt-5 text-[16px] font-bold leading-9 text-brand-950">
@@ -348,7 +403,75 @@ export default function ExamRoom() {
           </figure>
         )}
 
-        <label htmlFor="answer" className="label mt-6">پاسخ شما</label>
+        {Array.isArray(current.forbidden_words) && current.forbidden_words.length > 0 && (
+          <div className="mt-5 rounded-2xl border-2 border-rose-300 bg-rose-50 p-4">
+            <p className="flex items-center gap-2 text-[12px] font-black text-rose-900">
+              <AlertTriangle className="h-4 w-4" />
+              کلماتِ ممنوعه — دستت را می‌بندیم!
+            </p>
+            <p className="mt-1 text-[11px] font-medium leading-6 text-rose-800">
+              توضیحت را باید بدونِ این کلمات بنویسی. اگر یکی‌شان را به کار ببری، سیستم خودش تشخیص می‌دهد:
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {current.forbidden_words.map((w) => {
+                const used = usedForbidden(currentAnswer, w)
+                return (
+                  <span
+                    key={w}
+                    className={[
+                      'rounded-lg px-2 py-1 text-[11px] font-black ring-1 transition',
+                      used
+                        ? 'bg-rose-600 text-white ring-rose-700'
+                        : 'bg-white text-rose-800 ring-rose-200',
+                    ].join(' ')}
+                  >
+                    {w}
+                    {used ? ' ✕' : ''}
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {Array.isArray(current.options) && current.options.length > 0 && (
+          <fieldset className="mt-5">
+            <legend className="label">یکی از گزینه‌ها را انتخاب کن</legend>
+            <div className="mt-2 grid gap-2">
+              {current.options.map((opt, i) => {
+                const selected = String(currentAnswer).trim() === String(opt).trim()
+                return (
+                  <button
+                    key={`${current.id}-opt-${i}`}
+                    type="button"
+                    onClick={() => setAnswer(current.id, String(opt))}
+                    aria-pressed={selected}
+                    className={[
+                      'flex items-start gap-3 rounded-2xl border-2 p-3 text-right transition',
+                      selected
+                        ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-200'
+                        : 'border-slate-200 bg-white hover:border-brand-300 hover:bg-brand-50/40',
+                    ].join(' ')}
+                  >
+                    <span
+                      className={[
+                        'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black',
+                        selected ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-500',
+                      ].join(' ')}
+                    >
+                      {toFarsiNumber(i + 1)}
+                    </span>
+                    <span className="text-[13px] font-bold leading-7 text-slate-800">{opt}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
+        )}
+
+        <label htmlFor="answer" className="label mt-6">
+          {Array.isArray(current.options) && current.options.length > 0 ? 'توضیحِ خودت (اختیاری)' : 'پاسخ شما'}
+        </label>
         <textarea
           id="answer"
           ref={textareaRef}
@@ -424,6 +547,58 @@ export default function ExamRoom() {
                 className="inline-flex items-center gap-2 rounded-2xl bg-emerald-700 px-5 py-2.5 font-black text-white hover:bg-emerald-800"
               >
                 <ClipboardCheck className="h-4 w-4" /> ثبت و تحلیل
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── مودالِ بازپرسی (Cross-Check) ── */}
+      {clarification && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-brand-950/60 p-4 sm:items-center">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black text-amber-800">
+                ایستگاهِ بازپرسی
+              </span>
+            </div>
+            <h2 className="mt-3 text-[16px] font-black text-brand-950">
+              یک لحظه — دو حرفت با هم نمی‌خوانند
+            </h2>
+            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] font-bold leading-8 text-amber-950">
+              {clarification.mirror_prompt}
+            </div>
+            {Array.isArray(clarification.contradicting_questions) &&
+              clarification.contradicting_questions.length > 0 && (
+                <p className="mt-2 text-[11px] font-bold text-slate-500">
+                  مرحله‌های درگیر: {clarification.contradicting_questions.map((n) => toFarsiNumber(n)).join(' و ')}
+                </p>
+              )}
+            <label htmlFor="clarify" className="label mt-4">
+              خودت روشن کن — کدام یکی را واقعاً باور داری؟
+            </label>
+            <textarea
+              id="clarify"
+              rows={4}
+              className="input resize-y leading-8"
+              placeholder="مثلاً: در تست بی‌دقتی کردم؛ منظورِ اصلی‌ام این بود که…"
+              value={clarifyText}
+              onChange={(e) => setClarifyText(e.target.value)}
+            />
+            {clarifyError && (
+              <p className="mt-2 rounded-xl bg-rose-50 p-2 text-[11px] font-bold text-rose-800" role="alert">
+                {clarifyError}
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={submitClarification}
+                disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-2xl bg-brand-700 px-5 py-2.5 text-[13px] font-black text-white hover:bg-brand-800 disabled:opacity-60"
+              >
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                ثبتِ توضیح و گرفتنِ کارنامه
               </button>
             </div>
           </div>

@@ -17,11 +17,10 @@ import json
 import re
 from typing import Any, Optional
 
-from config import settings
 from models.concept import Concept
 from models.question import Question, QUESTION_TYPES
 from ai.model_abstraction import get_router, AIProviderError
-from ai.json_sanitize import extract_json_object, safe_parse_json
+from ai.json_sanitize import extract_json_object
 from ai.exam_generator import FALLBACK_FREE_MODELS, JSON_LATEX_ESCAPING_RULE
 
 
@@ -158,111 +157,11 @@ def _stringify_item(item) -> str:
     return str(item or "").strip()
 
 
-_BOOKLET_PROMPT = r"""CRITICAL MATH FORMATTING RULE:
-Every single mathematical symbol, formula, vector, power, matrix, variable, or inverse function MUST be enclosed in inline math `$ ... $` or block math `$$ ... $$`.
-Examples of CORRECT formatting:
-- Inverse trig / functions: `$\cos^{-1}\left(\frac{4}{9}\right)$` (NOT `cos^-1(4/9)`)
-- Matrix inverses & powers: `$T^{-1}$`, `$x^2$` (NOT `T^-1`)
-- Vectors & subscripts: `$\vec{n}_1 = (1, 2, 2)$` (NOT `n_1=(1,2,2)`)
-- Matrices: `$$\begin{bmatrix} 2 & 1 \\ 1 & 3 \end{bmatrix}$$`
-Never output raw LaTeX commands outside of `$` or `$$` delimiters!
-Even inside LaTeX blocks, you MUST use Persian numbers (۰۱۲۳۴۵۶۷۸۹). For example: $۲x + ۵ = ۱۲$.
-CRITICAL JSON ESCAPING RULE: You MUST double-escape all LaTeX commands in the JSON. Write \\begin{bmatrix}, \\frac, \\sqrt, \\theta, \\vec. Never use a single backslash for LaTeX commands, and NEVER escape the $ delimiter itself (write $ ... $, not \$).
-CRITICAL SYLLABUS RULE (Nezam Jadid - نظام جدید 1397 onwards):
-You MUST generate questions exclusively compliant with the updated Iranian 6-3-3 high school textbooks published AFTER 1397 (2018).
+_LATIN_RUN_RE = re.compile(r"[A-Za-z]+")
 
-BANNED NEZAM-GHADIM TOPICS (STRICTLY FORBIDDEN):
-- Integrals (انتگرال) in Hesaban 2.
-- General & Standard Equations of Ellipse/Hyperbola (معادله بیضی و هذلولی) in Geometry 3 - Only focus on the definition/focal properties.
-- Matrix Inverses of 3x3 matrices (معکوس ماتریس 3x3).
-- Obsolete physics topics removed post-1397.
-
-Only include topics explicitly present in current 10th, 11th, and 12th grade Iranian textbooks.
-Do NOT use these concepts under any circumstances.
-SVGs are OPTIONAL. Set `diagram_svg` to `null` if the question can be solved without a picture (e.g., standard algebra, matrices). NEVER attempt to draw precise intersecting coordinates (like a line tangent to a circle) because your coordinate math will be wrong. Only draw simple block diagrams, circuits, or abstract isolated shapes. If you are unsure about the visual alignment, return `null`.
-STRICT DIFFICULTY CALIBRATION:
-- آسان (Easy): Any question requiring direct substitution into a known formula (e.g., dot product for angle between vectors, single-step vector math). NEVER label a plug-and-chug question as Hard.
-- متوسط (Medium): Questions requiring 2 steps or basic concept connection.
-- سخت (Hard): Questions requiring deep multi-step synthesis or hidden traps.
-
-شما «متخصص ارشد طراحی آزمون تشخیصی عمیق (Deep Diagnostic)» برای سیستم فهم‌یار هستید. برای مفهوم «{concept}» ({subject} — پایهٔ {grade}) یک دفترچهٔ آزمون تشخیصی ۹ سؤالی بسازید.
-
-هدف: سنجشِ **فهم عمیق** — نه حفظ کردن، نه به‌خاطرسپاری، نه سؤالِ قابل‌جستجوی گوگل. هر سؤال باید لایهٔ دومِ تفکر را بسنجد: دانش‌آموز باید استدلال کند، استدلالِ غلط را نقد کند، یا تناقض شناختی را حل کند.
-
-══════════════ بخش اول — ارتقای سطح شناختی (Deep Diagnostic) ══════════════
-1. **مطلقاً ممنوع: سؤال سطحی و تعریفی (Googleable).** پرسیدنِ تعریف مستقیم («... چیست؟»)، حفظِ فرمول، یا سؤالاتی که با جستجو/حفظ جواب داده می‌شوند، مطلقاً ممنوع است. هر سؤال باید نیاز به استدلال اختصاصیِ همان موقعیت داشته باشد.
-2. **تحلیل استدلال غلط (Flawed Argument) الزامی است.** حداقل دو سؤال (سؤال ۴ و یک سؤال دیگر) باید یک سناریوی واقعیِ مشخص بسازند که در آن یک دانش‌آموز فرضی یک استدلالِ منطقی‌نما اما **غلط** می‌آورد؛ سپس از دانش‌آموز خواسته شود **دقیقاً نقطهٔ فروپاشیِ آن استدلال** را پیدا و با دلیل علمی نقد کند. (مثلاً: «سَن دوستت می‌گوید چون جرم X دو برابر شده، پس اثرش هم دو برابر می‌شود — آیا این استدلال درست است؟ دقیقاً کجا می‌شکند؟»)
-3. **طراحی تناقض شناختی (Cognitive Conflict) الزامی است.** حداقل دو سؤال باید موقعیتی بسازند که شهود اولیهٔ دانش‌آموز با قوانین علمی در تضاد باشد (مثلاً: پدیدهٔ خلاف انتظار روزمره — یک شیء سنگین و سبک هم‌زمان از یک ارتفاع می‌افتند / بادکنک در نیتروژن مایع / آب در خلاء می‌جوشد) و از دانش‌آموز بخواهند بگوید چه اتفاقی می‌افتد و چرا شهودش اشتباه بود.
-4. **پیوند با دنیای واقعی باید عمیقاً ملموس باشد — نه مثال‌های کلیشه‌ای کتاب.** مثلاً در شیمی، تحلیلِ زنگ‌زدگیِ قطعهٔ خاصی در یک خط لولهٔ صنعتی؛ در فیزیک، طراحیِ مدار یک شارژر واقعی یا دمرنگه‌کاری یک آسانسور؛ در زیست، تصمیم‌سازی بالینی در یک کلینیک. حتماً نام موقعیت، شرایط، مواد/ابزار و مشاهدات مشخص باشند.
-5. مشاهدات از تفسیرها جدا باشند: بنویسید «محلول کمرنگ شد» نه «ماده کاهیده شد». هرگز تفسیر علمی را به‌جای مشاهده جا نزنید.
-6. نامِ مفهوم هدف و اصطلاح فنیِ همان مفهوم در متن سؤال نیاید — دانش‌آموز نباید بفهمد کدام بخش درس سنجیده می‌شود.
-7. پاسخ، نیمه‌پاسخ یا مسیر استدلالیِ مورد انتظار در سؤال لو نرود.
-8. سؤال تکراریِ پاسخ‌های قبلی نباشد.
-9. **زبان: تمام صورت سؤالات (فیلد text) و همهٔ فیلدهای متنیِ خروجی باید ۱۰۰٪ فارسیِ روان باشند؛ حتی یک کلمهٔ انگلیسی در فیلد text مجاز نیست.** همهٔ فرمول‌ها و نمادهای ریاضی باید داخل `$ ... $` یا `$$ ... $$` نوشته شوند (مثل `$\\frac{۵\\sqrt{۱۴}}{۱۴}$`، `$\\vec{a}=(۱,۲)$`، `$\\cos^{-1}\\left(\\frac{۴}{۹}\\right)$`) و **داخل این بلوک‌های ریاضی تمام ارقام باید فارسی (۰۱۲۳۴۵۶۷۸۹) باشند** — رندرکنندهٔ تصویریِ PDF و KaTeX این ارقام را کامل پشتیبانی می‌کنند. هیچ فرمولی را با کلمات توصیف نکنید («رادیکال ۷» ممنوع؛ `$\\sqrt{۷}$` درست است). (نکته: اعتبارسنجِ خودکارِ سیستم هر سؤالِ غیر فارسی را رد می‌کند.)
-10. **ممنوعیت ارجاع به شکلِ ناموجود:** در سؤالاتی که diagram_svg آن‌ها null است (یعنی سؤال‌های ۱، ۲، ۴، ۵، ۶، ۷ و ۸)، استفاده از عبارت‌هایی مانند «نمودار زیر»، «شکل زیر» یا «مدار زیر» مطلقاً ممنوع است؛ متن سؤال باید کاملاً مستقل و بدون نیاز به هیچ شکل و نموداری باشد.
-
-══════════════ بخش دوم — مهندسی دقیق SVG و جداول ══════════════
-**قوانین تولید SVG (diagram_svg):**
-الف. فقط و فقط از تگ‌های پایه استفاده کنید: `<svg>`, `<rect>`, `<circle>`, `<line>`, `<polyline>`, `<text>`. استفاده از `<path>`، `<g>`، `<ellipse>`، `<image>`، `<script>` و هر تگ دیگری مطلقاً ممنوع است.
-ب. تگ بازشونده باید دقیقاً این ساختار را داشته باشد (همین ترتیبِ خصیصه‌ها و همین مقادیر):
-   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">`
-ج. تمام شکل‌ها باید استایل درون‌خطیِ ساده داشته باشند (مثل `stroke="black" stroke-width="2" fill="none"`). از `class`، `style` و CSS خارجی پرهیز کنید.
-د. از نوشته‌های فارسی در داخل SVG مطلقاً پرهیز کنید (مرورگرها آن را به‌هم می‌ریزند). فقط لیبل‌های انگلیسی/ریاضی استفاده کنید (A, B, F1, x, y, V, I, R).
-هـ. **قانون عدم هم‌انباشتگی (No Overlap): هیچ عنصر `<text>` نباید روی همان مختصات y یک `<line>` یا داخل فضای یک `<rect>`/`<circle>` قرار گیرد؛ لیبل‌ها حتماً حداقل ۲۰ پیکسل بالاتر یا پایین‌تر از هر خط و کادر باشند.** (اعتبارسنجِ هندسیِ سیستم، SVGای که این فاصله را نقض کند حذف می‌کند.)
-و. برای مرکزچین شدن لیبلِ بالای یک قطعه حتماً از ویژگی `text-anchor="middle"` استفاده کنید و x را برابرِ مرکزِ قطعه بگذارید (مثال: rect در x=180 و عرض 64 → لیبل «R» در x=212 با text-anchor="middle").
-ز. حتماً تگ `</svg>` در انتها بسته شود و SVG کامل و معتبر باشد (تگ‌های self-closing با `/>`).
-ح. نمودار باید واقعاً اطلاعاتی باشد: محورها یا مقادیر کلیدی مشخص، موقعیت‌ها و ابعاد درست.
-
-**قوانین تولید جدول:**
-الف. اگر سؤال نیاز به جدول دارد، از فرمت مارک‌داونِ کاملاً استاندارد با فاصله‌گذاری دقیق استفاده کنید.
-ب. جدول را در فیلد `text` (متن سؤال) قرار دهید، نه در فیلد `diagram_svg`.
-ج. خط جداکنندهٔ جدول حتماً حداقل سه خط تیره داشته باشد (مثل `|---|---|` یا `|----:|:---|`).
-د. هر سطر جدول با `|` شروع و با `|` پایان یابد؛ تعداد خانه‌ها در همهٔ سطرها برابر باشد.
-
-══════════════ ساختار دفترچه (۹ سؤال، به همین ترتیب) ══════════════
-1. مفهومی/استدلالی عمیق — بدون عدد؛ باید زنجیرهٔ علّی را بگوید («چرا» پشت «چرا»).
-2. سناریوی دنیای واقعیِ بسیار ملموس — یک موقعیت صنعتی/کارگاهی/بالینیِ مشخص و خاص (نه «یک گارگاه» کلی).
-3. نموداری/شکلی — SVG در فیلد "diagram_svg" طبق قوانین بخش گرافیک (نمودار خطی/ستونی/مدار ساده)؛ از بخش‌های متن سؤال حتماً به داده‌های همان نمودار ارجاع دهید.
-4. تلهٔ بدفهمی (misconception_trap) — «تحلیل استدلال غلط»: دانش‌آموز فرضی با استناد به یک مثال شهودیِ غلط استدلال می‌کند؛ از دانش‌آموز بخواهید نقطهٔ فروپاشی استدلال را پیدا کند. دقیقاً این بدفهمی را هدف بگیرید: «{misconception}»
-5. محاسباتی/رویه‌ای — داده‌های عددی ساده؛ ریاضی پایهٔ اصلی؛ می‌توانید داده‌ها را در یک جدول مارک‌داونِ استاندارد ارائه کنید؛ هم محاسبه و هم «چرا این رابطه را استفاده کردی» را بخواند.
-6. تناقض شناختی (Cognitive Conflict) — پدیدهٔ خلاف شهود؛ دانش‌آموز باید بگوید چه اتفاقی می‌افتد و چرا شهود اولیه‌اش غلط بود.
-7. تحلیل خطای یک استدلال دیگر — یک پاسخِ نیمه‌کامل و گمراه‌کنندهٔ دانش‌آموز فرضی نشان داده می‌شود؛ دانش‌آموز باید بگوید چه چیزی درست، چه چیزی غلط و چرا.
-8. سناریوی واقعی بین‌درسی — پیوند مشخص با درس پایه/ریاضی (مثلاً درصد و تناسب در شیمی، یا نمودار و شیب در فیزیک) در یک موقعیت واقعی.
-9. نموداری/شکلی — SVG دوم (کاملاً متفاوت از سؤال ۳)؛ طبق قوانین بخش گرافیک.
-
-قواعد قطعی:
-- فقط JSON معتبر برگردانید — هیچ متن توضیحی قبل یا بعد از JSON (حتی یک کلمه) ننویسید. پاسختان باید دقیقاً با «{{» شروع شود و با «}}» پایان یابد.
-- همهٔ متن‌ها فارسیِ روان باشند؛ ریاضی/نمادها و لیبل‌های SVG انگلیسی/لاتین مجازند.
-- exam_type یکی از این‌هاست: conceptual | real_world | diagram | misconception_trap | computational (هیچ مقدار دیگری مجاز نیست).
-- شماره order از ۱ تا ۹.
-- فیلد rubric جدا ندهید؛ برای هر سؤال mapped_propositions را پر کنید.
-
-خروجی دقیقاً این ساختار:
-{{
-  "questions": [
-    {{
-      "order": 1,
-      "exam_type": "conceptual",
-      "text": "...",
-      "difficulty": "easy | medium | hard",
-      "cognitive_type": "recall | conceptual | computational | combined",
-      "mapped_propositions": ["دقیقاً یکی از گزاره‌های فهرست ورودی"],
-      "diagram_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 300\" width=\"100%\" height=\"100%\"><line x1=\"40\" y1=\"250\" x2=\"380\" y2=\"250\" stroke=\"black\" stroke-width=\"2\"/><polyline points=\"40,250 120,200 200,150 380,50\" fill=\"none\" stroke=\"black\" stroke-width=\"2\"/><text x=\"300\" y=\"45\" font-size=\"13\">y</text></svg>  (فقط برای سؤال‌های ۳ و ۹، بقیه null)",
-      "misconception_targeted": "فقط برای misconception_trap، وگرنه null"
-    }}
-  ]
-}}
-
-<<<CONCEPT>>>{concept}<<<END>>>
-<<<PROPOSITION>>>{proposition}<<<END>>>
-<<<MISCONCEPTION>>>{misconception}<<<END>>>
-<<<PROPOSITIONS>>>{propositions_json}<<<END>>>
-<<<WRONG_ANSWER>>>{wrong_answer}<<<END>>>
-"""
 
 _FA_SCRIPT_RE = re.compile(r"[\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF]")
 _EN_WORD_RE = re.compile(r"[A-Za-z]{4,}")   # کلمهٔ انگلیسیِ واقعی (فرمول‌ها و نمادهای تک‌حرفی مستثنا)
-_LATIN_RUN_RE = re.compile(r"[A-Za-z]+")
 
 
 _LATEX_BLOCK_RE = re.compile(r"\$\$[\s\S]*?\$\$|\$[^$]*\$|\\[A-Za-z]+(?:\{[^}]*\})?")
@@ -472,149 +371,19 @@ def _replace_missing_figure_refs(text: str) -> str:
     return s
 
 
-def _booklet_items_to_questions(concept, items, model_name: str, cost: float) -> list["Question"]:
-    """اعتبارسنجی و ساخت اشیای Question دفترچه."""
-    propositions = [_stringify_item(p) for p in (concept.core_propositions or [])]
-    propositions = [p for p in propositions if p]
-    misconceptions = [_stringify_item(m) for m in (concept.common_misconceptions or [])]
-    misconceptions = [m for m in misconceptions if m]
-    fallback_prop = propositions[0] if propositions else "گزارهٔ هدف"
-    questions = []
-    for raw in items:
-        if not isinstance(raw, dict):
-            continue
-        text = str(raw.get("text") or "").strip()
-        if len(text) < 15:
-            continue  # سؤال بی‌معنی را دور بریز
-        if not is_persian_text(text):
-            print(f"[Booklet] English/non-Persian question rejected: {text[:80]!r}")
-            continue  # صورت سؤال باید ۱۰۰٪ فارسی باشد
-        exam_type = str(raw.get("exam_type") or "conceptual").strip().lower()
-        if exam_type not in {"conceptual", "real_world", "diagram", "misconception_trap", "computational", "definitional"}:
-            exam_type = "conceptual"
-        difficulty = str(raw.get("difficulty") or "medium").strip().lower()
-        if difficulty not in {"easy", "medium", "hard"}:
-            difficulty = "medium"
-        cognitive = str(raw.get("cognitive_type") or "conceptual").strip().lower()
-        mapped = [p for p in (raw.get("mapped_propositions") or []) if isinstance(p, str) and p.strip()]
-        if not mapped:
-            mapped = [fallback_prop]
-        order_raw = raw.get("order")
-        try:
-            order_num = int(order_raw) if order_raw is not None else None
-        except (TypeError, ValueError):
-            order_num = None
-        clean_svg = _sanitize_diagram_svg(raw.get("diagram_svg"))
-        # سؤال‌های نموداری (آیتم ۳ و ۹ یا exam_type=diagram) هرگز بدون شکل نمی‌مانند
-        if clean_svg is None and ((order_num in (3, 9)) or str(raw.get("exam_type") or "").strip().lower() == "diagram"):
-            clean_svg = _FALLBACK_SVG
-        diagram_svg = clean_svg
-        # اگر نهایتاً شکلی وجود ندارد، هر ارجاع به «شکل/نمودار/مدار زیر» حذف/جایگزین شود
-        if diagram_svg is None:
-            text = _replace_missing_figure_refs(text)
-        mis_trap = raw.get("misconception_targeted")
-        mapped_mis = [mis_trap.strip()] if isinstance(mis_trap, str) and mis_trap.strip() else (
-            [misconceptions[0]] if exam_type == "misconception_trap" and misconceptions else [])
-        questions.append(Question(
-            concept_id=concept.id,
-            text=text,
-            question_type=exam_type,
-            difficulty=difficulty,
-            cognitive_type=cognitive if cognitive in {"recall", "conceptual", "computational", "combined"} else "conceptual",
-            rubric={
-                "exam_type": exam_type,
-                "diagram_svg": diagram_svg,
-                "required_data": [],
-                "correct_reasoning": f"دانش‌آموز باید با تکیه بر گزارهٔ «{mapped[0]}» استدلال علّی کند.",
-                "misconception_indicators": {m: "نشانهٔ بدفهمی هدف" for m in mapped_mis},
-            },
-            mapped_propositions=mapped,
-            mapped_misconceptions=mapped_mis,
-            source="ai_generated",
-            approval_status="pending",
-            ai_model_used=model_name,
-            generation_cost_usd=cost,
-        ))
-    return questions
-
-
 async def generate_test_booklet(concept, wrong_answer: dict | None = None) -> tuple[list["Question"], str, float]:
-    """دفترچهٔ آزمون تشخیصی ۹ سؤالی برای مفهوم می‌سازد (هرگز دفترچهٔ ناقص را رد نمی‌کند؛ حداقل ۸ سؤال لازم است).
+    """زنجیرهٔ ۵ مرحله‌ایِ فهم‌سنجی را تولید می‌کند.
+
+    منطقِ قدیمیِ «دفترچهٔ ۹ سؤالی» حذف شده است. آن آزمون پنج لایهٔ ذهن را
+    از هم تشخیص نمی‌داد و ارزیابیِ مقایسه‌ای (Cross-Check) بر آن ممکن نبود.
 
     خروجی: (فهرست Questionهای ذخیره‌نشده, model_name, cost_usd)
-    در شکستِ کاملِ مدل، یک دفترچهٔ اضطراریِ حداقلی از الگوهای قطعی ساخته می‌شود تا دانش‌آموز همیشه آزمونی داشته باشد.
+    همیشه دقیقاً ۵ ردیف برمی‌گردد — در بدترین حالت از قالبِ اضطراریِ قطعی.
     """
-    propositions = [_stringify_item(p) for p in (concept.core_propositions or [])]
-    propositions = [p for p in propositions if p]
-    misconceptions = [_stringify_item(m) for m in (concept.common_misconceptions or [])]
-    misconceptions = [m for m in misconceptions if m]
-    wrong_text = ""
-    if wrong_answer:
-        wrong_text = f"مسئله: {wrong_answer.get('problem_text', '')} | پاسخ غلط دانش‌آموز: {wrong_answer.get('student_answer', '')}"
-    prompt = _BOOKLET_PROMPT.format(
-        concept=concept.name,
-        subject=concept.subject,
-        grade=concept.grade,
-        proposition=propositions[0] if propositions else "گزارهٔ هدف",
-        misconception=misconceptions[0] if misconceptions else "بدفهمی رایج مفهوم",
-        propositions_json=json.dumps(propositions, ensure_ascii=False),
-        wrong_answer=wrong_text or "—",
-    )
+    from ai.stage_chain import generate_stage_chain
 
-    router = get_router()
-    data = None
-    model_name, cost = "", 0.0
-    questions: list[Question] = []
-    for attempt in range(3):
-        candidate_model = FALLBACK_FREE_MODELS[attempt % len(FALLBACK_FREE_MODELS)] if attempt > 0 else None
-        try:
-            try:
-                resp = await router.generate(
-                    prompt, "generate_test_booklet", temperature=0.7, model_override=candidate_model
-                )
-            except TypeError:
-                resp = await router.generate(prompt, "generate_test_booklet", temperature=0.7)
-            model_name, cost = resp.model_name, resp.cost_usd
-            data = extract_json_object(resp.text)
-            items = (data or {}).get("questions") if isinstance(data, dict) else None
-            questions = _booklet_items_to_questions(concept, items or [], model_name, cost) if items else []
-            if questions:
-                break
-            print(f"[Booklet] Attempt {attempt + 1}/3 yielded no valid questions; retrying with next model...")
-        except Exception as exc:
-            print(f"[Booklet] Attempt {attempt + 1}/3 model call failed (model={candidate_model or 'default'}): {exc}")
+    return await generate_stage_chain(concept, wrong_answer=wrong_answer)
 
-    if len(questions) < 8:
-        # دفترچهٔ اضطراریِ حداقلی — شش پوششِ اساسی به‌ترتیب
-        print(f"[Booklet] only {len(questions)} valid questions from model; topping up with deterministic template bank.")
-        fallback_prop = (propositions[0] if propositions else "گزارهٔ هدف")
-        fallback_mis = (misconceptions[0] if misconceptions else "بدفهمی رایج مفهوم")
-        template = [
-            ("conceptual", f"یک تکنسین در کارگاه با پدیده‌ای دربارهٔ «{concept.name}» مواجه می‌شود: سیستم را بررسی می‌کند، داده‌ها را ثبت می‌کند و به نتیجهٔ A می‌رسد. شما نتیجهٔ B را درست می‌دانید. نقطهٔ دقیقِ شکستِ استدلالِ A را پیدا کنید و با زنجیرهٔ علّی توضیح دهید چرا اشتباه است.", "hard", "conceptual"),
-            ("real_world", f"در یک خطِ تولید/تعمیرات صنعتی، قطعه‌ای که با «{concept.name}» مرتبط است به‌صورت تکرارشونده خراب می‌شود. شرایط (دما، بار، زمان، جنس) را خودتان فرض کنید، سیستم واقعی را توصیف کنید (چه چیزی مشاهده می‌شود، چه چیزی تفسیر است) و بگویید علت ریشه‌ای چیست و چرا.", "hard", "combined"),
-            ("misconception_trap", f"هم‌کلاسی‌تان می‌گوید: «{fallback_mis}» — او با یک مثال شهودی استدلالش را تقویت می‌کند. دقیقاً بگویید کجای این استدلال می‌شکند و کدام مثالِ نقض آن را فرومی‌پاشد.", "hard", "conceptual"),
-            ("computational", "جدول زیر را برای یک نمونهٔ واقعی بخوانید و مقدار خواسته‌شده را با ذکر تمام مراحل محاسبه کنید؛ سپس بنویسید این رابطه چرا برقرار است:\n| کمیت | مقدار | واحد |\n|---|---|---|\n| V | ۱۲ | ولت |\n| R | ۴ | اهم |", "medium", "computational"),
-            ("conceptual", f"پدیده‌ای را تصور کنید که خلافِ انتظارِ روزمرهٔ شما دربارهٔ «{concept.name}» رخ می‌دهد (مثلاً چیزی که همه انتظار دارند افزایش یابد، ثابت می‌ماند). چه اتفاقی می‌افتد؟ و چرا شهود اولیه‌تان اشتباه بود؟", "medium", "conceptual"),
-            ("conceptual", "یک پاسخِ نیمه‌کاملِ دانش‌آموز فرضی چنین است: «این اتفاق می‌افتد چون نیرو بیشتر می‌شود.» دقیقاً بگویید چه چیزی در این پاسخ درست است، چه چیزی غلط است، و چرا.", "medium", "conceptual"),
-            ("conceptual", f"اگر یک کمیتِ کلیدیِ «{concept.name}» دو برابر شود چه می‌شود؟ پاسخِ «هر دو برابر می‌شوند» را با دلیل رد یا تأیید کنید و حدهای اعتبار این رابطه را بگویید.", "hard", "conceptual"),
-            ("real_world", "پیوندی بین این مفهوم و یک مبحث ریاضی (درصد/تناسب/نمودار و شیب) در یک موقعیت واقعی بسازید؛ داده‌ها را فرض کنید و نشان دهید ابزار ریاضی چگونه به این تصمیم فنی کمک می‌کند.", "hard", "combined"),
-            ("diagram", "مدار/نمودار داده‌شده (ولتاژ در برابر جریان) را بخوانید: شیب خط چه معنایی دارد؟ اگر مقاومت دو برابر شود خط چه تغییری می‌کند و چرا؟ استدلال خود را بنویسید.", "hard", "conceptual"),
-        ]
-        have = len(questions)
-        for i, (et, text, diff, cog) in enumerate(template):
-            if have >= 9:
-                break
-            diagram_svg = _FALLBACK_SVG if et == "diagram" else None
-            questions.append(Question(
-                concept_id=concept.id, text=text, question_type=et, difficulty=diff, cognitive_type=cog,
-                rubric={"exam_type": et, "diagram_svg": diagram_svg, "correct_reasoning": f"با تکیه بر «{fallback_prop}»",
-                        "misconception_indicators": {fallback_mis: "نشانهٔ بدفهمی هدف"} if et == "misconception_trap" else {}},
-                mapped_propositions=[fallback_prop], mapped_misconceptions=[fallback_mis] if et == "misconception_trap" else [],
-                source="ai_generated", approval_status="pending", ai_model_used=model_name or "template-fallback",
-                generation_cost_usd=0.0,
-            ))
-            have += 1
-    return questions[:10], model_name or "mixed", cost
 
 def _validate_payload(data: dict[str, Any], target_proposition: str) -> dict[str, Any]:
     if not isinstance(data, dict):

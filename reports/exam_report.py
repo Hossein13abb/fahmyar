@@ -103,6 +103,10 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             ),
             "confidence": record.get("confidence", 0.0),
             "needs_teacher_review": bool(record.get("needs_teacher_review", False)),
+            # فاز ۷ — کارنامهٔ X-Ray
+            "stage_title": entry.get("stage_title") or record.get("stage_title"),
+            "cognitive_verdict": record.get("cognitive_verdict"),
+            "missing_gear": record.get("missing_gear"),
         })
     per_question.sort(key=lambda q: (q.get("order") or 999))
 
@@ -110,6 +114,21 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
     meta = next((h for h in hypotheses if h.get("type") == "exam_meta"), {})
     dimensions = list(meta.get("dimensions") or [])
     suggestions = list(meta.get("suggestions") or [])
+    cross_check_findings = [
+        {
+            "title": str(f.get("title") or "").strip(),
+            "type": str(f.get("type") or "SYNERGY").upper().strip(),
+            "description": str(f.get("description") or "").strip(),
+            "resolution": f.get("resolution"),
+        }
+        for f in (meta.get("cross_check_findings") or [])
+        if isinstance(f, dict) and str(f.get("title") or "").strip()
+    ]
+    mastery_status = meta.get("mastery_status")
+    persona_title = meta.get("persona_title")
+    executive_summary = meta.get("executive_summary")
+    needs_clarification = bool(meta.get("needs_clarification"))
+    clarification_data = meta.get("clarification_data") if needs_clarification else None
     root_causes = [
         {"concept_name": root_cause_text(h.get("concept_name") or h.get("area")),
          "reasoning": _strip_hedges_local(root_cause_text(h.get("reasoning"))),
@@ -175,7 +194,10 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
         "suggestions": suggestions,
         "sections": {
             "موضوع بررسی": concept_name,
-            "زمینه": "آزمون جامع تشخیصی (۹–۱۰ سؤالی) — بدون بازخورد لحظه‌ای",
+            "زمینه": "زنجیرهٔ فهم‌سنجی ۵ مرحله‌ای (کل به جزء و شکار تناقض) — بدون بازخورد لحظه‌ای",
+            "شکارِ تناقض (Cross-Check)": [
+                f"[{f['type']}] {f['title']}: {f['description']}" for f in cross_check_findings
+            ] or ["تناقضِ روشنی میان پاسخ‌ها پیدا نشد."],
             "نمای کلی وضعیت": dimension_lines,
             "تحلیل تک‌تک سوالات": per_question_lines,
             "تحلیل ریشه‌ای بدفهمی‌ها": root_cause_lines,
@@ -186,6 +208,14 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
                 if q["status"] in (EvidenceStatus.UNCLEAR.value, EvidenceStatus.INSUFFICIENT_EVIDENCE.value)
             ] or ["موردِ مبهمی باقی نمانده است."],
         },
+        # --- فاز ۷: کارنامهٔ X-Ray ---
+        "mastery_status": mastery_status,
+        "persona_title": persona_title,
+        "executive_summary": executive_summary,
+        "cross_check_findings": cross_check_findings,
+        "needs_clarification": needs_clarification,
+        "clarification_data": clarification_data,
+        "mastery_note": meta.get("mastery_note"),
         "exam_score_note": "توجه: نمرهٔ آزمون — نه سنجش فهم. این کارنامه نمره/رتبه/درصد ندارد و فقط شواهدِ کیفی را ثبت می‌کند.",
         "generated_at": datetime.utcnow().isoformat(),
         # عمداً: هیچ نمره/رتبه/درصد/مقایسه‌ای در گزارش وجود ندارد

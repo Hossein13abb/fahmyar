@@ -21,6 +21,7 @@ from config import settings
 from models.question import EvidenceStatus
 from ai.model_abstraction import get_router
 from ai.json_sanitize import extract_json_object
+from ai.prompt_safe import fill
 from reports.fa_map import (
     root_cause_text,
     normalize_dimension,
@@ -331,7 +332,8 @@ async def analyze_response(
     if not response_text:
         return _fallback_records(propositions, "پاسخی ثبت نشده است.")
 
-    prompt = _PROMPT.format(
+    prompt = fill(
+        _PROMPT,
         question_text=getattr(question, "text", ""),
         propositions_json=json.dumps(propositions, ensure_ascii=False),
         rubric_json=json.dumps(rubric, ensure_ascii=False)[:4000],
@@ -434,164 +436,40 @@ _EXAM_PROMPT = """شما «متخصص ارشد تشخیص آموزشیِ سخت�
 
 
 async def analyze_exam(concept_name: str, propositions: list[str], items: list[dict]) -> dict[str, Any]:
-    """تحلیل یکپارچهٔ کل دفترچهٔ آزمون. هرگز استثنا پرتاب نمی‌کند؛ در شکست، شواهد خام حفظ می‌شوند.
+    """تحلیلِ کلِ زنجیرهٔ ۵ مرحله‌ای — delegate به موتورِ مقایسه‌ای (Cross-Check).
 
-    items: [{"question_id": int, "order": int, "exam_type": str, "text": str,
-              "mapped_propositions": [str], "response_text": str}]
+    دیگر سؤال‌ها جداگانه نمره‌دهی نمی‌شوند. ``items`` همان شکلِ قدیمی را دارد:
+    {"question_id", "order", "exam_type", "text", "mapped_propositions",
+     "response_text"} و به‌علاوه می‌تواند "options", "correct_option_index",
+     "forbidden_words", "expected_logic", "stage_title" داشته باشد.
     """
-    propositions = list(propositions or [])
-    items = [i for i in (items or []) if isinstance(i, dict)]
+    from ai.cross_check import analyze_stage_chain
 
-    answers_block = "\n\n".join(
-        f"<<<Q{idx}>>>question_id={i.get('question_id')} | type={i.get('exam_type')} | گزاره={json.dumps(i.get('mapped_propositions') or [], ensure_ascii=False)}\n"
-        f"سؤال: {str(i.get('text') or '').strip()}\n"
-        f"پاسخ دانش‌آموز: {str(i.get('response_text') or '').strip() or '(بدون پاسخ)'}"
-        for idx, i in enumerate(items, start=1)
-    )
-    prompt = _EXAM_PROMPT.format(
-        q_count=len(items),
-        concept_name=concept_name,
-        propositions_json=json.dumps(propositions, ensure_ascii=False),
-        answers_block=answers_block,
-    )
-
-    data: Optional[dict[str, Any]] = None
-    raw_text = ""
-    try:
-        router = get_router()
-        resp = await router.generate(prompt, "analyze_exam", temperature=0.2)
-        raw_text = (getattr(resp, "text", "") or "").strip()
-        data = _extract_json(raw_text)
-    except Exception as exc:
-        print(f"[ExamAnalyzer] model call failed: {exc}")
-
-    if not isinstance(data, dict):
-        # بدنه‌اش خراب است — متن خام را عیناً در هر سؤالِ بی‌جواب می‌نشانیم
-        body = _clean_raw_text(raw_text) if raw_text else "تحلیل‌گر خودکار خروجی نداد؛ جلسه برای معلم محفوظ است."
-        per_question = [
-            _apply_lack_of_knowledge(
-                {
-                    **_decisive_or_clear_record(
-                        {"question_id": i.get("question_id"), "reasoning": body, "confidence": 0.0,
-                         "error_type": "none", "evidence_type": "weak_confirming",
-                         "needs_teacher_review": True, "qualitative_feedback": body},
-                        str((i.get("mapped_propositions") or [f"سؤال #{i.get('question_id')}"])[0]),
-                    ),
-                    "question_id": i.get("question_id"),
-                    "order": i.get("order"),
-                    "exam_type": i.get("exam_type"),
-                    "question_text": str(i.get("text") or "").strip(),
-                },
-                str(i.get("response_text") or ""),
-            )
-            for i in items
-        ]
-        return {
-            "per_question": per_question,
-            "dimension_findings": [
-                {"dimension": "تحلیل یکپارچهٔ آزمون", "status": "UNCLEAR",
-                 "finding": "خروجی مدل قابل‌ساختاردهی نبود؛ متن خام مدل در تحلیل تک‌تک سؤالات پیوست است."},
-            ],
-            "root_cause_hypotheses": [],
-            "improvement_suggestions": ["معلم باید شخصاً این آزمون را بررسی کند؛ تحلیل خودکار قابل‌اتکا نبود."],
-        }
-
-    # ── نرمال‌سازی per_question ──
-    by_id = {int(i.get("question_id")): i for i in items if str(i.get("question_id", "")).isdigit()}
-    per_question = []
-    for q in (data.get("per_question") or []):
-        if not isinstance(q, dict):
+    rows: list[dict[str, Any]] = []
+    answers: dict[int, str] = {}
+    for index, item in enumerate(items or [], start=1):
+        if not isinstance(item, dict):
             continue
         try:
-            qid = int(q.get("question_id"))
+            order = int(item.get("order") or index)
         except (TypeError, ValueError):
-            continue
-        if qid not in by_id:
-            continue  # مدل شناسهٔ نامعتبر/خیالین برگردانده — رکورد را نمی‌پذیریم
-        src = by_id.get(qid) or {}
-        prop = str((src.get("mapped_propositions") or [f"سؤال #{qid}"])[0])
-        record = _decisive_or_clear_record(q, prop)
-        _apply_lack_of_knowledge(record, str(src.get("response_text") or ""))
-        record["question_id"] = qid
-        record["order"] = src.get("order")
-        record["exam_type"] = src.get("exam_type")
-        record["question_text"] = str(src.get("text") or "").strip()
-        per_question.append(record)
+            order = index
+        rows.append(
+            {
+                "question_id": item.get("question_id"),
+                "order": order,
+                "exam_type": item.get("exam_type"),
+                "stage_title": item.get("stage_title"),
+                "text": item.get("text"),
+                "options": item.get("options") or [],
+                "correct_option_index": item.get("correct_option_index"),
+                "forbidden_words": item.get("forbidden_words") or [],
+                "expected_logic": item.get("expected_logic"),
+            }
+        )
+        answers[order] = str(item.get("response_text") or "")
 
-    # هر سؤال بدون رکورد → رکورد حداقلی
-    covered = {q["question_id"] for q in per_question}
-    for i in items:
-        qid = i.get("question_id")
-        if qid not in covered:
-            body = "پاسخی برای این سؤال ثبت نشد یا تحلیل‌گر آن را پوشش نداد."
-            per_question.append(_apply_lack_of_knowledge({
-                "proposition_id": str((i.get("mapped_propositions") or [f"سؤال #{qid}"])[0]),
-                "status": EvidenceStatus.INSUFFICIENT_EVIDENCE.value,
-                "evidence_type": "weak_confirming",
-                "reasoning": body,
-                "confidence": 0.0,
-                "error_type": "none",
-                "needs_teacher_review": True,
-                "qualitative_feedback": body,
-                "question_id": qid,
-                "order": i.get("order"),
-                "exam_type": i.get("exam_type"),
-                "question_text": str(i.get("text") or "").strip(),
-            }, str(i.get("response_text") or "")))
-    per_question.sort(key=lambda q: (q.get("order") or 999))
-
-    # ── نرمال‌سازی ابعاد و ریشه‌ها و پیشنهادها ──
-    dimensions = []
-    seen_dims = set()
-    for d in (data.get("dimension_findings") or []):
-        if not isinstance(d, dict):
-            continue
-        dim = normalize_dimension(d.get("dimension"))
-        raw_finding = _strip_hedges(str(d.get("finding") or "").strip())
-        status = str(d.get("status") or "UNCLEAR").upper().strip()
-        if _has_decisive_misconception_marker(raw_finding + " " + dim):
-            status = EvidenceStatus.NEEDS_REVIEW.value
-        elif status not in _VALID_STATUS:
-            status = EvidenceStatus.UNCLEAR.value
-        finding = fa_text(raw_finding, dimension_fallback(status))
-        if not finding:
-            finding = dimension_fallback(status)
-        key = dim.strip()
-        if key in seen_dims:
-            continue
-        seen_dims.add(key)
-        dimensions.append({"dimension": dim, "status": status, "finding": finding})
-
-    root_causes = []
-    for h in (data.get("root_cause_hypotheses") or []):
-        if not isinstance(h, dict):
-            continue
-        # متنِ اختصاصیِ مدل را عیناً نگه می‌داریم؛ هرگز با جملهٔ ثابت جایگزین نمی‌کنیم
-        area = root_cause_text(h.get("area") or h.get("concept_name"))
-        reasoning = _strip_hedges(root_cause_text(h.get("reasoning")))
-        if not area and not reasoning:
-            continue  # ریشهٔ کاملاً خالی — کارت نمی‌سازیم
-        if not area:
-            area = "عنوان ریشه ثبت نشد — معلم باید شخصاً بررسی کند"
-        if not reasoning:
-            reasoning = "تحلیل ریشه‌ای برای این بند ثبت نشد — معلم باید شخصاً بررسی کند"
-        root_causes.append({"area": area, "concept_name": area, "reasoning": reasoning,
-                            "cross_subject": bool(h.get("cross_subject", False))})
-
-    suggestions = [
-        fa_text(_strip_hedges(str(x).strip()), suggestion_fallback())
-        for x in (data.get("improvement_suggestions") or [])
-        if str(x).strip()
-    ][:6]
-    if not suggestions:
-        suggestions = ["معلم باید بر اساس این آزمون، مسیر مرور پیش‌نیازها را شخصاً تعیین کند."]
-
-    return {
-        "per_question": per_question,
-        "dimension_findings": dimensions,
-        "root_cause_hypotheses": root_causes,
-        "improvement_suggestions": suggestions,
-    }
+    return await analyze_stage_chain(concept_name, rows, answers)
 
 
 def _decisive_or_clear_record(item: dict[str, Any], fallback_prop: str) -> dict[str, Any]:

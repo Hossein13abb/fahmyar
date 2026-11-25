@@ -14,7 +14,6 @@ from datetime import datetime
 
 from api.routes_auth import get_current_user
 from ai.question_generator import generate_test_booklet
-from ai.response_analyzer import analyze_exam
 from config import settings
 from engine.session_manager import SessionManager, SessionError, question_to_student_dict
 from graph.knowledge_graph import load_graph
@@ -81,8 +80,13 @@ def _concept_dict(c: Concept, include_propositions: bool = True) -> dict[str, An
 
 
 def _question_to_exam_dict(q: Question, order: int) -> dict[str, Any]:
-    """خروجی سؤال برای دانش‌آموز در آزمون جامع — بدون rubric، همراه با SVG (اگر باشد)."""
-    return {
+    """خروجی سؤال برای دانش‌آموز در زنجیرهٔ ۵ مرحله‌ای.
+
+    **محرمانه‌ها به فرانت نمی‌روند:** correct_option_index و expected_logic
+    هرگز در این دیکشنری نیستند؛ در submit از ``q.rubric`` خوانده می‌شوند.
+    """
+    rubric = q.rubric or {}
+    data = {
         "id": q.id,
         "order": order,
         "concept_id": q.concept_id,
@@ -91,8 +95,17 @@ def _question_to_exam_dict(q: Question, order: int) -> dict[str, Any]:
         "question_type": q.question_type,
         "difficulty": q.difficulty,
         "cognitive_type": q.cognitive_type,
-        "diagram_svg": (q.rubric or {}).get("diagram_svg"),
+        "stage_title": rubric.get("stage_title"),
+        "exam_type": rubric.get("exam_type") or q.question_type,
+        "diagram_svg": rubric.get("diagram_svg"),
     }
+    options = rubric.get("options")
+    if isinstance(options, list) and options:
+        data["options"] = [str(o) for o in options]
+    forbidden = rubric.get("forbidden_words")
+    if isinstance(forbidden, list) and forbidden:
+        data["forbidden_words"] = [str(w) for w in forbidden]
+    return data
 
 
 def _booklet_ids(session: AssessmentSession) -> list[int]:
@@ -232,7 +245,7 @@ async def start_test(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """شروع آزمون جامع تشخیصی — دفترچهٔ ۹ سؤالی یکجا تولید می‌شود."""
+    """شروع زنجیرهٔ فهم‌سنجی ۵ مرحله‌ای — هر پنج مرحله یکجا تولید می‌شوند."""
     if user.role != "student":
         raise HTTPException(status_code=403, detail="فقط دانش‌آموزان می‌توانند آزمون جامع شروع کنند.")
     concept = db.query(Concept).filter(Concept.id == body.concept_id).first()
@@ -290,6 +303,100 @@ def get_exam(
     return _exam_payload(db, session, questions)
 
 
+def _answer_map(questions: list[Question], answers) -> dict[int, str]:
+    """پاسخ‌ها را از question_id به order نگاشت می‌کند (منبعِ تحلیل: ترتیبِ مرحله)."""
+    id_to_order = {q.id: i + 1 for i, q in enumerate(questions)}
+    return {id_to_order[a.question_id]: a.response_text.strip() for a in answers if a.question_id in id_to_order}
+
+
+def _rows_for(questions: list[Question]) -> list[dict[str, Any]]:
+    """ردیف‌های زنجیره — محرمانه‌ها اینجا از rubric خوانده می‌شوند، نه از فرانت."""
+    rows = []
+    for i, q in enumerate(questions):
+        rubric = q.rubric or {}
+        rows.append(
+            {
+                "question_id": q.id,
+                "order": i + 1,
+                "exam_type": rubric.get("exam_type") or q.question_type,
+                "stage_title": rubric.get("stage_title"),
+                "text": q.text,
+                "options": rubric.get("options") or [],
+                "correct_option_index": rubric.get("correct_option_index"),
+                "forbidden_words": rubric.get("forbidden_words") or [],
+                "expected_logic": rubric.get("expected_logic"),
+            }
+        )
+    return rows
+
+
+def _persist_analysis(
+    session: AssessmentSession,
+    result: dict[str, Any],
+    questions: list[Question],
+    answers: dict[int, str],
+    status: str,
+) -> None:
+    """نتیجهٔ تحلیل را در جلسه می‌نشاند — ساختار سازگار با PDF و گزارش‌های قدیمی."""
+    now_iso = datetime.utcnow().isoformat()
+    by_order = {i + 1: q for i, q in enumerate(questions)}
+    evidence_log = []
+    for record in result.get("per_question") or []:
+        order = record.get("order")
+        question = by_order.get(order)
+        evidence_log.append(
+            {
+                "question_id": record.get("question_id") or (question.id if question else None),
+                "order": order,
+                "exam_type": (question.question_type if question else None),
+                "stage_title": record.get("stage_title"),
+                "question_text": (question.text if question else None),
+                "response": answers.get(order, ""),
+                "answered_at": now_iso,
+                "evidence": [
+                    {
+                        k: v
+                        for k, v in record.items()
+                        if k not in ("order", "question_text", "question_id")
+                    }
+                ],
+            }
+        )
+
+    meta = {
+        "type": "exam_meta",
+        "engine": "stage_chain_5",
+        "question_ids": [q.id for q in questions],
+        "dimensions": result.get("dimension_findings") or [],
+        "suggestions": result.get("improvement_suggestions") or [],
+        "mastery_status": result.get("mastery_status"),
+        "persona_title": result.get("persona_title"),
+        "executive_summary": result.get("executive_summary"),
+        "cross_check_findings": [
+            dict(f) for f in (result.get("cross_check_findings") or []) if isinstance(f, dict)
+        ],
+        "needs_clarification": bool(result.get("needs_clarification")),
+        "clarification_data": result.get("clarification_data"),
+        "mastery_note": result.get("mastery_note"),
+        "signals": result.get("signals") or {},
+        "analyzer": result.get("analyzer"),
+    }
+    root_causes = [
+        {
+            "type": "root_cause",
+            "concept_name": rc.get("area") or rc.get("concept_name") or "",
+            "status": "likely_root_cause",
+            "reasoning": rc.get("reasoning") or "",
+            "cross_subject": rc.get("cross_subject") or "",
+        }
+        for rc in (result.get("root_cause_hypotheses") or [])
+        if isinstance(rc, dict)
+    ]
+    session.evidence_log = evidence_log
+    session.current_hypotheses = [meta] + root_causes
+    session.status = status
+
+
 @router.post("/assess/{session_id}/submit-test")
 async def submit_test(
     session_id: int,
@@ -297,7 +404,11 @@ async def submit_test(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """ثبت نهاییِ آزمون جامع → تحلیل یکپارچه (Holistic) → گزارش تفصیلی."""
+    """ثبتِ زنجیرهٔ ۵ مرحله‌ای → تحلیلِ مقایسه‌ای (Cross-Check).
+
+    اگر موتور تشخیص دهد میان دو پاسخِ دانش‌آموز تناقض است، جلسه **completed
+    نمی‌شود**؛ در وضعیتِ ``awaiting_clarification`` می‌ماند تا پاسخِ بازپرسی برسد.
+    """
     session = db.query(AssessmentSession).filter(AssessmentSession.id == session_id).first()
     if session is None:
         raise HTTPException(status_code=404, detail="آزمون یافت نشد.")
@@ -306,64 +417,115 @@ async def submit_test(
 
     # دوبارثبت: همان گزارش موجود را برگردان (idempotent)
     if session.status == "completed" and session.evidence_log:
-        return build_exam_report(db, session)
+        report = build_exam_report(db, session)
+        report["needs_clarification"] = False
+        return report
 
     questions = _load_booklet(db, session)
     if not questions:
         raise HTTPException(status_code=422, detail="دفترچهٔ این جلسه قابل بازیابی نیست.")
 
-    answers = {a.question_id: a.response_text.strip() for a in body.answers}
+    answers = _answer_map(questions, body.answers)
     concept = db.query(Concept).filter(Concept.id == session.concept_id).first() if session.concept_id else None
-    items = [
-        {
-            "question_id": q.id,
-            "order": i + 1,
-            "exam_type": q.question_type,
-            "text": q.text,
-            "mapped_propositions": list(q.mapped_propositions or []),
-            "response_text": answers.get(q.id, ""),
-        }
-        for i, q in enumerate(questions)
-    ]
-    result = await analyze_exam(
+
+    from ai.cross_check import analyze_stage_chain
+
+    result = await analyze_stage_chain(
         concept.name if concept else "مفهوم",
-        list(concept.core_propositions or []) if concept else [],
-        items,
+        _rows_for(questions),
+        answers,
     )
 
-    now_iso = datetime.utcnow().isoformat()
-    evidence_log = []
-    for record in result["per_question"]:
-        qid = record["question_id"]
-        entry = {
-            "question_id": qid,
-            "order": record.get("order"),
-            "exam_type": record.get("exam_type"),
-            "question_text": record.get("question_text"),
-            "response": answers.get(qid, ""),
-            "answered_at": now_iso,
-            "evidence": [{k: v for k, v in record.items()
-                          if k not in ("order", "exam_type", "question_text")}],
-        }
-        evidence_log.append(entry)
+    needs_clarification = bool(result.get("needs_clarification"))
+    _persist_analysis(
+        session, result, questions, answers,
+        "awaiting_clarification" if needs_clarification else "completed",
+    )
+    db.commit()
+    db.refresh(session)
 
-    meta = {
-        "type": "exam_meta",
-        "question_ids": [q.id for q in questions],
-        "dimensions": result["dimension_findings"],
-        "suggestions": result["improvement_suggestions"],
-    }
-    root_causes = [
-        {"type": "root_cause", "concept_name": rc["area"], "status": "likely_root_cause",
-         "reasoning": rc["reasoning"], "cross_subject": rc["cross_subject"]}
-        for rc in result["root_cause_hypotheses"]
-    ]
-    session.evidence_log = evidence_log
-    session.current_hypotheses = [meta] + root_causes
+    if needs_clarification:
+        clar = result.get("clarification_data") or {}
+        return {
+            "session_id": session.id,
+            "status": session.status,
+            "needs_clarification": True,
+            "clarification": {
+                "contradicting_questions": clar.get("contradicting_questions") or [],
+                "mirror_prompt": clar.get("mirror_prompt") or "",
+            },
+            "mastery_status": result.get("mastery_status"),
+            "persona_title": result.get("persona_title"),
+            "executive_summary": result.get("executive_summary"),
+            "cross_check_findings": [
+            dict(f) for f in (result.get("cross_check_findings") or []) if isinstance(f, dict)
+        ],
+        }
+
+    report = build_exam_report(db, session)
+    report["needs_clarification"] = False
+    return report
+
+
+class ClarifyRequest(BaseModel):
+    clarification_response: str
+
+
+@router.post("/assess/{session_id}/clarify")
+async def submit_clarification(
+    session_id: int,
+    body: ClarifyRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """پاسخِ بازپرسی → بستنِ حلقه و صدورِ گزارشِ نهایی."""
+    session = db.query(AssessmentSession).filter(AssessmentSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(status_code=404, detail="آزمون یافت نشد.")
+    if user.role != "student" or session.student_id != user.id:
+        raise HTTPException(status_code=403, detail="فقط صاحب آزمون می‌تواند پاسخ دهد.")
+    if session.status not in ("awaiting_clarification", "completed"):
+        raise HTTPException(status_code=422, detail="این آزمون در وضعیتِ بازپرسی نیست.")
+
+    text = (body.clarification_response or "").strip()
+    if len(text) < 3:
+        raise HTTPException(status_code=422, detail="پاسخِ بازپرسی خیلی کوتاه است؛ کمی توضیح بده.")
+
+    # ستون JSON تغییرِ درجا (in-place) را ردیابی نمی‌کند؛ یک دیکشنریِ نو
+    # بساز و کلِ فهرست را از نو تخصیص بده، وگرنه هیچ‌چیز ذخیره نمی‌شود.
+    hypotheses = [dict(h) for h in (session.current_hypotheses or []) if isinstance(h, dict)]
+    meta = next((h for h in hypotheses if h.get("type") == "exam_meta"), None)
+    if meta is None:
+        meta = {"type": "exam_meta"}
+    else:
+        hypotheses = [h for h in hypotheses if h.get("type") != "exam_meta"]
+
+    # تناقض با پاسخِ صریحِ دانش‌آموز حل شد: یافتهٔ CONTRADICTION به SLIP_RESOLVED تبدیل می‌شود.
+    findings = []
+    for finding in meta.get("cross_check_findings") or []:
+        if not isinstance(finding, dict):
+            continue
+        item = dict(finding)
+        if item.get("type") == "CONTRADICTION":
+            item["type"] = "SLIP_RESOLVED"
+            item["resolution"] = text[:600]
+        findings.append(item)
+    meta["cross_check_findings"] = findings
+    meta["clarification_response"] = text[:2000]
+    meta["needs_clarification"] = False
+    meta["clarification_data"] = None
+    meta["mastery_note"] = (
+        "تناقضِ میان پاسخ‌هایت را خودت روشن کردی؛ این بهترین نشانهٔ یادگیریِ واقعی است."
+    )
+    session.current_hypotheses = [meta] + hypotheses
+
     session.status = "completed"
     db.commit()
     db.refresh(session)
-    return build_exam_report(db, session)
+    report = build_exam_report(db, session)
+    report["needs_clarification"] = False
+    report["resolved_clarification"] = True
+    return report
 
 
 @router.get("/assess/{session_id}/exam-report")

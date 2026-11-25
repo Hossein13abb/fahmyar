@@ -15,6 +15,7 @@ import re
 from typing import Any, Callable, Optional
 
 from ai.json_sanitize import extract_json_array, restore_latex_commands, safe_parse_json
+from ai.prompt_safe import fill
 from ai.model_abstraction import get_router
 
 logger = logging.getLogger(__name__)
@@ -212,7 +213,8 @@ def build_exam_preview_prompt(
 ) -> str:
     ai_r = max(0, min(100, int(ai_ratio)))
     bank_r = 100 - ai_r
-    return KONKUR_EXAM_SYSTEM_PROMPT.format(
+    return fill(
+        KONKUR_EXAM_SYSTEM_PROMPT,
         syllabus_warning=SYSTEM_SYLLABUS_WARNING,
         ratio_instruction=build_ratio_instruction(ai_r),
         latex_instruction=LATEX_MATH_INSTRUCTION,

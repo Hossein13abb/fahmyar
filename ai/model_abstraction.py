@@ -357,7 +357,10 @@ class OpenRouterProvider(AIProvider):
                 f"{self.base_url}/chat/completions",
                 headers=self._headers(),
                 json=payload,
-                timeout=180,
+                # مهلت هر تلاش از تنظیمات خوانده می‌شود. با ۸ مدلِ نامزد، مهلتِ
+                # ۱۸۰ ثانیه‌ای یعنی بدترین حالت ۲۴ دقیقه — بیشتر از تحملِ هر
+                # درخواستِ HTTP. ۶۰ ثانیه برای یک تولیدِ کامل کافی است.
+                timeout=float(getattr(settings, "OPENROUTER_TIMEOUT_SECONDS", 60) or 60),
             )
         except requests.RequestException as exc:
             raise AIProviderError(f"خطای شبکه در اتصال به OpenRouter (مدل {model}): {exc}", retryable=True) from exc
@@ -543,19 +546,7 @@ class MockProvider(AIProvider):
     name = "mock"
 
     async def generate(self, prompt: str, task_type: str, temperature: float = 0.7) -> AIResponse:
-        if task_type == "cognitive_generate":
-            from cognition.mock_engine import mock_generation
-
-            text = mock_generation(prompt)
-        elif task_type == "cognitive_evaluate":
-            from cognition.mock_engine import mock_evaluation
-
-            text = mock_evaluation(prompt)
-        elif task_type == "cognitive_clarify":
-            from cognition.mock_engine import mock_clarify
-
-            text = mock_clarify(prompt)
-        elif task_type == "generate_question":
+        if task_type == "generate_question":
             text = self._mock_question(prompt)
         elif task_type == "generate_konkur_preview":
             text = self._mock_konkur_preview(prompt)
@@ -825,139 +816,201 @@ class MockProvider(AIProvider):
 
     # --- قالب‌های قطعی ---
     def _mock_test_booklet(self, prompt: str) -> str:
+        """زنجیرهٔ ۵ مرحله‌ایِ نمونه — همان قراردادِ مدلِ واقعی."""
         proposition = _extract_marker(prompt, "PROPOSITION") or "گزارهٔ هدفِ نمونه"
         misconception = _extract_marker(prompt, "MISCONCEPTION") or "بدفهمیِ رایجِ نمونه"
         concept = _extract_marker(prompt, "CONCEPT") or "مفهوم نمونه"
-        svg1 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
-                '<line x1="44" y1="228" x2="372" y2="228" stroke="black" stroke-width="2"/>'
-                '<line x1="44" y1="228" x2="44" y2="40" stroke="black" stroke-width="2"/>'
-                '<rect x="96" y="176" width="36" height="52" fill="none" stroke="black" stroke-width="2"/>'
-                '<rect x="182" y="116" width="36" height="112" fill="none" stroke="black" stroke-width="2"/>'
-                '<rect x="268" y="56" width="36" height="172" fill="none" stroke="black" stroke-width="2"/>'
-                '<text x="114" y="268" font-size="12" text-anchor="middle">A</text>'
-                '<text x="200" y="268" font-size="12" text-anchor="middle">B</text>'
-                '<text x="286" y="268" font-size="12" text-anchor="middle">C</text></svg>')
-        svg2 = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
-                '<circle cx="90" cy="150" r="18" fill="none" stroke="black" stroke-width="2"/>'
-                '<line x1="90" y1="132" x2="90" y2="70" stroke="black" stroke-width="2"/>'
-                '<line x1="90" y1="70" x2="180" y2="70" stroke="black" stroke-width="2"/>'
-                '<rect x="180" y="56" width="64" height="28" fill="none" stroke="black" stroke-width="2"/>'
-                '<line x1="244" y1="70" x2="320" y2="70" stroke="black" stroke-width="2"/>'
-                '<line x1="320" y1="70" x2="320" y2="232" stroke="black" stroke-width="2"/>'
-                '<line x1="320" y1="232" x2="210" y2="232" stroke="black" stroke-width="2"/>'
-                '<circle cx="200" cy="232" r="10" fill="none" stroke="black" stroke-width="2"/>'
-                '<line x1="190" y1="232" x2="90" y2="232" stroke="black" stroke-width="2"/>'
-                '<line x1="90" y1="232" x2="90" y2="168" stroke="black" stroke-width="2"/>'
-                '<text x="212" y="32" font-size="12" text-anchor="middle">R</text>'
-                '<text x="46" y="154" font-size="12" text-anchor="middle">V</text>'
-                '<text x="200" y="280" font-size="12" text-anchor="middle">A</text></svg>')
-        qs = [
-            ("conceptual", f"یک تکنسین تعمیرات، دستگاهی را که با «{concept}» کار می‌کند بررسی کرده و نتیجهٔ A گرفته است؛ مهندس ناظر معتقد است نتیجه A اشتباه است. دقیقاً بنویسید کجای استدلال A می‌شکند و زنجیرهٔ علّیِ درست چیست.", "hard"),
-            ("real_world", f"در خطِ تولید یک کارخانهٔ قطعه‌سازی، یک قطعهٔ مشخص به‌صورت تکرارشونده پس از چند هفته کار می‌سوزد. شرایط زیر را خودتان تکمیل کنید: دمای محیط، جنس قطعه، شدت بار و زمان کارکرد. چه اتفاقی دقیقاً رخ می‌دهد (مشاهده) و علت ریشه‌ای آن چیست (تفسیر)؟", "hard"),
-            ("diagram", "به نمودار داده‌شده نگاه کنید (محورِ عمودی y و سه نمونه A، B، C). کدام نمونه با بقیه سازگار نیست و چرا؟ به محورها و شیب خط‌ها ارجاع دهید.", "medium"),
-            ("misconception_trap", f"هم‌کلاسی شما می‌گوید: «{misconception}» و اضافه می‌کند: «وقتی عدد را بزرگ‌تر می‌کنم خروجی هم بزرگ‌تر می‌شود؛ پس همین رابطه در همهٔ جاها درست است.» دقیقاً نقطهٔ فروپاشی این استدلال را پیدا کنید و یک مثالِ نقض بیاورید.", "hard"),
-            ("computational", "جدول زیر را برای یک مدار/فرایند واقعی بخوانید و مقادیر خواسته‌شده را محاسبه کنید؛ سپس بنویسید چرا این رابطه برقرار است:\n| کمیت | مقدار | واحد |\n|---|---|---|\n| V | ۱۲ | ولت |\n| R | ۴ | اهم |\n| I | ؟ | آمپر |", "easy"),
-            ("conceptual", f"موقعیتی را تصور کنید که خلاف شهود روزمره دربارهٔ «{concept}» است — مثلاً چیزی که انتظار دارید افزایش یابد، اصلاً تغییر نمی‌کند. چه اتفاقی می‌افتد؟ چرا شهود اولیه‌تان گمراهتان کرد؟", "medium"),
-            ("conceptual", "یک دانش‌آموز فرضی در دفترچه‌اش نوشته: «این اتفاق می‌افتد چون نیرو بیشتر می‌شود.» دقیقاً مشخص کنید: چه چیزی در این جمله درست است؟ چه چیزی غلط است؟ چرا؟", "medium"),
-            ("real_world", "یک پیوند مشخص بین این مفهوم و یک مبحث ریاضی دهم/یازدهم (تناسب، درصد، یا شیب نمودار) در یک موقعیت واقعی بسازید؛ داده‌ها را فرض کنید و نشان دهید این ابزار ریاضی چه تصمیمی را در آن موقعیت ممکن می‌کند.", "hard"),
-            ("diagram", "با توجه به مدار/نمودار روبه‌رو (منبع V، مقاومت R و آمپرمتر A): اگر R دو برابر شود چه اتفاقی برای جریان می‌افتد؟ پاسخ خود را فقط با خواندنِ شکل و قانونِ حاکم بنویسید، نه با حفظ کردن.", "hard"),
-        ]
-        items = []
-        for i, (exam_type, text, diff) in enumerate(qs, start=1):
-            diagram = svg1 if i == 3 else (svg2 if i == 9 else None)
-            items.append({
-                "order": i,
-                "exam_type": exam_type,
-                "text": text,
-                "difficulty": diff,
-                "cognitive_type": "conceptual" if exam_type in ("conceptual", "real_world", "diagram") else ("computational" if exam_type == "computational" else "recall"),
+        items = [
+            {
+                "order": 1,
+                "exam_type": "philosophy",
+                "text": (
+                    f"این که در آزمایشِ «{concept}» عددها را جابه‌جا کنید و نتیجه ثابت بماند، "
+                    "به چه ویژگیِ ریشه‌ای در جهانِ فیزیکی برمی‌گردد؟ به زبانِ خودت بگو، "
+                    "بدونِ اینکه به فرمول اشاره کنی."
+                ),
+                "difficulty": "hard",
+                "cognitive_type": "conceptual",
                 "mapped_propositions": [proposition],
-                "diagram_svg": diagram,
-                "misconception_targeted": misconception if exam_type == "misconception_trap" else None,
-            })
+                "forbidden_words": [],
+                "expected_logic": (
+                    "ریشه در تراکمِ مادّه و فشارِ ناشی از وزنِ ستونِ بالایی است، "
+                    "نه در عدد یا نامِ فرمول."
+                ),
+                "diagram_svg": None,
+            },
+            {
+                "order": 2,
+                "exam_type": "mask_mcq",
+                "text": (
+                    f"در سه ظرف با شکل‌های مختلف (باریک، پهن و نامنظم) که سطحِ آزادِ «{concept}» "
+                    "در آن‌ها هم‌ارتفاع است، فشار در کفِ ظرف چگونه است؟"
+                ),
+                "options": [
+                    "در ظرفِ باریک بیشتر است چون ستون بلندتر است",
+                    "در ظرفِ پهن بیشتر است چون مایعِ بیشتری دارد",
+                    "در هر سه ظرف برابر است",
+                    "به جنسِ دیوارهٔ ظرف بستگی دارد",
+                ],
+                "correct_option_index": 3,  # گزینهٔ سوم (یک‌پایه)
+                "difficulty": "medium",
+                "cognitive_type": "conceptual",
+                "mapped_propositions": [proposition],
+                "forbidden_words": [],
+                "expected_logic": "فشار به ارتفاعِ ستون وابسته است؛ شکلِ ظرف دخالتی ندارد.",
+                "diagram_svg": (
+                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">'
+                    '<line x1="40" y1="250" x2="380" y2="250" stroke="black" stroke-width="2"/>'
+                    '<rect x="70" y="120" width="50" height="130" fill="none" stroke="black" stroke-width="2"/>'
+                    '<rect x="175" y="120" width="90" height="130" fill="none" stroke="black" stroke-width="2"/>'
+                    '<rect x="310" y="120" width="50" height="130" fill="none" stroke="black" stroke-width="2"/>'
+                    '<line x1="60" y1="120" x2="370" y2="120" stroke="black" stroke-width="1" stroke-dasharray="5,4"/>'
+                    '<text x="95" y="275" font-size="12" text-anchor="middle">A</text>'
+                    '<text x="220" y="275" font-size="12" text-anchor="middle">B</text>'
+                    '<text x="335" y="275" font-size="12" text-anchor="middle">C</text>'
+                    "</svg>"
+                ),
+            },
+            {
+                "order": 3,
+                "exam_type": "perturbation",
+                "text": (
+                    f"اگر همین آزمایشِ «{concept}» را به ماه ببریم، چه چیزی در نتایج تغییر می‌کند و چه "
+                    "چیزی دست‌نخورده می‌ماند؟ پاسخ را بدونِ نوشتنِ هیچ رابطهٔ ریاضی توضیح بده."
+                ),
+                "difficulty": "hard",
+                "cognitive_type": "conceptual",
+                "mapped_propositions": [proposition],
+                "forbidden_words": [],
+                "expected_logic": (
+                    "وزنِ ستون کم می‌شود ⇒ فشار در همان ارتفاع کمتر؛ اما هندسهٔ ظرف و "
+                    "هم‌ارتفاعیِ سطح‌ها تغییری نمی‌کند."
+                ),
+                "diagram_svg": None,
+            },
+            {
+                "order": 4,
+                "exam_type": "debugging",
+                "text": (
+                    f"امیر می‌گوید: «{misconception}». سارا هم تأیید می‌کند. دقیقاً بگو این استدلال "
+                    "از کجا شروع به غلط شدن می‌کند، و اگر بخواهی با یک مثالِ ساده آن را رد کنی چه می‌گویی؟"
+                ),
+                "difficulty": "hard",
+                "cognitive_type": "combined",
+                "mapped_propositions": [proposition],
+                "forbidden_words": [],
+                "expected_logic": (
+                    "اشتباه در جایگزین کردنِ «کمیتِ کل» به‌جای «ارتفاعِ ستون» است؛ "
+                    "مثالِ نقض: دو ظرف با سطحِ مقطعِ متفاوت و ارتفاعِ برابر."
+                ),
+                "diagram_svg": None,
+            },
+            {
+                "order": 5,
+                "exam_type": "feynman_synthesis",
+                "text": (
+                    f"«{concept}» را برای یک بچهٔ ۱۰ ساله توضیح بده؛ طوری که خودش بتواند با دو لیوان "
+                    "آب آزمایشش را تکرار کند. باید بفهمد چرا و کِی این اتفاق می‌افتد."
+                ),
+                "difficulty": "hard",
+                "cognitive_type": "conceptual",
+                "mapped_propositions": [proposition],
+                "forbidden_words": ["فشار", "چگالی", "فرمول", "قانون", "ارتفاع"],
+                "expected_logic": "وزنِ آبِ روی سر و سنگینیِ آن روی بدن، با مثالِ شنا و دو لیوان.",
+                "diagram_svg": None,
+            },
+        ]
         return json.dumps({"questions": items}, ensure_ascii=False)
 
     def _mock_exam_analysis(self, prompt: str) -> str:
-        answers_raw = _extract_marker(prompt, "ANSWERS") or ""
-        propositions_raw = _extract_marker(prompt, "PROPOSITIONS") or "[]"
-        try:
-            propositions = json.loads(propositions_raw)
-        except json.JSONDecodeError:
-            propositions = ["گزارهٔ هدف"]
-        sections = re.split(r"<<<Q(\d+)>>>", answers_raw)
-        per_question = []
+        """تحلیلِ نمونه با همان قراردادِ Cross-Check (برای AI_PROVIDER=mock)."""
+        m_answers = re.search(r"<<<ANSWERS>>>(.*?)<<<END>>>", prompt, re.DOTALL)
+        answers_raw = m_answers.group(1) if m_answers else ""
+        sections = re.split(r"<<<STAGE (\d+)>>>", answers_raw)
         pairs = list(zip(sections[1::2], sections[2::2])) if len(sections) >= 3 else []
-        for order_str, body in pairs:
-            m_qid = re.search(r"question_id=(\d+)", body)
-            try:
-                qid = int(m_qid.group(1)) if m_qid else int(order_str)
-            except ValueError:
-                qid = int(order_str)
-            text = body.strip()
-            low = text.lower()
-            has_reasoning = any(m in text for m in _REASONING_MARKERS)
-            uncertain = any(m in text for m in _UNCERTAINTY_MARKERS)
-            words = len(text.split())
-            mis_marker = any(w in text for w in ("اشتباه", "غلط", "نادرست", "تضاد", "برعکس", "معکوس", "NEEDS_REVIEW"))
-            if uncertain or words < 4:
-                status, etype, conf = "UNCLEAR", "weak_confirming", 0.25
-                reasoning = "پاسخ بسیار کوتاه یا همراه با عدم اطمینان است — نمی‌توان داوری کرد."
-            elif mis_marker:
-                status, etype, conf = "NEEDS_REVIEW", "strong_contradicting", 0.9
-                reasoning = "دانش‌آموز به اشتباه تصور می‌کند که رابطهٔ فاصله/کمیت خطی و مستقیم است؛ مبانی علمی خلاف آن را نشان می‌دهند."
-            elif has_reasoning and words >= 25:
-                status, etype, conf = "CONFIRMED", "strong_confirming", 0.8
-                reasoning = "استدلال علمی کامل و علّی است."
-            elif has_reasoning:
-                status, etype, conf = "LIKELY_UNDERSTOOD", "strong_confirming", 0.7
-                reasoning = "هستهٔ فهم درست است اما بیان کامل نیست."
-            elif words >= 12:
-                status, etype, conf = "UNCLEAR", "weak_confirming", 0.45
-                reasoning = "پاسخ بدون استدلال صریح داده شده — واژهٔ کلیدی بدون دلیل، شواهد نیست."
-            else:
-                status, etype, conf = "UNCLEAR", "weak_confirming", 0.3
-                reasoning = "پاسخ کوتاه و بدون استدلال صریح است."
-            per_question.append({
-                "question_id": int(qid),
-                "status": status,
-                "evidence_type": etype,
-                "error_type": "conceptual" if status == "NEEDS_REVIEW" else "none",
-                "reasoning": reasoning,
-                "confidence": conf,
-                "needs_teacher_review": status == "UNCLEAR",
-                "qualitative_feedback": reasoning,
-            })
-        wrong = sum(1 for q in per_question if q["status"] == "NEEDS_REVIEW")
-        def _first_status(i: int) -> str:
-            return per_question[i]["status"] if len(per_question) > i else "UNCLEAR"
+        # فقط خطِ «پاسخِ دانش‌آموز» را می‌خوانیم. کلِ بلوک شاملِ فهرستِ کلماتِ
+        # ممنوعه و منطقِ موردانتظار است؛ خواندنِ کلِ بلوک باعث می‌شد mock هر
+        # پاسخِ سالمی را هم «نقضِ کلماتِ ممنوعه» ببیند.
+        def _student_answer(body: str) -> str:
+            for line in body.splitlines():
+                if line.startswith("پاسخِ دانش‌آموز:"):
+                    return line.split(":", 1)[1].strip()
+            return ""
 
-        dimensions = [
-            {"dimension": "درک مفهومی و علّی", "status": _first_status(0),
-             "finding": "بر اساس پاسخ‌های تشریحیِ بخش مفهومی نوشته شد."},
-            {"dimension": "کاربرد در دنیای واقعی", "status": _first_status(1),
-             "finding": "بر اساس سناریوهای کارگاهی و زندگی واقعی نوشته شد."},
-            {"dimension": "مهارت‌های کمی و محاسباتی", "status": _first_status(4),
-             "finding": "بر اساس سؤال محاسباتی و گام‌های حل نوشته شد."},
-            {"dimension": "بازنمایی نموداری و تصویری", "status": _first_status(2),
-             "finding": "بر اساس سؤال نموداری و خواندن محورها نوشته شد."},
-            {"dimension": "مواجهه با تله‌ها و بدفهمی‌ها", "status": _first_status(3),
-             "finding": "بر اساس تلهٔ بدفهمی شایع نوشته شد."},
-            {"dimension": "شفافیت بیان و خودپایشی", "status": _first_status(5),
-             "finding": "بر اساس شفافیت تعریف و بیان دانش‌آموز نوشته شد."},
-        ]
-        root_causes = [
-            {"area": "نسبت و تناسب معکوس ریاضی دهم",
-             "reasoning": "در سؤالات ۵ و ۷، دانش‌آموز با دو برابر شدن مقاومت انتظارِ افزایشِ جریان داشت؛ یعنی تناسب معکوس I = V/R را مانند تناسب مستقیم خوانده است — ریشه در پیش‌نیازِ ریاضی تناسب معکوس است.",
-             "cross_subject": True},
-        ] if wrong else []
-        suggestions = [
-            "ابتدا پیش‌نیازهای ریاضیِ نسبت و توان را مرور کنید (۱۵ دقیقه تمرین هدفمند).",
-            "برای هر گزارهٔ «بدفهمی شناسایی‌شده» یک مثالِ نقضِ شهودی طراحی کنید و خودتان برای یک دوست توضیح دهید.",
-            "یک نمونهٔ واقعی از زندگی روزمره بسازید که در آن قانون/مفهوم کار می‌کند و علت را بلند بلند توضیح دهید.",
-        ]
+        body_by_order = {int(o): _student_answer(b) for o, b in pairs}
+
+        def _words(order: int) -> int:
+            return len(body_by_order.get(order, "").split())
+
+        forbidden_hit = any(w in body_by_order.get(5, "") for w in ("فرمول", "چگالی", "ارتفاع", "قانون"))
+        gave_debug = _words(4) >= 12
+
+        status = "JARGON_DEPENDENT" if forbidden_hit else ("MASTERED" if gave_debug else "PARTIAL_FRAGMENTED")
+        persona = {
+            "JARGON_DEPENDENT": "زندانیِ اصطلاحاتِ کتاب",
+            "MASTERED": "مهندسی که ساعت را بست",
+            "PARTIAL_FRAGMENTED": "تفکرِ جزیره‌ای",
+        }[status]
+
+        per_question = []
+        for order in range(1, 6):
+            words = _words(order)
+            verdict = (
+                "پاسخی ثبت نشد؛ شواهدی برای داوری در این مرحله وجود ندارد." if words == 0
+                else "توضیح کوتاه است ولی جهتِ کلیِ استدلال قابلِ داوری است." if words < 12
+                else "استدلال پیوسته و در جهتِ منطقِ موردانتظار است."
+            )
+            per_question.append({
+                "order": order,
+                "cognitive_verdict": verdict,
+                "missing_gear": None if words >= 12 else "پیوندِ علّی بین ادعا و دلیل",
+                "status": "CONFIRMED" if words >= 12 else "UNCLEAR",
+                "error_type": "none",
+                "evidence_type": "strong_confirming" if words >= 12 else "weak_confirming",
+                "reasoning": verdict,
+                "confidence": 0.7 if words >= 12 else 0.3,
+                "needs_teacher_review": words < 12,
+                "qualitative_feedback": verdict,
+            })
+
+        findings = []
+        if forbidden_hit:
+            findings.append({
+                "title": "شکستنِ قانونِ کلماتِ ممنوعه",
+                "type": "JARGON_VIOLATION",
+                "description": "در توضیحِ ساده به اصطلاحِ تخصصی تکیه کردی، نه به شهودِ خودت.",
+            })
+        if gave_debug:
+            findings.append({
+                "title": "عیب‌یابیِ منسجم",
+                "type": "SYNERGY",
+                "description": "نقدِ استدلالِ غلط را با پیوندِ علّی نوشتی.",
+            })
+
         return json.dumps(
-            {"per_question": per_question, "dimension_findings": dimensions,
-             "root_cause_hypotheses": root_causes, "improvement_suggestions": suggestions},
+            {
+                "needs_clarification": False,
+                "clarification_data": None,
+                "mastery_status": status,
+                "persona_title": persona,
+                "executive_summary": (
+                    "پاسخ‌ها با هم مقایسه شد: زنجیرهٔ استدلال در مرحله‌های میانی منسجم است و "
+                    "نقطهٔ ضعف اصلی در انتقالِ سادهٔ مفهوم دیده می‌شود."
+                ),
+                "cross_check_findings": findings,
+                "per_question": per_question,
+                "dimension_findings": [
+                    {"dimension": "درک مفهومی و علّی", "status": per_question[0]["status"],
+                     "finding": per_question[0]["cognitive_verdict"]},
+                    {"dimension": "مقاومت در برابرِ اصطلاح", "status": "NEEDS_REVIEW" if forbidden_hit else "CONFIRMED",
+                     "finding": "از قانونِ کلماتِ ممنوعه در مرحلهٔ پنجم."},
+                ],
+                "root_cause_hypotheses": [],
+                "improvement_suggestions": [
+                    "همان پدیده را برای یک بچهٔ ۱۰ ساله، بدونِ هیچ اصطلاحِ تخصصی، بازگو کن.",
+                    "یک مثالِ نقض برای بدفهمیِ رایج بساز و خودت آن را رد کن.",
+                ],
+            },
             ensure_ascii=False,
         )
 
