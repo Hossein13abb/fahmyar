@@ -33,26 +33,48 @@ import MathText from '../components/MathText'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { toFarsiNumber } from '../utils/faNumbers'
 
+/**
+ * کارتِ بخش — هر بخش یک «کارتِ پنل» با نوارِ گرادیانتیِ بالاست.
+ *
+ * بدونِ این نوار، همهٔ بخش‌ها یک مستطیلِ تخت با یک آیکونِ کوچک دیده
+ * می‌شدند و صفحه بی‌روح می‌شد. نوار مرجعِ بصریِ هر بخش است.
+ */
 function SectionCard({ Icon, title, tone = 'brand', children, className = '' }) {
   const tones = {
-    brand: 'border-brand-100 bg-white/85',
-    amber: 'border-amber-200/70 bg-amber-50/50',
-    teal: 'border-teal-100 bg-teal-50/40',
+    brand: {
+      rail: 'from-brand-400 via-emerald-400 to-teal-400',
+      head: 'bg-gradient-to-l from-brand-50/80 via-white to-white',
+      icon: 'bg-gradient-to-br from-brand-600 to-emerald-600 text-white shadow-sm',
+      ring: 'ring-slate-200/70',
+    },
+    amber: {
+      rail: 'from-amber-300 via-orange-300 to-calm-400',
+      head: 'bg-gradient-to-l from-amber-50/80 via-white to-white',
+      icon: 'bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm',
+      ring: 'ring-amber-100',
+    },
+    teal: {
+      rail: 'from-teal-300 via-cyan-400 to-brand-400',
+      head: 'bg-gradient-to-l from-teal-50/80 via-white to-white',
+      icon: 'bg-gradient-to-br from-teal-600 to-cyan-600 text-white shadow-sm',
+      ring: 'ring-teal-100',
+    },
   }
-  const iconTones = {
-    brand: 'bg-brand-100 text-brand-800',
-    amber: 'bg-amber-100 text-amber-800',
-    teal: 'bg-teal-100 text-teal-800',
-  }
+  const st = tones[tone] ?? tones.brand
   return (
-    <section className={`card border ${tones[tone]} p-5 ${className}`}>
-      <h2 className="flex items-center gap-2.5 text-[15px] font-black text-brand-950">
-        <span className={`rounded-2xl p-2 ${iconTones[tone]}`}>
-          <Icon className="h-5 w-5" />
-        </span>
-        {title}
-      </h2>
-      <div className="mt-3">{children}</div>
+    <section
+      className={`group relative overflow-hidden rounded-2xl bg-white shadow-panel ring-1 transition-shadow duration-300 hover:shadow-panel-hover ${st.ring} ${className}`}
+    >
+      <span className={`block h-1 w-full bg-gradient-to-l ${st.rail}`} aria-hidden="true" />
+      <div className="p-5">
+        <h2 className="flex items-center gap-2.5 text-[15px] font-black text-brand-950">
+          <span className={`rounded-2xl p-2 ${st.icon}`}>
+            <Icon className="h-5 w-5" />
+          </span>
+          {title}
+        </h2>
+        <div className="mt-3">{children}</div>
+      </div>
     </section>
   )
 }
@@ -488,12 +510,38 @@ const MASTERY_LABEL = {
 }
 
 // هدرِ «کارنامهٔ اشعهٔ ایکس» هم روشن است، هم‌خانواده با بقیهٔ کارت‌ها.
+// هدرِ «کارنامهٔ اشعهٔ ایکس»: گرادیانتِ دو‌رنگ + هاله، نه یک زمینهٔ تک‌رنگ.
 const MASTERY_STYLE = {
-  MASTERED: { head: 'border-emerald-200 bg-emerald-50' },
-  ILLUSION_OF_COMPETENCE: { head: 'border-rose-200 bg-rose-50' },
-  JARGON_DEPENDENT: { head: 'border-orange-200 bg-orange-50' },
-  PARTIAL_FRAGMENTED: { head: 'border-amber-200 bg-amber-50' },
-  UNSTRUCTURED: { head: 'border-slate-200 bg-slate-50' },
+  MASTERED: {
+    head: 'from-emerald-50 via-teal-50/60 to-white',
+    rail: 'from-emerald-400 via-teal-400 to-cyan-400',
+    aurora: 'bg-emerald-300/25',
+    chip: 'bg-emerald-600 text-white',
+  },
+  ILLUSION_OF_COMPETENCE: {
+    head: 'from-rose-50 via-pink-50/50 to-white',
+    rail: 'from-rose-400 via-pink-400 to-fuchsia-400',
+    aurora: 'bg-rose-300/25',
+    chip: 'bg-rose-600 text-white',
+  },
+  JARGON_DEPENDENT: {
+    head: 'from-orange-50 via-amber-50/50 to-white',
+    rail: 'from-orange-400 via-amber-400 to-yellow-400',
+    aurora: 'bg-orange-300/25',
+    chip: 'bg-orange-600 text-white',
+  },
+  PARTIAL_FRAGMENTED: {
+    head: 'from-amber-50 via-calm-50/60 to-white',
+    rail: 'from-amber-400 via-orange-300 to-calm-400',
+    aurora: 'bg-amber-300/25',
+    chip: 'bg-amber-600 text-white',
+  },
+  UNSTRUCTURED: {
+    head: 'from-slate-100 via-slate-50 to-white',
+    rail: 'from-slate-400 via-slate-300 to-slate-200',
+    aurora: 'bg-slate-300/25',
+    chip: 'bg-slate-700 text-white',
+  },
 }
 
 const FINDING_LABEL = {
@@ -627,22 +675,38 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
       {/* ── کارنامهٔ اشعهٔ ایکس — حکمِ شناختی ── */}
       {(mastery || personaTitle || crossCheck.length > 0 || executiveSummary) && (
         <section className="card overflow-hidden p-0">
-          <div className={`border-b px-6 py-5 ${MASTERY_STYLE[mastery]?.head ?? MASTERY_STYLE.UNSTRUCTURED.head}`}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black text-slate-600">
-                کارنامهٔ اشعهٔ ایکس
-              </span>
-              <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-brand-900 shadow-sm">
-                {MASTERY_LABEL[mastery] ?? 'وضعیتِ نامشخص'}
-              </span>
-            </div>
-            {personaTitle && (
-              <h2 className="mt-2 text-xl font-black text-slate-800 sm:text-2xl">«{personaTitle}»</h2>
-            )}
-            {executiveSummary && (
-              <p className="mt-2 max-w-3xl text-[13px] font-bold leading-8 text-slate-600">{executiveSummary}</p>
-            )}
-          </div>
+          {(() => {
+            const st = MASTERY_STYLE[mastery] ?? MASTERY_STYLE.UNSTRUCTURED
+            return (
+              <div className="relative overflow-hidden">
+                <span className={`block h-1.5 w-full bg-gradient-to-l ${st.rail}`} aria-hidden="true" />
+                <div className={`relative border-b border-slate-100 bg-gradient-to-l px-6 py-5 ${st.head}`}>
+                  <span
+                    className={`pointer-events-none absolute -left-10 -top-12 h-40 w-40 rounded-full blur-3xl ${st.aurora}`}
+                    aria-hidden="true"
+                  />
+                  <div className="relative flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-white/70 bg-white/80 px-2.5 py-1 text-[10px] font-black text-slate-600 backdrop-blur">
+                      کارنامهٔ اشعهٔ ایکس
+                    </span>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-black shadow-sm ${st.chip}`}>
+                      {MASTERY_LABEL[mastery] ?? 'وضعیتِ نامشخص'}
+                    </span>
+                  </div>
+                  {personaTitle && (
+                    <h2 className="relative mt-2 text-xl font-black text-brand-950 drop-shadow-sm sm:text-2xl">
+                      «{personaTitle}»
+                    </h2>
+                  )}
+                  {executiveSummary && (
+                    <p className="relative mt-2 max-w-3xl text-[13px] font-bold leading-8 text-slate-600">
+                      {executiveSummary}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
 
           {mentorNote && (
             <div className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-[12px] font-bold leading-7 text-slate-700">
@@ -684,7 +748,7 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
                       <span
                         key={i}
                         title={faText(q.missing_gear, '')}
-                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-300/60 bg-white px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-sm transition hover:border-amber-400 hover:shadow"
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-300/60 bg-gradient-to-l from-white to-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-sm transition hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-md"
                       >
                         <Wrench className="h-3 w-3 shrink-0 text-amber-500" />
                         <span className="truncate">
@@ -775,10 +839,10 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
                   type="button"
                   onClick={() => toggleSuggestion(i)}
                   aria-pressed={done}
-                  className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-right text-[13px] leading-7 transition-all duration-200 ${
+                  className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-right text-[13px] leading-7 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                     done
-                      ? 'border-emerald-200 bg-emerald-50/70 text-emerald-900'
-                      : 'border-brand-100 bg-white text-brand-950 hover:border-brand-300 hover:shadow-sm'
+                      ? 'border-emerald-200 bg-gradient-to-l from-emerald-50 to-teal-50/40 text-emerald-900'
+                      : 'border-brand-100 bg-gradient-to-l from-white to-brand-50/40 text-brand-950 hover:border-brand-300'
                   }`}
                 >
                   <span
@@ -802,7 +866,7 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
           <div className="mt-3 flex items-center gap-2">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-gradient-to-l from-emerald-400 to-teal-500 transition-all duration-500"
+                className="h-full rounded-full bg-gradient-to-l from-emerald-400 via-teal-400 to-brand-500 shadow-[0_0_8px_rgba(46,163,127,0.5)] transition-all duration-500"
                 style={{ width: `${Math.round((doneSuggestions.size / suggestions.length) * 100)}%` }}
               />
             </div>
