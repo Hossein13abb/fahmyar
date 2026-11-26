@@ -12,6 +12,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
+  GitBranch,
+  Eye,
+  ShieldAlert,
   AlertTriangle,
   ArrowLeft,
   BookOpen,
@@ -205,31 +208,75 @@ export function QuestionCard({ q, index, onOpen }) {
 }
 
 // ═══════════════════════ کارتِ شکارِ تناقض ═══════════════════════
+/**
+ * هویتِ رنگیِ کارت‌های تناقض.
+ *
+ * سه خانوادهٔ رنگ، نه پنج رنگِ پراکنده. قاعده: هر خانواده یک معنا دارد و
+ * همهٔ آن‌ها از یک لنگرِ مشترک (زمردیِ برند) شروع یا به آن می‌رسند، پس
+ * کنارِ هم «هم‌خانواده» دیده می‌شوند:
+ *
+ *   زمردی/فیروزه‌ای  →  چیزِ خوبی پیدا شد (هم‌افزایی، حل‌شده)
+ *   کهربایی/نارنجی   →  هشدار (زندانِ اصطلاح)
+ *   رز/قرمز          →  جای آسیب (تناقض، بلوف)
+ *
+ * زمینهٔ کارت خودش رنگی است — نه فقط قابش. قابِ رنگی دورِ سفید، کارت را
+ * «قاب‌بندی‌شده» نشان می‌داد نه «رنگی».
+ */
 const FINDING_LOOK = {
   CONTRADICTION: {
     label: 'تناقض عمیق',
-    badge: 'bg-rose-50 text-rose-700 border-rose-200',
-    edge: 'from-rose-400/70 via-amber-300/60 to-emerald-400/60',
+    Icon: GitBranch,
+    body: 'bg-gradient-to-br from-rose-100 via-rose-50 to-amber-100/70',
+    rail: 'from-rose-400 via-rose-500 to-amber-400',
+    icon: 'from-rose-500 to-rose-600',
+    title: 'text-rose-950',
+    text: 'text-rose-950/80',
+    badge: 'bg-white/85 text-rose-700 ring-1 ring-rose-200',
+    glow: 'bg-rose-300/50',
   },
   JARGON_VIOLATION: {
     label: 'زندانِ اصطلاح',
-    badge: 'bg-amber-50 text-amber-700 border-amber-200',
-    edge: 'from-amber-300/70 via-orange-300/50 to-emerald-400/50',
+    Icon: ShieldAlert,
+    body: 'bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100/70',
+    rail: 'from-amber-400 via-orange-400 to-amber-300',
+    icon: 'from-amber-500 to-orange-500',
+    title: 'text-amber-950',
+    text: 'text-amber-950/80',
+    badge: 'bg-white/85 text-amber-800 ring-1 ring-amber-200',
+    glow: 'bg-amber-300/50',
   },
   BLUFF_DETECTED: {
     label: 'بلوفِ شناخته‌شده',
-    badge: 'bg-rose-50 text-rose-700 border-rose-200',
-    edge: 'from-rose-400/70 via-fuchsia-300/50 to-emerald-400/50',
+    Icon: Eye,
+    body: 'bg-gradient-to-br from-rose-100 via-red-50 to-rose-100/60',
+    rail: 'from-rose-500 via-red-400 to-rose-300',
+    icon: 'from-rose-600 to-red-600',
+    title: 'text-rose-950',
+    text: 'text-rose-950/80',
+    badge: 'bg-white/85 text-rose-800 ring-1 ring-rose-200',
+    glow: 'bg-rose-300/50',
   },
   SYNERGY: {
     label: 'هم‌افزایی',
-    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    edge: 'from-emerald-400/70 via-teal-300/50 to-cyan-400/50',
+    Icon: Sparkles,
+    body: 'bg-gradient-to-br from-emerald-100 via-teal-50 to-cyan-100/60',
+    rail: 'from-emerald-400 via-teal-400 to-cyan-300',
+    icon: 'from-emerald-500 to-teal-600',
+    title: 'text-emerald-950',
+    text: 'text-emerald-950/80',
+    badge: 'bg-white/85 text-emerald-800 ring-1 ring-emerald-200',
+    glow: 'bg-emerald-300/50',
   },
   SLIP_RESOLVED: {
     label: 'حل‌شده در بازپرسی',
-    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    edge: 'from-sky-400/70 via-cyan-300/50 to-emerald-400/50',
+    Icon: CheckCircle2,
+    body: 'bg-gradient-to-br from-sky-100 via-emerald-50 to-teal-100/60',
+    rail: 'from-sky-400 via-emerald-400 to-teal-300',
+    icon: 'from-sky-500 to-emerald-600',
+    title: 'text-teal-950',
+    text: 'text-teal-950/80',
+    badge: 'bg-white/85 text-teal-800 ring-1 ring-teal-200',
+    glow: 'bg-sky-300/50',
   },
 }
 
@@ -238,58 +285,70 @@ export function ContradictionCard({ finding, onTeach, busy = false }) {
   const look = FINDING_LOOK[type] ?? FINDING_LOOK.SYNERGY
   const isContradiction = type === 'CONTRADICTION'
   const resolved = Boolean(rawText(finding?.resolution))
+  const Icon = look.Icon
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-2xl bg-white p-[1.5px] shadow-panel transition-all duration-300 hover:-translate-y-0.5 hover:shadow-panel-hover">
-      {/* لبهٔ گرادیانتی — قابِ نازکِ رنگی دورِ کلِ کارت */}
+    <div
+      className={`group relative flex flex-col overflow-hidden rounded-2xl ${look.body} p-5 shadow-panel ring-1 ring-black/[0.06] transition-all duration-300 hover:-translate-y-1 hover:shadow-panel-hover`}
+    >
+      {/* ریلِ بالای کارت — همان رنگِ خانواده، ولی براق */}
       <span
-        className={`pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br ${look.edge}`}
+        className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-l ${look.rail}`}
         aria-hidden="true"
       />
-      <div className="relative flex flex-1 flex-col rounded-[14px] bg-white p-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="min-w-0 flex-1 text-sm font-bold leading-6 text-slate-800">
-            {finding?.contradiction_title || finding?.title}
-          </p>
-          <span
-            className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black ${
-              resolved ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : look.badge
-            }`}
-          >
-            {resolved ? (
-              <>
-                <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
-                حل‌شده در بازپرسی
-              </>
-            ) : (
-              look.label
-            )}
-          </span>
-        </div>
+      {/* هالهٔ گوشه — زمینه را از «رنگِ تخت» به «رنگِ زنده» می‌برد */}
+      <span
+        className={`pointer-events-none absolute -left-10 -top-12 h-36 w-36 rounded-full blur-3xl ${look.glow}`}
+        aria-hidden="true"
+      />
 
-        {rawText(finding?.description) && (
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">{finding.description}</p>
-        )}
-
-        {rawText(finding?.resolution) && (
-          <div className="mt-3 rounded-xl border border-amber-200/70 bg-gradient-to-br from-amber-50 to-calm-50 p-3 text-xs leading-6 text-slate-700">
-            <span className="font-bold text-amber-900">توضیحِ خودت: </span>
-            {finding.resolution}
-          </div>
-        )}
-
-        {isContradiction && (
-          <button
-            type="button"
-            onClick={() => onTeach?.(finding)}
-            disabled={busy}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-gradient-to-l from-amber-50 to-white px-4 py-2.5 text-xs font-bold text-amber-900 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-400 hover:from-emerald-50 hover:to-white hover:text-emerald-800 hover:shadow-md active:translate-y-0 disabled:opacity-60"
-          >
-            <Sparkles className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-            {busy ? 'معلم دارد تحلیل می‌کند...' : 'حل این تناقض با معلم (چرا تناقض داشتم؟)'}
-          </button>
-        )}
+      <div className="relative flex flex-wrap items-center gap-2">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${look.icon} text-white shadow-sm ring-1 ring-white/40`}
+        >
+          <Icon className="h-4 w-4" strokeWidth={2.4} />
+        </span>
+        <p className={`min-w-0 flex-1 text-sm font-black leading-6 ${look.title}`}>
+          {finding?.contradiction_title || finding?.title}
+        </p>
+        <span
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black shadow-sm ${
+            resolved ? 'bg-white/85 text-emerald-700 ring-1 ring-emerald-200' : look.badge
+          }`}
+        >
+          {resolved ? (
+            <>
+              <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
+              حل‌شده در بازپرسی
+            </>
+          ) : (
+            look.label
+          )}
+        </span>
       </div>
+
+      {rawText(finding?.description) && (
+        <p className={`relative mt-2 text-sm leading-relaxed ${look.text}`}>{finding.description}</p>
+      )}
+
+      {rawText(finding?.resolution) && (
+        <div className="relative mt-3 rounded-xl border border-white/70 bg-white/60 p-3 text-xs leading-6 text-slate-700 shadow-sm backdrop-blur-sm">
+          <span className={`font-black ${look.title}`}>توضیحِ خودت: </span>
+          {finding.resolution}
+        </div>
+      )}
+
+      {isContradiction && (
+        <button
+          type="button"
+          onClick={() => onTeach?.(finding)}
+          disabled={busy}
+          className="relative mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-brand-700 to-emerald-600 px-4 py-2.5 text-xs font-black text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:from-brand-800 hover:to-emerald-700 hover:shadow-lg active:translate-y-0 disabled:opacity-60"
+        >
+          <Sparkles className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
+          {busy ? 'معلم دارد تحلیل می‌کند...' : 'حل این تناقض با معلم (چرا تناقض داشتم؟)'}
+        </button>
+      )}
     </div>
   )
 }

@@ -409,27 +409,51 @@ const DIM_LABEL = {
   simple_communication: 'انتقال ساده',
 }
 
+/** رنگِ کارت‌های «پنج مرحلهٔ زنجیره» — هم‌خانوادهٔ کارت‌های تناقض. */
+const STAGE_TONE = {
+  CORRECT: {
+    card: 'border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-emerald-50/70 to-teal-50/50',
+    title: 'text-emerald-950',
+    text: 'text-emerald-900/70',
+  },
+  HALF_CORRECT: {
+    card: 'border-amber-200/70 bg-gradient-to-br from-amber-50 via-amber-50/70 to-orange-50/50',
+    title: 'text-amber-950',
+    text: 'text-amber-900/70',
+  },
+  WRONG: {
+    card: 'border-rose-200/70 bg-gradient-to-br from-rose-50 via-rose-50/70 to-red-50/50',
+    title: 'text-rose-950',
+    text: 'text-rose-900/70',
+  },
+  INSUFFICIENT_EVIDENCE: {
+    card: 'border-slate-200/80 bg-gradient-to-br from-slate-50 via-slate-50/70 to-brand-50/40',
+    title: 'text-slate-800',
+    text: 'text-slate-600',
+  },
+}
+
 const DIM_STYLE = {
   mastered: {
-    card: 'border-emerald-200 bg-emerald-50/40',
+    card: 'border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-emerald-50/70 to-teal-50/40',
     chip: 'bg-emerald-100 text-emerald-900 ring-emerald-300',
     label: 'تسلط',
     fallback: 'این بُعد با استدلالِ روشن در پاسخ‌ها ثبت شده است.',
   },
   developing: {
-    card: 'border-amber-200 bg-amber-50/40',
+    card: 'border-amber-200/70 bg-gradient-to-br from-amber-50 via-amber-50/70 to-orange-50/40',
     chip: 'bg-amber-100 text-amber-900 ring-amber-300',
     label: 'در حال رشد',
     fallback: 'هستهٔ این بُعد درست است، اما بیان باید کامل‌تر شود.',
   },
   needs_work: {
-    card: 'border-rose-200 bg-rose-50/40',
+    card: 'border-rose-200/70 bg-gradient-to-br from-rose-50 via-rose-50/70 to-red-50/40',
     chip: 'bg-rose-100 text-rose-900 ring-rose-300',
     label: 'نیازمند کار',
     fallback: 'این بُعد بدفهمیِ روشن دارد و باید بازسازی شود.',
   },
   not_assessed: {
-    card: 'border-slate-200 bg-slate-50/60',
+    card: 'border-slate-200/80 bg-gradient-to-br from-slate-50 to-brand-50/30',
     chip: 'bg-slate-100 text-slate-600 ring-slate-300',
     label: 'بدون پاسخ',
     fallback: 'به این مرحله پاسخی نداده است؛ داوری ممکن نیست.',
@@ -758,7 +782,7 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
             )}
 
             {perQuestion.some((q) => q.missing_gear) && (
-              <div className="mt-4 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50/80 to-white p-4">
+              <div className="mt-4 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-100 via-amber-50 to-orange-50/60 p-4 shadow-sm">
                 <p className="flex items-center gap-1.5 text-[12px] font-black text-amber-900">
                   <Wrench className="h-3.5 w-3.5" /> چرخ‌دنده‌های گمشده
                 </p>
@@ -793,17 +817,23 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
       {hasStageEvidence && (
         <SectionCard Icon={Layers} title="ابعاد فهم — پنج مرحلهٔ زنجیره" tone="teal">
           <div className="grid gap-2 md:grid-cols-2">
-            {stageDimensions.map((q, i) => (
-              <div key={i} className="flex items-start gap-3 rounded-2xl border border-teal-100 bg-white/80 p-4">
+            {stageDimensions.map((q, i) => {
+              const tone = STAGE_TONE[validBadgeStatus(q.status)] ?? STAGE_TONE.INSUFFICIENT_EVIDENCE
+              return (
+              <div
+                key={i}
+                className={`flex items-start gap-3 rounded-2xl border p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${tone.card}`}
+              >
                 <Badge status={validBadgeStatus(q.status)} className="mt-0.5 shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-[13px] font-black text-brand-950">{faStageTitle(q, i)}</p>
-                  <p className="mt-1 text-[12px] leading-6 text-slate-600">
+                  <p className={`text-[13px] font-black ${tone.title}`}>{faStageTitle(q, i)}</p>
+                  <p className={`mt-1 text-[12px] leading-6 ${tone.text}`}>
                     {faText(q.cognitive_verdict || q.qualitative_feedback || '', stageFallback(q.status))}
                   </p>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </SectionCard>
       )}
