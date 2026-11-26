@@ -407,6 +407,9 @@ def _is_actionable(text: str) -> bool:
 CHAIN_ROLES = ("root_origin", "bridge")
 #: شدت‌های مجازِ یک گرهٔ پیش‌نیاز
 GAP_SEVERITIES = ("critical", "shaky")
+#: منبعِ داده — «model» یعنی از تحلیلِ مدل، «fallback» یعنی از شواهدِ خودِ آزمون.
+#: UI باید بتواند تفاوت را نشان دهد؛ عددی که از مدل نیامده نباید مثلِ آن دیده شود.
+DATA_SOURCES = ("model", "fallback")
 
 
 def normalize_root_cause_chains(raw: Any) -> list[dict[str, Any]]:

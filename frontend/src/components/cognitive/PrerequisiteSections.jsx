@@ -15,7 +15,15 @@
  * طراحی: تمِ روشنِ EdTech، همهٔ متن‌ها ترازِ دوطرفه، و هیچ استعارهٔ داخلی.
  */
 import { useState } from 'react'
-import { ArrowLeft, Compass, GitBranch, Lightbulb, Sparkles } from 'lucide-react'
+import {
+  ArrowLeft,
+  BookOpen,
+  Compass,
+  GitBranch,
+  Info,
+  Lightbulb,
+  Sparkles,
+} from 'lucide-react'
 
 const faNum = (v) => String(v ?? '').replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)])
 
@@ -29,11 +37,23 @@ const rawText = (value) => String(value ?? '').trim()
  * می‌شوند و خودِ فرمول در یک جزیرهٔ چپ‌به‌راست جدا می‌نشیند تا نه به
  * کلمهٔ قبل بچسبد و نه ترتیبِ جمله را به‌هم بزند.
  */
+/** توکنی که واقعاً فرمول است: حروفِ لاتین + عملگر، بدونِ فاصله. */
+const FORMULA = /^[A-Za-z][A-Za-z0-9_^{}\s./=+\-*()]*[=^/]/u
+
+function isFormula(token) {
+  if (!token || token.length > 24) return false
+  const clean = token.replace(/[،؛.:!؟«»"'()]/g, '')
+  if (!clean || !FORMULA.test(clean)) return false
+  // فقط حروفِ لاتین/عدد/عملگر — اگر حرفِ فارسی داشت، فرمول نیست
+  return /^[A-Za-z0-9_^{}./=+\-*]+$/.test(clean)
+}
+
 function MathAwareText({ text }) {
   const parts = rawText(text).split(/(\$[^$]+\$)/g).filter(Boolean)
   return (
     <>
       {parts.map((part, i) => {
+        // حالتِ اول: مدل خودش دلار گذاشته
         if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
           return (
             <span
@@ -45,7 +65,25 @@ function MathAwareText({ text }) {
             </span>
           )
         }
-        return <span key={i}>{part}</span>
+        // حالتِ دوم: فرمولِ خام مثلِ «I=V/R» که در متنِ فارسی جابه‌جا می‌شود
+        const words = part.split(/(\s+)/)
+        return (
+          <span key={i}>
+            {words.map((w, j) =>
+              isFormula(w) ? (
+                <span
+                  key={j}
+                  dir="ltr"
+                  className="mx-0.5 inline-block rounded bg-slate-100 px-1 font-mono text-[11px] tracking-tight text-slate-800"
+                >
+                  {w}
+                </span>
+              ) : (
+                w
+              ),
+            )}
+          </span>
+        )
       })}
     </>
   )
@@ -65,25 +103,26 @@ function ChainNode({ node, index }) {
     <div
       className={`relative flex-1 rounded-xl border p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
         isRoot
-          ? 'border-rose-300 bg-gradient-to-br from-rose-50 to-amber-50/60 shadow-[0_0_0_3px_rgba(253,164,175,0.18)]'
+          ? 'border-amber-300 bg-gradient-to-br from-amber-50 to-amber-50/40 shadow-[0_0_0_3px_rgba(251,191,36,0.18)]'
           : 'border-indigo-100 bg-white shadow-sm'
       }`}
     >
       {isRoot && (
-        <span className="absolute -top-2 right-3 rounded-full bg-rose-600 px-2 py-0.5 text-[9px] font-black text-white shadow-sm">
+        <span className="absolute -top-2 right-3 rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-black text-white shadow-sm">
           ریشه اولیه لغزش
         </span>
       )}
       <span
         className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black ${
-          isRoot ? 'bg-rose-100 text-rose-800' : 'bg-indigo-50 text-indigo-700'
+          isRoot ? 'bg-amber-100 text-amber-800' : 'bg-indigo-50 text-indigo-700'
         }`}
       >
+        <BookOpen className="h-2.5 w-2.5 shrink-0 opacity-70" aria-hidden="true" />
         {rawText(node.grade_and_subject)}
       </span>
       <p
         className={`mt-1.5 text-justify text-right text-[12px] font-bold leading-6 ${
-          isRoot ? 'text-rose-950' : 'text-slate-700'
+          isRoot ? 'text-amber-950' : 'text-slate-700'
         }`}
       >
         <MathAwareText text={node.concept_name} />
@@ -127,7 +166,7 @@ function RootCauseChain({ chain, index }) {
             {/* پایانِ مسیر: خطای امروز، به‌عنوان گرهِ آخرِ همان زنجیره */}
             <div className="flex-1 rounded-xl border border-rose-200 bg-gradient-to-br from-rose-100 to-rose-50 p-3 shadow-sm">
               <span className="inline-flex items-center gap-1 rounded-md bg-rose-200/70 px-2 py-0.5 text-[10px] font-black text-rose-900">
-                خطای فعلی
+                لغزش مشاهده‌شده
               </span>
               <p className="mt-1.5 text-justify text-right text-[12px] font-black leading-6 text-rose-950">
                 <MathAwareText text={chain.current_error_title} />
@@ -143,6 +182,25 @@ function RootCauseChain({ chain, index }) {
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * نشانِ منبعِ داده.
+ *
+ * زنجیره‌ای که از misconceptions خودِ آزمون ساخته شده، با زنجیره‌ای که مدل
+ * نوشته یکی نیست — و پنهان‌کردنِ این تفاوت، اعتماد را می‌شکند. متن کوتاه
+ * است تا دانش‌آموز را نترساند، ولی صادق است.
+ */
+function SourceNote({ items }) {
+  if (!(items || []).some((c) => c?.generated_by === 'fallback')) return null
+  return (
+    <p className="mt-4 flex items-start gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] leading-5 text-slate-500">
+      <Info className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" aria-hidden="true" />
+      <span className="text-justify text-right">
+        این بخش از مفاهیمِ ثبت‌شدهٔ همین مبحث و پاسخ‌های خودت ساخته شده است.
+      </span>
+    </p>
   )
 }
 
@@ -171,6 +229,8 @@ export function RootCauseAnalysisSection({ chains }) {
       {list.map((chain, i) => (
         <RootCauseChain key={i} chain={chain} index={i} />
       ))}
+
+      <SourceNote items={list} />
     </section>
   )
 }
@@ -238,8 +298,7 @@ function GapCard({ gap, onTeach, busy }) {
         type="button"
         onClick={() => onTeach?.(gap)}
         disabled={busy}
-        className="mt-auto flex w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-l from-brand-700 to-emerald-600 px-4 py-2.5 pt-2.5 text-[11px] font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:from-brand-800 hover:to-emerald-700 hover:shadow-md active:translate-y-0 disabled:opacity-60"
-        style={{ marginTop: '0.75rem' }}
+        className="mt-auto flex w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-l from-brand-700 to-emerald-600 px-4 py-2.5 text-[11px] font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:from-brand-800 hover:to-emerald-700 hover:shadow-md active:translate-y-0 disabled:opacity-60"
       >
         <Sparkles className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
         {busy ? 'معلم دارد آماده می‌کند…' : 'آموزش سریع و ریشه‌ای این گره'}
@@ -288,6 +347,8 @@ export function LearningGapsSection({ gaps, onTeach }) {
           />
         ))}
       </div>
+
+      <SourceNote items={list} />
     </section>
   )
 }

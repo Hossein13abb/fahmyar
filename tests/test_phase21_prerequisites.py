@@ -207,3 +207,111 @@ def test_unknown_gap_id_is_a_404_not_a_silent_first_gap():
     """
     src = _read("api", "routes_tutor.py")
     assert "این گره در کارنامهٔ این آزمون پیدا نشد" in src
+
+
+# ══ فاز ۲۲: سخت‌گیریِ «همیشه رندر شو، ولی هرگز دروغ نگو» ══════════════════
+
+def test_report_never_falls_back_to_hardcoded_foreign_content():
+    """اسپکِ فاز ۲۲ نمونهٔ ثابتِ «کار نیروی متغیر» می‌خواست؛ این ممنوع است.
+
+    دانش‌آموزی که از «قانون اهم» امتحان داده، اگر این متن را ببیند فکر می‌کند
+    ریشهٔ خطایش چیزِ دیگری بوده. fallback باید از شواهدِ همین آزمون بیاید.
+    """
+    # کامنتِ توضیحی این عبارت‌ها را نقل می‌کند؛ پس روی خودِ تابعِ fallback
+    # assert می‌کنیم، نه روی کلِ فایل (درسِ «تستِ ساختاری و کامنت»).
+    import inspect
+
+    from reports import exam_report as module
+
+    source = inspect.getsource(module._fallback_chains) + inspect.getsource(
+        module._fallback_gaps
+    )
+    for foreign in ("نیروی متغیر", "مساحت زیر منحنی", "کار نیروی خالص", "اصطکاک"):
+        assert foreign not in source
+
+
+def test_gap_fallback_is_built_from_this_concept():
+    """گره‌ها از misconceptions همین مفهوم می‌آیند، نه از مفهومِ دیگر."""
+    import json
+
+    from models.concept import Concept
+    from reports.exam_report import _fallback_gaps
+
+    concept = Concept(
+        id=7, name="قانون اهم", subject="physics", grade=11,
+        chapter="فصل جریان الکتریکی", topic="ohm_law",
+        common_misconceptions=json.dumps(
+            [{"misconception": "مقاومت را تابعِ ولتاژ می‌داند",
+              "root_cause": "خلطِ علت و معلول در I=V/R"}],
+            ensure_ascii=False,
+        ),
+    )
+    gaps = _fallback_gaps(concept, [{"order": 3, "status": "WRONG"}])
+    assert gaps
+    assert gaps[0]["generated_by"] == "fallback"
+    assert "مقاومت" in gaps[0]["gap_title"]
+    assert "فیزیک" in gaps[0]["source_topic"]
+
+
+def test_fallback_without_evidence_stays_empty():
+    """بدونِ شاهدِ واقعی، دروغ نمی‌سازیم — همان قراردادِ «باکسِ خالی ممنوع»."""
+    from models.concept import Concept
+    from reports.exam_report import _fallback_chains, _fallback_gaps
+
+    assert _fallback_chains(None, None, []) == []
+    assert _fallback_gaps(None, []) == []
+    bare = Concept(id=99, name="مفهومِ بدونِ داده", subject="math", grade=10)
+    assert _fallback_gaps(bare, []) == []
+
+
+def test_chain_without_cross_grade_prerequisite_is_not_invented():
+    """بدونِ پیش‌نیازِ واقعی در مقطعِ پایین‌تر، زنجیره ساخته نمی‌شود.
+
+    دلیل: زنجیرهٔ تک‌مقطعی در واقع همان «خطای فعلی» است با ظاهرِ تحلیلِ
+    ریشه‌ای. به دانش‌آموز می‌گوید ریشه‌ات پیدا شد، درحالی‌که فقط سؤالِ
+    اشتباهش تکرار شده — بدتر از نبودن.
+    """
+    from models.database import SessionLocal
+    from models.concept import Concept
+    from reports.exam_report import _fallback_chains
+
+    db = SessionLocal()
+    try:
+        # مفهومِ «توان‌های صحیح» (id=1) هیچ یالِ بین‌پایه‌ای ندارد
+        concept = db.query(Concept).filter(Concept.id == 1).first()
+        assert concept is not None
+        chain = _fallback_chains(
+            db, concept, [{"order": 1, "status": "WRONG", "wrong_claim": "یک ادعا"}]
+        )
+        assert chain == []
+    finally:
+        db.close()
+
+
+def test_chain_uses_real_dependency_graph():
+    """زنجیره باید از جدولِ ``concept_dependencies`` بیاید، نه از فهرستِ ثابت.
+
+    برای «قانون اهم» (id=7) گراف، «نسبت و تناسب» و «معادلهٔ درجهٔ اول» را
+    به‌عنوان ابزارِ بین‌درسی ثبت کرده است — همان چیزی که اسپک با متنِ نمونهٔ
+    ساختگی می‌خواست نشان دهد، ولی این‌جا **دادهٔ واقعی** است.
+    """
+    from models.database import SessionLocal
+    from models.concept import Concept
+    from reports.exam_report import _fallback_chains
+
+    db = SessionLocal()
+    try:
+        concept = db.query(Concept).filter(Concept.id == 7).first()
+        chains = _fallback_chains(
+            db, concept,
+            [{"order": 3, "status": "WRONG", "wrong_claim": "ولتاژ بیشتر ⇒ مقاومت بیشتر"}],
+        )
+        assert len(chains) == 1
+        nodes = chains[0]["chain_nodes"]
+        assert nodes[0]["role"] == "root_origin"
+        assert nodes[-1]["concept_name"] == "قانون اهم"
+        # ریشه در مقطعِ پایین‌تر است — وگرنه «بین‌پایه‌ای» دروغ می‌شد
+        assert "دهم" in nodes[0]["grade_and_subject"]
+        assert all(n["grade_and_subject"] for n in nodes)
+    finally:
+        db.close()

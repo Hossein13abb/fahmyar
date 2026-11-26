@@ -9,12 +9,13 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from models.concept import Concept
+from models.concept import Concept, ConceptDependency
 from models.question import AssessmentSession, EvidenceStatus, STATUS_FA
 from ai.brand_terms import PUBLIC_STAGE_TITLES, scrub_deep
 from ai.cross_check import normalize_suggestions
@@ -299,6 +300,247 @@ def _raw_student_answer(entry: dict[str, Any]) -> str:
 _TYPE_ORDER = {"conceptual": 1, "real_world": 2, "diagram": 3, "misconception_trap": 4, "computational": 5, "definitional": 6}
 
 
+# ── فاز ۲۲: پلِ آخر — اگر مدل زنجیره/گره نداد، کارنامه خالی نماند ────────
+# درسِ فاز ۲۰: کارنامه‌ای که بخشش ناپدید می‌شود، بدتر از بخشِ ناقص است، چون
+# دانش‌آموز فکر می‌کند سیستم چیزی برای گفتن نداشته. ولی درسِ این‌جا مکملِ
+# آن است: متنِ **ساختگی** هم دروغ است. اسپکِ فاز ۲۲ می‌خواست یک نمونهٔ ثابتِ
+# فیزیک (کارِ نیروی متغیر) به‌جای دادهٔ خالی نشان داده شود؛ برای دانش‌آموزی که
+# از «قانون اهم» امتحان داده، آن متن یعنی «ریشهٔ خطای تو چیزِ دیگری بود».
+#
+# راهِ درست: fallback از **خودِ شواهدِ همین آزمون** ساخته می‌شود — بدترین
+# سؤال (با تشخیص) به‌عنوان خطای فعلی، و misconceptions ثبت‌شدهٔ همین آزمون
+# به‌عنوان گره‌ها. اگر هیچ شاهدِ واقعی نبود، آرایهٔ خالی برمی‌گردد و UI بخش
+# را رندر نمی‌کند (قراردادِ فاز ۲۱).
+
+def _with_source(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """هر آیتم منبعش را اعلام می‌کند: از مدل آمده یا از شواهدِ خودِ آزمون.
+
+    بدونِ این مهر، «تحلیلِ هوشمند» و «بازسازیِ ساده از داده» در UI یک‌شکل
+    دیده می‌شدند — و این تفاوت برای معلم مهم است.
+    """
+    for item in items:
+        if isinstance(item, dict):
+            item.setdefault("generated_by", "model")
+    return items
+
+
+def _subject_grade_short(concept: Concept | None) -> str:
+    """همان برچسب، بدونِ نامِ فصل — برای گره‌های میانیِ زنجیره.
+
+    وقتی سه گره از یک فصل‌اند، تکرارِ «فصل جریان الکتریکی» در هر سه،
+    تفاوتِ موردِ نظر را می‌پوشاند: دانش‌آموز باید «پایه» را ببیند، نه فصل را.
+    """
+    full = _subject_grade_label(concept)
+    return full.split("•")[0].strip() or full
+
+
+def _subject_grade_label(concept: Concept | None) -> str:
+    """«فیزیک یازدهم • فصل جریان الکتریکی» — از متادیتای مفهوم."""
+    if concept is None:
+        return "مبحثِ فعلی"
+    subject = {
+        "physics": "فیزیک",
+        "chemistry": "شیمی",
+        "math": "ریاضی",
+        "biology": "زیست",
+    }.get(str(concept.subject or "").lower(), str(concept.subject or "").strip())
+    grade = str(concept.grade or "").strip()
+    grade_fa = {str(i): g for i, g in zip(range(1, 13), [
+        "اول", "دوم", "سوم", "چهارم", "پنجم", "ششم", "هفتم", "هشتم",
+        "نهم", "دهم", "یازدهم", "دوازدهم",
+    ])}.get(grade)
+    tail = str(concept.chapter or "").strip()
+    label = " ".join(x for x in (subject, f"پایهٔ {grade_fa}" if grade_fa else "") if x)
+    return f"{label} • {tail}" if tail and label else (tail or label or "مبحثِ فعلی")
+
+
+def _misconception_pool(concept: Concept | None) -> list[dict[str, Any]]:
+    """misconceptions ثبت‌شدهٔ همین مفهوم — منبعِ گره‌های جایگزین."""
+    raw = getattr(concept, "common_misconceptions", None) or []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+    out = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("misconception") or "").strip()
+        root = str(item.get("root_cause") or "").strip()
+        # عنوانِ کارت باید یک «اسمِ گره» باشد؛ توضیحِ داخلِ پرانتز و
+        # دونقطهٔ انتهایی، عنوان را به یک پاراگرافِ نیمه‌کاره تبدیل می‌کند.
+        clean = re.sub(r"\s*[(（][^)）]*[)）]\s*", " ", title).strip(" :،؛.")
+        clean = re.sub(r"\s{2,}", " ", clean)
+        if clean:
+            out.append({"misconception": clean, "root_cause": root or title})
+    return out
+
+
+def _dependency_rows(db: Session, concept: Concept | None) -> list[dict[str, Any]]:
+    """پیش‌نیازهای واقعیِ همین مفهوم از گرافِ ``concept_dependencies``.
+
+    چرا این منبع و نه فهرستِ misconceptions: زنجیرهٔ ریشه‌یابی باید
+    **بین‌پایه‌ای** باشد («کدام گره در پایهٔ پایین‌تر مانع شد»)، و آن رابطه
+    فقط در همین گراف ثبت شده است. misconceptions هر مفهوم، خطاهای *همین*
+    مبحث را می‌گوید، نه ریشهٔ آن را.
+    """
+    if concept is None or db is None:
+        return []
+    rows = (
+        db.query(ConceptDependency)
+        .filter(ConceptDependency.target_concept_id == concept.id)
+        .all()
+    )
+    out = []
+    for dep in rows:
+        prerequisite = (
+            db.query(Concept).filter(Concept.id == dep.source_concept_id).first()
+        )
+        if prerequisite is None:
+            continue
+        out.append(
+            {
+                "concept": prerequisite,
+                "dependency_type": str(dep.dependency_type or "").strip(),
+                "cross_subject": bool(dep.cross_subject),
+            }
+        )
+    # ترتیب: پیش‌نیازِ درسی، بعد ابزارِ بین‌درسی، بعد مرتبط. «لازم است برای
+    # فهمیدن» مهم‌تر از «کمک می‌کند» است و باید نزدیکِ ریشه بنشیند.
+    rank = {"prerequisite": 0, "tool": 1, "related": 2}
+    out.sort(key=lambda d: (rank.get(d["dependency_type"], 3), d["concept"].grade or 99))
+    return out
+
+
+def _is_cross_grade(prerequisite: Concept, concept: Concept) -> bool:
+    """آیا این گره واقعاً در مقطعِ پایین‌تری ساخته می‌شود؟"""
+    try:
+        return int(prerequisite.grade or 0) < int(concept.grade or 0)
+    except (TypeError, ValueError):
+        return False
+
+
+def _fallback_chains(
+    db: Session,
+    concept: Concept | None,
+    per_question: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """زنجیرهٔ جایگزین: پیش‌نیازهای واقعیِ همین مفهوم + وضعیتِ همین آزمون.
+
+    قاعدهٔ صداقت: اگر گرهی در مقطعِ پایین‌تر نداشته باشیم، زنجیره ساخته
+    **نمی‌شود**. زنجیرهٔ تک‌مقطعی همان «خطای فعلی» است با ظاهرِ تحلیلِ ریشه‌ای
+    — و این از نبودنش بدتر است، چون به دانش‌آموز می‌گوید ریشه‌اش پیدا شده
+    درحالی‌که فقط سؤالِ اشتباهش تکرار شده است.
+    """
+    if concept is None or db is None:
+        return []
+    bad = [
+        q for q in per_question
+        if str(q.get("status") or "").upper() in ("WRONG", "HALF_CORRECT")
+    ]
+    bad.sort(
+        key=lambda q: (str(q.get("status") or "").upper() != "WRONG", q.get("order") or 999)
+    )
+    if not bad:
+        return []
+
+    deps = _dependency_rows(db, concept)
+    cross_grade = [d for d in deps if _is_cross_grade(d["concept"], concept)]
+    if not cross_grade:
+        return []
+
+    worst = bad[0]
+    claim = str(worst.get("wrong_claim") or "").strip().strip("«»\"' ")
+    question = str(worst.get("question_text") or "").strip()
+    if claim:
+        error_title = f"در این باور: «{claim[:110]}»"
+    elif question:
+        snippet = question.split(":")[-1].strip() if ":" in question else question
+        error_title = f"لغزش روی این پرسش: «{snippet[:90]}»"
+    else:
+        return []
+
+    # نزدیک‌ترین پیش‌نیازِ بین‌پایه‌ای = ریشه؛ بقیه پلِ میانی تا مبحثِ فعلی.
+    picked = cross_grade[:3]
+    nodes = [
+        {
+            "concept_name": dep["concept"].name,
+            # ریشه برچسبِ کامل می‌گیرد (کجا را باز کنم؟)؛ بقیه فقط پایه.
+            "grade_and_subject": (
+                _subject_grade_label(dep["concept"])
+                if i == 0
+                else _subject_grade_short(dep["concept"])
+            ),
+            "role": "root_origin" if i == 0 else "bridge",
+        }
+        for i, dep in enumerate(picked)
+    ]
+    nodes.append(
+        {
+            "concept_name": concept.name,
+            "grade_and_subject": _subject_grade_short(concept),
+            "role": "bridge",
+        }
+    )
+
+    insight = str(worst.get("diagnostic_insight") or "").strip()
+    missed = str(worst.get("expected_logic_missed") or "").strip()
+    lead = f"«{picked[0]['concept'].name}» در {_subject_grade_label(picked[0]['concept'])} ساخته می‌شود"
+    summary = f"{lead}، و خطای امروز روی همین پایه ایستاده است. "
+    if insight:
+        summary += insight
+    if missed:
+        summary += f" نقطهٔ جاافتاده: {missed}"
+    return [{
+        "current_error_title": error_title,
+        "diagnosis_summary": summary.strip(),
+        "chain_nodes": nodes,
+        "generated_by": "fallback",
+    }]
+
+
+def _fallback_gaps(
+    concept: Concept | None, per_question: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """گره‌های جایگزین از همان استخر، با شدت بر اساسِ وضعیتِ سؤال‌ها."""
+    pool = _misconception_pool(concept)
+    if not pool:
+        return []
+    wrong = sum(
+        1 for q in per_question if str(q.get("status") or "").upper() == "WRONG"
+    )
+    half = sum(
+        1 for q in per_question if str(q.get("status") or "").upper() == "HALF_CORRECT"
+    )
+    label = _subject_grade_label(concept)
+    out = []
+    for i, item in enumerate(pool[:4]):
+        # فقط مهم‌ترین گره «نیازمند یادگیری عمیق» است؛ بقیه «نیازمند تثبیت».
+        # اگر همه critical شوند، نشانِ هشدار ارزشش را از دست می‌دهد و دانش‌آموز
+        # هیچ اولویتی نمی‌بیند.
+        severity = "critical" if (i == 0 and wrong > 0) else "shaky"
+        out.append({
+            "id": f"gap-{i + 1}",
+            "gap_title": item["misconception"],
+            "source_topic": label,
+            "severity": severity,
+            "why_you_slipped": (
+                item["root_cause"]
+                or "این گره در پاسخ‌های همین آزمون، نشانهٔ سستی داد."
+            ),
+            "quick_fix_tip": (
+                f"قبل از حل، یک جمله بنویس: «{item['misconception']}» درست است یا نه — و چرا."
+            ),
+            "generated_by": "fallback",
+        })
+    if wrong == 0 and half == 0:
+        # آزمون یکدست بوده: گره‌ها «تثبیت» می‌شوند، نه «ترمیمِ فوری».
+        for g in out:
+            g["severity"] = "shaky"
+    return out
+
+
 def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]:
     concept = db.query(Concept).filter(Concept.id == session.concept_id).first() if session.concept_id else None
     concept_name = concept.name if concept else "نامشخص"
@@ -434,8 +676,14 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
         # فاز ۲۱: زنجیرهٔ ریشه‌یابی و گره‌های پیش‌نیاز. اگر کلید در متادیتا
         # نباشد، آرایهٔ خالی می‌ماند و UI بخش را رندر نمی‌کند — باکسِ خالی
         # «یافت نشد» نباید ساخته شود.
-        "root_cause_chains": meta.get("root_cause_chains") or [],
-        "learning_gaps": meta.get("learning_gaps") or [],
+        # فاز ۲۲: اگر مدل چیزی نداد، از شواهدِ همین آزمون ساخته می‌شود؛
+        # اگر شاهدِ واقعی هم نبود، آرایهٔ خالی می‌ماند و UI بخش را رندر نمی‌کند.
+        "root_cause_chains": _with_source(
+            list(meta.get("root_cause_chains") or []) or _fallback_chains(db, concept, per_question)
+        ),
+        "learning_gaps": _with_source(
+            list(meta.get("learning_gaps") or []) or _fallback_gaps(concept, per_question)
+        ),
         "sections": {
             "موضوع بررسی": concept_name,
             "زمینه": "زنجیرهٔ فهم‌سنجی ۵ مرحله‌ای (کل به جزء و شکار تناقض) — بدون بازخورد لحظه‌ای",
