@@ -51,9 +51,12 @@ def clear_tutor_cache() -> None:
 
 class ExplainRequest(BaseModel):
     session_id: int
-    type: str = Field(pattern="^(question|contradiction)$")
+    type: str = Field(pattern="^(question|contradiction|learning_gap)$")
     order: int | None = Field(default=None, ge=1, le=10)
     finding_index: int | None = Field(default=None, ge=0, le=20)
+    # برای type="learning_gap": شناسهٔ گره در کارنامه. متن از دیتابیس
+    # خوانده می‌شود، نه از ورودی — همان مرزِ امنیتیِ دو نوعِ دیگر.
+    gap_id: str | None = Field(default=None, max_length=64)
 
 
 _QUESTION_SYSTEM = """تو «معلمِ خصوصیِ فهم‌یار» هستی: معلمی صمیمی، مشوق، باهوش و
@@ -97,8 +100,28 @@ _CONTRADICTION_SYSTEM = """تو «کارآگاهِ فهم‌یار» هستی: �
   "exam_shield_tip": "چطور سرِ آزمون در این دام نیفتد (۱ تا ۲ جمله)"
 }"""
 
+_GAP_SYSTEM = """تو یک استادِ برجستهٔ صمیمی هستی که روبه‌روی دانش‌آموز نشسته.
+او در مبحثِ فعلی لغزیده، ولی ریشهٔ ماجرا در یک **گرهِ پیش‌نیازِ پایه‌ای** است —
+چیزی که در یک پایهٔ پایین‌تر یا یک درسِ دیگر باید محکم می‌شد.
+
+لحن: دومِ‌شخص («تو»، «خودت»، «ببین»)، گرم و بدونِ کوچک‌کردن. هرگز نگو
+«این را باید از قبل می‌دانستی» — بگو «بیا این را با هم محکم کنیم».
+
+⛔ **قانون اکیدِ نگارش:** هرگز از استعارهٔ «ساعت»، «ساعت‌ساز»، «چرخ‌دنده» یا
+«بستنِ ساعت» استفاده نکن، و نه از نام‌های متدولوژی («نقاب»، «فاینمن»،
+«مونتاژِ ذهنی»، «تصویرِ کلان»، «گراف وابستگی»). به‌جای استعاره، **مستقیماً
+خودِ مفهومِ علمی** را با ادبیاتِ روان و استانداردِ کتابِ درسی توضیح بده.
+
+سه بخش، دقیقاً با همین کلیدها:
+{
+  "why_it_matters": "چرا این موضوعِ پایه‌ای باعثِ به دام افتادن در مباحثِ بالاتر می‌شود (۲ تا ۳ جمله)",
+  "intuitive_rebuild": "بازخوانیِ شهودی و سادهٔ مفهوم، با یک مثالِ ملموسِ روزمره (۴ تا ۶ جمله)",
+  "memory_key": "کلیدِ ذهنیِ ماندگار برای به‌خاطر سپردنِ همیشگی (۱ تا ۲ جمله)"
+}"""
+
 _QUESTION_FALLBACK_KEYS = ("misconception_root", "intuitive_explanation", "golden_tip")
 _CONTRADICTION_FALLBACK_KEYS = ("why_it_happened", "how_to_connect_bridge", "exam_shield_tip")
+_GAP_FALLBACK_KEYS = ("why_it_matters", "intuitive_rebuild", "memory_key")
 
 
 def _build_question_prompt(payload: dict[str, Any]) -> str:
@@ -169,6 +192,40 @@ def _contradiction_fallbacks(payload: dict[str, Any]) -> dict[str, str]:
             "قبل از زدنِ گزینه یک ثانیه از خودت بپرس: «اگر همین را می‌خواستم "
             "تشریح کنم، همین جواب را می‌دادم؟»"
         ),
+    }
+
+
+def _build_gap_prompt(payload: dict[str, Any]) -> str:
+    return (
+        f"{_GAP_SYSTEM}\n\n"
+        f"مفهومِ فعلیِ دانش‌آموز: {payload.get('concept_title') or '—'}\n"
+        f"گرهٔ پیش‌نیاز: {payload.get('gap_title') or '—'}\n"
+        f"جایگاهِ آن: {payload.get('source_topic') or '—'}\n"
+        f"چرا همین گره باعثِ لغزش شده: {payload.get('why_you_slipped') or '—'}\n"
+        f"کلیدِ سریعِ کارنامه: {payload.get('quick_fix_tip') or '—'}\n"
+    )
+
+
+def _gap_fallbacks(payload: dict[str, Any]) -> dict[str, str]:
+    """متنِ جایگزین وقتی مدل در دسترس نیست — از دادهٔ خودِ کارنامه."""
+    topic = str(payload.get("source_topic") or "").strip()
+    where = f"در {topic}" if topic else "در یک پایهٔ پایین‌تر"
+    title = str(payload.get("gap_title") or "").strip() or "این گرهٔ پیش‌نیاز"
+    why = str(payload.get("why_you_slipped") or "").strip().replace("$", "")
+    return {
+        "why_it_matters": (
+            f"«{title}» {where} ساخته می‌شود، و مبحثِ فعلی روی همین بنا شده. "
+            "تا وقتی این پایه سست باشد، هر بار در سطحِ بالاتر به همان نقطه می‌رسی."
+        ),
+        "intuitive_rebuild": (
+            f"چرا این گره مهم است؟ {why} همین حلقه، وقتی به مبحثِ بالاتر می‌رسی "
+            "دوباره سرِ راهت سبز می‌شود؛ پس ارزش دارد یک بار بنشینی و تا ته "
+            "بفهمیش. یک راهِ عملی: همین مفهوم را برای خودت با یک مثالِ روزمره "
+            "تعریف کن — یک مثال که بتوانی بدونِ هیچ فرمولی برای یک نفر دیگر "
+            "بگویی. اگر توانستی، گره باز شده است."
+        ),
+        "memory_key": str(payload.get("quick_fix_tip") or "").strip()
+        or "هر وقت به این مبحث رسیدی، اول از خودت بپرس «این از کدام پایه آمده؟»",
     }
 
 
@@ -244,7 +301,11 @@ async def explain(
     report = build_exam_report(db, session)
     concept_title = str(report.get("concept_name") or "—")
 
-    cache_key = (body.session_id, body.type, f"{body.order}:{body.finding_index}")
+    cache_key = (
+        body.session_id,
+        body.type,
+        f"{body.order}:{body.finding_index}:{body.gap_id or ''}",
+    )
     stamp = _CACHE_STAMP.get(cache_key)
     if stamp and time.time() - stamp < _CACHE_TTL_SECONDS and cache_key in _CACHE:
         return {**_CACHE[cache_key], "cached": True}
@@ -265,6 +326,39 @@ async def explain(
         result = {
             "type": "question",
             "order": q.get("order"),
+            "concept_title": concept_title,
+            "generated_by": "model" if raw else "fallback",
+            "content": content,
+        }
+    elif body.type == "learning_gap":
+        # گره از کارنامه خوانده می‌شود، نه از ورودی. اگر کارنامه این شناسه را
+        # ندارد، همان ۴۰۴ — کاربر نمی‌تواند با ساختنِ gap_id دلخواه، مدل را
+        # با پرامپتِ خودش صدا بزند.
+        gaps = list(report.get("learning_gaps") or [])
+        if not gaps:
+            raise HTTPException(
+                status_code=404, detail="در این کارنامه گرهٔ پیش‌نیازی ثبت نشده است."
+            )
+        gap = next(
+            (g for g in gaps if str(g.get("id")) == body.gap_id), None
+        ) if body.gap_id else gaps[0]
+        if gap is None:
+            raise HTTPException(
+                status_code=404, detail="این گره در کارنامهٔ این آزمون پیدا نشد."
+            )
+        payload = {
+            "concept_title": concept_title,
+            "gap_title": gap.get("gap_title") or "",
+            "source_topic": gap.get("source_topic") or "",
+            "why_you_slipped": gap.get("why_you_slipped") or "",
+            "quick_fix_tip": gap.get("quick_fix_tip") or "",
+        }
+        raw = await _call_model(_build_gap_prompt(payload))
+        content = _coerce_fields(raw, _GAP_FALLBACK_KEYS, _gap_fallbacks(payload))
+        result = {
+            "type": "learning_gap",
+            "gap_id": gap.get("id"),
+            "gap_title": gap.get("gap_title"),
             "concept_title": concept_title,
             "generated_by": "model" if raw else "fallback",
             "content": content,

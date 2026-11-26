@@ -431,6 +431,11 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
         "dimensions": dimensions,
         "per_question": per_question,
         "suggestions": suggestions,
+        # فاز ۲۱: زنجیرهٔ ریشه‌یابی و گره‌های پیش‌نیاز. اگر کلید در متادیتا
+        # نباشد، آرایهٔ خالی می‌ماند و UI بخش را رندر نمی‌کند — باکسِ خالی
+        # «یافت نشد» نباید ساخته شود.
+        "root_cause_chains": meta.get("root_cause_chains") or [],
+        "learning_gaps": meta.get("learning_gaps") or [],
         "sections": {
             "موضوع بررسی": concept_name,
             "زمینه": "زنجیرهٔ فهم‌سنجی ۵ مرحله‌ای (کل به جزء و شکار تناقض) — بدون بازخورد لحظه‌ای",

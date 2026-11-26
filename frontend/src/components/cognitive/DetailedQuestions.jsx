@@ -441,6 +441,7 @@ function LoadingState() {
 export function LiveTutorModal({ open, target, sessionId, onClose }) {
   const [state, setState] = useState({ loading: false, error: '', data: null })
   const isContradiction = target?.type === 'contradiction'
+  const isGap = target?.type === 'learning_gap'
 
   useEffect(() => {
     if (!open || !target) return undefined
@@ -452,9 +453,10 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
         '/api/tutor/explain',
         {
           session_id: sessionId,
-          type: isContradiction ? 'contradiction' : 'question',
-          order: isContradiction ? null : target.order,
+          type: isGap ? 'learning_gap' : isContradiction ? 'contradiction' : 'question',
+          order: isContradiction || isGap ? null : target.order,
           finding_index: isContradiction ? target.findingIndex : null,
+          gap_id: isGap ? target.gap?.id : null,
         },
         { signal: ctrl.signal },
       )
@@ -469,7 +471,7 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
       })
 
     return () => ctrl.abort()
-  }, [open, target, sessionId, isContradiction])
+  }, [open, target, sessionId, isContradiction, isGap])
 
   useEffect(() => {
     if (!open) return undefined
@@ -536,7 +538,11 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
               میز معلم فهم‌یار
             </h2>
             <p className="mt-1 truncate text-xs font-medium text-emerald-800/70">
-              {isContradiction
+              {isGap
+                ? `${target?.gap?.gap_title || 'گرهٔ پیش‌نیاز'}${
+                    target?.gap?.source_topic ? ` · ${target.gap.source_topic}` : ''
+                  }`
+                : isContradiction
                 ? title || 'حلِ تناقض'
                 : `سؤال ${faNum(target?.order)} · ${
                     STAGE_NAMES[
@@ -568,6 +574,36 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
                 هیچ داده‌ای از دست نرفت — می‌توانی دوباره امتحان کنی.
               </p>
             </div>
+          ) : isGap ? (
+            <>
+              <TeachingBox
+                Icon={Target}
+                iconTone="text-rose-600"
+                step={1}
+                title="چرا این گرهٔ پایه، تو را در مباحثِ بالاتر به دام می‌اندازد؟"
+                className={BOX.rose}
+              >
+                <RichText content={content.why_it_matters} />
+              </TeachingBox>
+              <TeachingBox
+                Icon={Lightbulb}
+                iconTone="text-emerald-600"
+                step={2}
+                title="بازخوانیِ شهودی — با یک مثالِ روزمره"
+                className={BOX.emerald}
+              >
+                <RichText content={content.intuitive_rebuild} />
+              </TeachingBox>
+              <TeachingBox
+                Icon={KeyRound}
+                iconTone="text-amber-600"
+                step={3}
+                title="کلیدِ ذهنیِ ماندگار"
+                className={`${BOX.amber} font-medium`}
+              >
+                <RichText content={content.memory_key} />
+              </TeachingBox>
+            </>
           ) : isContradiction ? (
             <>
               <TeachingBox

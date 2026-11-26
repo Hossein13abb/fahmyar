@@ -127,6 +127,7 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
   • نام‌های متدولوژی: «نقاب»، «فاینمن»، «مونتاژِ ذهنی»، «تصویرِ کلان»،
     «دستِ بسته»، «لایهٔ نقاب»
   • اصطلاحاتِ مهندسی/فرایندی: «ماژول»، «پایپ‌لاین»، «زنجیرهٔ پردازش»
+  • نام‌های ساختاریِ داخلیِ گزارش: «گراف وابستگی»، «DAG»، «گرهٔ زنجیره»
 
 به‌جای این‌ها **مستقیماً خودِ مفهومِ علمی** را بنویس. دانش‌آموز باید در یک
 نگاه بفهمد چه چیزی را یاد گرفته و چه چیزی مانده — نه اینکه اول استعاره را
@@ -179,6 +180,33 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
      "confidence": 0.0}
   ],
   "dimension_findings": [],
+
+  "root_cause_chains": [
+    {
+      "current_error_title": "عنوانِ خطای فعلی در مبحثِ جاری — مثلاً «محاسبهٔ کارِ فنر و نیروهای متغیر در فیزیک دوازدهم»",
+      "diagnosis_summary": "۲ تا ۳ جمله: چرا این زنجیره شکست. با زبانِ ساده و بدونِ استعاره",
+      "chain_nodes": [
+        {"concept_name": "مفهومِ پیش‌نیاز در بالادست — مثلاً «مفهوم مساحت زیر نمودار و نرخِ تغییر»",
+         "grade_and_subject": "پایه دهم • ریاضی ۱",
+         "role": "root_origin"},
+        {"concept_name": "گرهٔ میانیِ زنجیره",
+         "grade_and_subject": "پایه یازدهم • فیزیک ۲",
+         "role": "bridge"}
+      ]
+    }
+  ],
+
+  "learning_gaps": [
+    {
+      "id": "gap-1",
+      "gap_title": "عنوانِ گرهٔ پیش‌نیازِ جاافتاده — مثلاً «تفاوتِ مفهوم کارِ برآیند با کارِ تک‌تکِ نیروها»",
+      "source_topic": "فیزیک دهم • فصل ۳",
+      "severity": "critical | shaky",
+      "why_you_slipped": "۲ تا ۳ جمله: چطور همین گرهِ پایه باعثِ لغزش در مبحثِ بالاتر شده",
+      "quick_fix_tip": "۱ تا ۲ جمله: یک کلیدِ ذهنیِ عملی و ماندگار"
+    }
+  ],
+
   "improvement_suggestions": []
 }
 
@@ -235,8 +263,44 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
      قابل‌اجرا باشد که دانش‌آموز همین امروز بتواند انجام دهد — نه توصیهٔ
      کلی مثل «بیشتر مطالعه کن».
 
-⛔ ``root_cause_hypotheses`` را تولید نکن. گرافِ وابستگی از کارنامه حذف شده
-و این فیلد مصرف‌کننده‌ای ندارد؛ ساختنش فقط توکن می‌سوزاند.
+══════ دو خروجیِ تشخیصیِ اضافه ══════
+
+**۵. زنجیرهٔ ریشه‌یابی** — ``root_cause_chains`` (۰ تا ۲ زنجیره، فقط اگر شاهدِ
+   واقعی داری):
+
+   این مهم‌ترین تمایزِ فهم‌یار است: نشان بده خطای فعلی از کدام گرهِ پایه‌ای در
+   مقطعِ قبل یا درسِ دیگر آمده. زنجیره باید **علّی** باشد، نه فهرستِ موضوعات.
+
+   • ``current_error_title``: خطای فعلی در مبحثِ جاری (نه نامِ مرحله).
+   • ``chain_nodes``: از ریشه به سمتِ خطای فعلی. **آخرین گره = ریشهٔ اولیه** با
+     ``role: "root_origin"``؛ گره‌های میانی ``role: "bridge"``.
+   • ``grade_and_subject``: مثلِ «پایه دهم • ریاضی ۱» — کاربر باید بفهمد این
+     گره در کدام کتاب بوده، وگرنه نمی‌تواند پیدا کندش.
+   • ``diagnosis_summary``: چرا زنجیره شکست.
+
+   ✅ خوب: «خطا در محاسبهٔ کارِ نیروی متغیر» ← «نرخِ تغییر و مساحت زیر نمودار
+      (ریاضی ۱، دهم)» ← «انتگرالِ ساده (ریاضی ۲، یازدهم)». زنجیره می‌گوید
+      چطور ضعف در نمودار به ضعف در کارِ فنر رسیده.
+   ❌ بد: فهرستِ «مشتق، انتگرال، کار، انرژی» بدونِ رابطهٔ علّی.
+
+   ⛔ اگر شاهدِ کافی نداری آرایه را **خالی** بگذار. زنجیرهٔ ساختگی از نگفتنش
+   بدتر است — دانش‌آموز را به مسیرِ اشتباه می‌فرستد.
+
+**۶. گره‌های پیش‌نیازِ نیازمندِ ترمیم** — ``learning_gaps`` (۲ تا ۴ گره):
+
+   تفاوتش با زنجیره: زنجیره **چگونگیِ** رسیدن به خطا را می‌گوید؛ گره
+   **چه چیزی برای تمرین کردن** را. گره باید قابلِ تمرین باشد، نه یک عنوانِ کلی.
+
+   • ``severity``: ``critical`` اگر بدونِ آن، مبحثِ فعلی هرگز جا نمی‌افتد؛
+     ``shaky`` اگر هست ولی متزلزل است.
+   • ``why_you_slipped``: همین گره چطور باعثِ لغزش شده — مشخص و ملموس.
+   • ``quick_fix_tip``: یک کلیدِ ذهنیِ عملی که همین امروز به کار ببندد.
+
+   ✅ خوب: «تفاوتِ کارِ برآیند با کارِ تک‌تکِ نیروها» — قابلِ تمرین، مشخص.
+   ❌ بد: «ضعف در ریاضی» — نه قابلِ تمرین است، نه مشخص.
+
+⛔ ``root_cause_hypotheses`` را تولید نکن. آن ساختارِ قدیمی حذف شده؛
+جایش را ``root_cause_chains`` گرفته که برای نمایشِ زنجیره‌ای طراحی شده است.
 
 <<<CONCEPT>>>{concept_name}<<<END>>>
 <<<EXPECTED_LOGIC>>>{expected_json}<<<END>>>
@@ -337,6 +401,101 @@ def _is_actionable(text: str) -> bool:
     if len(compact.strip()) < 4:
         return False
     return not any(p.replace("\u200c", "") in compact for p in _NON_ACTIONABLE_PATTERNS)
+
+
+#: نقش‌های مجازِ یک گره در زنجیرهٔ ریشه‌یابی
+CHAIN_ROLES = ("root_origin", "bridge")
+#: شدت‌های مجازِ یک گرهٔ پیش‌نیاز
+GAP_SEVERITIES = ("critical", "shaky")
+
+
+def normalize_root_cause_chains(raw: Any) -> list[dict[str, Any]]:
+    """زنجیره‌های ریشه‌یابی را به ساختارِ قابل‌نمایش تبدیل می‌کند.
+
+    قاعده‌های سخت (چون UI بر پایهٔ همین‌ها رسم می‌شود):
+
+    * زنجیرهٔ کمتر از **دو** گره، زنجیره نیست — یک ادعای بی‌سند است و دور
+      ریخته می‌شود. زنجیرهٔ یک‌گرهی به دانش‌آموز می‌گوید «ریشه‌اش اینجاست»
+      بدونِ اینکه مسیری نشان بدهد.
+    * دستِ‌کم یکی از گره‌ها باید ``root_origin`` باشد، وگرنه زنجیره ریشه ندارد.
+    * هر گره باید ``grade_and_subject`` داشته باشد. بدونِ آن، دانش‌آموز
+      نمی‌تواند کتابِ مربوطه را پیدا کند و زنجیره بی‌فایده است.
+    """
+    if not isinstance(raw, list):
+        return []
+    chains: list[dict[str, Any]] = []
+    for item in raw[:2]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("current_error_title") or "").strip()
+        nodes_raw = item.get("chain_nodes")
+        if not isinstance(nodes_raw, list):
+            continue
+        nodes: list[dict[str, str]] = []
+        for node in nodes_raw:
+            if not isinstance(node, dict):
+                continue
+            concept = str(node.get("concept_name") or "").strip()
+            where = str(node.get("grade_and_subject") or "").strip()
+            role = str(node.get("role") or "").strip().lower()
+            if not concept or not where:
+                continue
+            nodes.append(
+                {
+                    "concept_name": concept,
+                    "grade_and_subject": where,
+                    "role": role if role in CHAIN_ROLES else "bridge",
+                }
+            )
+        if len(nodes) < 2 or not title:
+            continue
+        if not any(n["role"] == "root_origin" for n in nodes):
+            # بی‌ریشه‌ترین گره را ریشه اعلام می‌کنیم تا UI چیزی برای برجسته‌کردن
+            # داشته باشد؛ زنجیره بدونِ نقطهٔ شروع، خوانا نیست.
+            nodes[-1]["role"] = "root_origin"
+        chains.append(
+            {
+                "current_error_title": title,
+                "diagnosis_summary": str(item.get("diagnosis_summary") or "").strip(),
+                "chain_nodes": nodes,
+            }
+        )
+    return chains
+
+
+def normalize_learning_gaps(raw: Any) -> list[dict[str, str]]:
+    """گره‌های پیش‌نیازِ نیازمندِ ترمیم را تمیز می‌کند.
+
+    گاردِ اصلی: ``gap_title`` باید مشخص و قابلِ تمرین باشد. عنوان‌های کلی
+    مثلِ «ضعف در ریاضی» رد می‌شوند — چون دانش‌آموز نمی‌داند از کجا شروع کند.
+    """
+    if not isinstance(raw, list):
+        return []
+    #: عنوان‌هایی که «گره» نیستند، «برچسب»اند
+    banned = {"ضعف در ریاضی", "ضعف در فیزیک", "مشکل در فهم", "نمی‌داند", "بد است"}
+    gaps: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for i, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("gap_title") or "").strip()
+        if not title or title in banned or title in seen:
+            continue
+        seen.add(title)
+        severity = str(item.get("severity") or "").strip().lower()
+        gaps.append(
+            {
+                "id": str(item.get("id") or f"gap-{i + 1}").strip(),
+                "gap_title": title,
+                "source_topic": str(item.get("source_topic") or "").strip(),
+                "severity": severity if severity in GAP_SEVERITIES else "shaky",
+                "why_you_slipped": str(item.get("why_you_slipped") or "").strip(),
+                "quick_fix_tip": str(item.get("quick_fix_tip") or "").strip(),
+            }
+        )
+        if len(gaps) >= 4:
+            break
+    return gaps
 
 
 def normalize_suggestions(raw: Any) -> list[str]:
@@ -1789,6 +1948,8 @@ async def analyze_stage_chain(
         "cross_check_findings": findings,
         "per_question": per_question,
         "dimension_findings": data.get("dimension_findings") or [],
+        "root_cause_chains": normalize_root_cause_chains(data.get("root_cause_chains")),
+        "learning_gaps": normalize_learning_gaps(data.get("learning_gaps")),
         "improvement_suggestions": suggestions,
         "mastery_note": supremacy_note,
         "signals": signals,

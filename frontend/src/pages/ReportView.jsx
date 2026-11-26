@@ -4,6 +4,10 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import DetailedQuestions, { ContradictionCard, LiveTutorModal } from '../components/cognitive/DetailedQuestions'
+import {
+  LearningGapsSection,
+  RootCauseAnalysisSection,
+} from '../components/cognitive/PrerequisiteSections'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -432,6 +436,9 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
   // معلمِ تناقض: کدام یافته باز است و آیا مودال نمایان است.
   const [contradictionOpen, setContradictionOpen] = useState(false)
   const [tutorFinding, setTutorFinding] = useState(null)
+  // گرهٔ پیش‌نیاز هم از همان مودال استفاده می‌کند، با نوعِ متفاوت
+  const [gapOpen, setGapOpen] = useState(false)
+  const [tutorGap, setTutorGap] = useState(null)
   // چک‌لیستِ گیمیفای‌شده: پیشرفت در localStorage می‌ماند (کلید به نشست گره دارد).
   const checklistKey = `fahmyar_checklist_${report.session_id ?? 'x'}`
   const [doneSuggestions, setDoneSuggestions] = useState(() => {
@@ -653,11 +660,20 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
         <DetailedQuestions questions={perQuestion} sessionId={Number(report.session_id ?? sessionIdProp)} />
       </SectionCard>
 
-      {/* ── (ج) حذف‌شده در فاز ۲۰ ──
-          سکشنِ نمودارِ گره‌ایِ وابستگی (فاز ۲۰) حذف شد. برای دانش‌آموز نمودارِ گره‌ای
-          خوانا نبود و وقتی داده‌ای نبود، باکسِ خالی «الگوی بدفهمی یافت نشد»
-          رندر می‌شد — که بیشتر از نبودنش گیج‌کننده بود. تشخیصِ ریشه‌ای حالا
-          از دلِ «تحلیل تفصیلی تک‌تک سوالات» و «پیشنهادهای قدم‌به‌قدم» می‌آید. */}
+      {/* ── (ج) ریشه‌یابی زنجیره‌ای — تمایزِ اصلیِ فهم‌یار ──
+          ترتیب مهم است: اول «چطور به این خطا رسیدی» (زنجیره)، بعد
+          «چه چیزی را تمرین کن» (گره‌ها)، بعد تحلیلِ تک‌تکِ سؤال‌ها.
+          هر بخش اگر داده نداشته باشد، خودش را رندر نمی‌کند — باکسِ خالی
+          «یافت نشد» ساخته نمی‌شود. */}
+      <RootCauseAnalysisSection chains={report.root_cause_chains} />
+
+      <LearningGapsSection
+        gaps={report.learning_gaps}
+        onTeach={(gap) => {
+          setTutorGap(gap)
+          setGapOpen(true)
+        }}
+      />
 
       {/* ── (د) پیشنهادهای بهبود کیفی ── */}
       <SectionCard Icon={Lightbulb} title={mode === 'teacher' ? 'پیشنهادهای بهبود (برای برنامه‌ریزی معلم)' : 'پیشنهادهای بهبود — قدم‌به‌قدم'}>
@@ -771,6 +787,14 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
         target={tutorFinding}
         sessionId={Number(report.session_id ?? sessionIdProp)}
         onClose={() => setContradictionOpen(false)}
+      />
+
+      {/* معلمِ گرهٔ پیش‌نیاز — همان مودال، نوعِ متفاوت */}
+      <LiveTutorModal
+        open={gapOpen}
+        target={tutorGap ? { type: 'learning_gap', gap: tutorGap } : null}
+        sessionId={Number(report.session_id ?? sessionIdProp)}
+        onClose={() => setGapOpen(false)}
       />
     </div>
   )

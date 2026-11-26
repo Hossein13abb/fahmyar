@@ -464,6 +464,10 @@ def _persist_analysis(
         "cross_check_findings": [
             dict(f) for f in (result.get("cross_check_findings") or []) if isinstance(f, dict)
         ],
+        # فاز ۲۱ — دادهٔ ساختاریافتهٔ دو بخشِ تازهٔ کارنامه. نرمال‌سازی در
+        # لایهٔ مدل انجام شده؛ این‌جا فقط منتقل می‌شود.
+        "root_cause_chains": result.get("root_cause_chains") or [],
+        "learning_gaps": result.get("learning_gaps") or [],
         "needs_clarification": bool(result.get("needs_clarification")),
         "clarification_data": result.get("clarification_data"),
         "mastery_note": result.get("mastery_note"),

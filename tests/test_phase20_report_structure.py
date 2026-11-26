@@ -54,6 +54,7 @@ def test_action_plan_survives():
 # ── بک‌اند ────────────────────────────────────────────────────────────
 
 def test_report_contract_has_no_root_causes():
+    """فیلدِ قدیمیِ ``root_causes`` رفت؛ جایش را ``root_cause_chains`` گرفت."""
     src = _read("reports", "exam_report.py")
     assert '"root_causes":' not in src
     assert "root_cause_lines" not in src
