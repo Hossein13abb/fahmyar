@@ -338,7 +338,8 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             # می‌شود؛ «مرحله 1» با رقمِ لاتین در تصاویر دیده شده بود.)
             "stage_title": _public_stage_title(entry.get("order")),
             "cognitive_verdict": record.get("cognitive_verdict"),
-            "missing_gear": record.get("missing_gear"),
+            # فاز ۲۰: missing_gear حذف شد — کارنامه دیگر بجِ 「گره‌های کلیدی」
+            # را رندر نمی‌کند و این فیلد مصرف‌کننده‌ای ندارد.
             # ── معلمِ هوشمند (فاز ۱۲) ──
             # این آبجکت در همان فراخوانیِ اولِ ارزیابی ساخته می‌شود؛ کارنامه
             # فقط آن را منتقل می‌کند و هیچ کالِ اضافه‌ای به مدل نمی‌زند.
@@ -377,12 +378,6 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
     # مصرفِ مدل: مجموعِ هزینه/توکنِ همین آزمون (از usage واقعیِ OpenRouter)
     ai_usage = meta.get("ai_usage") if isinstance(meta.get("ai_usage"), dict) else {}
     clarification_data = meta.get("clarification_data") if needs_clarification else None
-    root_causes = [
-        {"concept_name": root_cause_text(h.get("concept_name") or h.get("area")),
-         "reasoning": _strip_hedges_local(root_cause_text(h.get("reasoning"))),
-         "cross_subject": bool(h.get("cross_subject", False))}
-        for h in hypotheses if h.get("type") == "root_cause"
-    ]
 
     if not dimensions:
         # گزارش بدون تحلیلِ آزادِ مدل: پنج بُعدِ استاندارد جای خالی را پر می‌کنند.
@@ -411,25 +406,9 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             "finding": fa_text(d.get("finding"), dimension_fallback(st)),
         })
     dimensions = norm_dimensions
-    root_causes = [
-        {"concept_name": r.get("concept_name"), "area": r.get("concept_name"),
-         "reasoning": r.get("reasoning"),
-         "cross_subject": bool(r.get("cross_subject", False))}
-        for r in root_causes
-        if r.get("concept_name") or r.get("reasoning")
-    ]
-    # placeholderِ گمشده برای فیلدهایی که مدل اصلاً پر نکرده — هیچ جملهٔ ثابتی جایگزین نظر مدل نمی‌شود
-    for r in root_causes:
-        if not r["concept_name"]:
-            r["concept_name"] = r["area"] = "عنوان ریشه ثبت نشد — معلم باید شخصاً بررسی کند"
-        if not r["reasoning"]:
-            r["reasoning"] = "تحلیل ریشه‌ای برای این بند ثبت نشد — معلم باید شخصاً بررسی کند"
-    # دادهٔ قدیمیِ ذخیره‌شده هم ممکن است دیکشنری باشد؛ مرزِ گزارش هم تمیز می‌کند
-    # تا نه فرانت `[object Object]` ببیند و نه PDF دیکشنریِ خام.
-    suggestions = [
-        fa_text(x, suggestion_fallback())
-        for x in normalize_suggestions(suggestions)
-    ]
+    # فاز ۲۰: root_causes حذف شد. گرافِ وابستگی از کارنامه رفت و این فهرست
+    # مصرف‌کننده‌ای نداشت؛ نگه‌داشتنش یعنی محاسبه و انتقالِ دادهٔ مرده.
+    # دادهٔ خامِ hypotheses در meta می‌ماند (برای معلم و دیباگ).
 
     dimension_lines = [
         f"«{d['dimension']}» — {STATUS_FA.get(d['status'], d['status'])}: {d['finding']}" for d in dimensions
@@ -438,9 +417,8 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
         f"سؤال {q.get('order') or i + 1} ({q.get('exam_type') or '—'}): {STATUS_FA.get(q['status'], q['status'])} — {q['qualitative_feedback']}"
         for i, q in enumerate(per_question)
     ]
-    root_cause_lines = [
-        f"{r['concept_name']}{' (بین‌درسی)' if r.get('cross_subject') else ''}: {r['reasoning']}" for r in root_causes
-    ] or ["بدفهمی ریشه‌دارِ تکرارشونده‌ای یافت نشد."]
+    # فاز ۲۰: بخشِ «ریشه‌ها» از PDF حذف شد؛ همان اطلاعات در dimension_lines
+    # با زبانِ ساده‌تر آمده است. (نگه‌داشتنِ این متغیر، مرجعِ مرده می‌ساخت.)
 
     report = {
         "exam": True,
@@ -452,7 +430,6 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
         "questions_answered": len(session.evidence_log or []),
         "dimensions": dimensions,
         "per_question": per_question,
-        "root_causes": root_causes,
         "suggestions": suggestions,
         "sections": {
             "موضوع بررسی": concept_name,
@@ -462,13 +439,10 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             ] or ["تناقضِ روشنی میان پاسخ‌ها پیدا نشد."],
             "نمای کلی وضعیت": dimension_lines,
             "تحلیل تک‌تک سوالات": per_question_lines,
-            "تحلیل ریشه‌ای بدفهمی‌ها": root_cause_lines,
+            # فاز ۲۰: «تحلیل ریشه‌ای» و «موارد هنوز روشن‌نشده» حذف شدند.
+            # ترتیبِ PDF حالا آینهٔ کارنامه است: تحلیل سؤال‌ها، بعد پیشنهادهای
+            # عملی به‌عنوان جمع‌بندیِ نهایی.
             "پیشنهادهای بهبود": suggestions,
-            "موارد هنوز روشن‌نشده": [
-                f"سؤال {q.get('order') or i + 1} ({STATUS_FA.get(q['status'], q['status'])})"
-                for i, q in enumerate(per_question)
-                if q["status"] in (EvidenceStatus.UNCLEAR.value, EvidenceStatus.INSUFFICIENT_EVIDENCE.value)
-            ] or ["موردِ مبهمی باقی نمانده است."],
         },
         # --- فاز ۷: کارنامهٔ X-Ray ---
         "ai_usage": {

@@ -126,163 +126,6 @@ function DownloadPdfButton({ sessionId }) {
   )
 }
 
-// ── فلش SVG به‌سمت پایین (وابسته به هیچ فونتی نیست) ──
-function DagArrow({ label }) {
-  return (
-    <div className="flex flex-col items-center gap-1 py-1" aria-hidden="true">
-      <svg width="180" height="46" viewBox="0 0 180 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <line x1="90" y1="2" x2="90" y2="28" stroke="#D97706" strokeWidth="2.5" strokeDasharray="5 5" strokeLinecap="round" />
-        <path d="M90 42 L78 24 L102 24 Z" fill="#D97706" />
-      </svg>
-      <span className="rounded-full bg-amber-100 px-3 py-0.5 text-[10px] font-black text-amber-800 ring-1 ring-amber-300">
-        {label}
-      </span>
-    </div>
-  )
-}
-
-// ── نمودار درختیِ ریشه‌یابی (Flowchart) — وابستگی پیش‌نیاز ← مفهوم هدف ──
-function RootCauseDag({ target, nodes }) {
-  const list = (Array.isArray(nodes) ? nodes : []).filter(Boolean)
-  if (list.length === 0) {
-    return (
-      <p className="flex items-center gap-2 text-[13px] font-bold text-emerald-800">
-        <CheckCircle2 className="h-5 w-5" /> الگوی بدفهمیِ ریشه‌دارِ تکرارشونده یافت نشد.
-      </p>
-    )
-  }
-  return (
-    <div role="img" aria-label={`نمودار وابستگی مفاهیم: ${toFarsiNumber(list.length)} ریشه به‌سمتِ ${target}`}>
-      {/* سطح ۱ — ریشه‌ها */}
-      <p className="text-[10px] font-black uppercase tracking-wide text-amber-700">سطح ۱ — گره‌های ریشهٔ خطا (پیش‌نیازهای ضعیف)</p>
-      <div className={`mt-2 grid gap-3 ${list.length > 1 ? 'sm:grid-cols-2' : ''}`}>
-        {list.map((rc, i) => (
-          <div
-            key={i}
-            className="rounded-2xl border-2 border-amber-300/70 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-sm"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-[11px] font-black text-white">
-                {toFarsiNumber(i + 1)}
-              </span>
-              <p className="min-w-0 flex-1 text-[12px] font-black leading-6 text-amber-950">
-                {rc.concept_name || rc.area || 'عنوان ریشه ثبت نشد — معلم بررسی کند'}
-              </p>
-              {rc.cross_subject && (
-                <span className="chip bg-white text-amber-800 ring-1 ring-amber-300">بین‌درسی</span>
-              )}
-              {rc.status_label && (
-                <span className="chip bg-white text-amber-800 ring-1 ring-amber-300">{rc.status_label}</span>
-              )}
-            </div>
-            {rc.reasoning && <p className="mt-2 text-[11px] leading-6 text-amber-900/90">{rc.reasoning}</p>}
-          </div>
-        ))}
-      </div>
-
-      <DagArrow label="باعث اختلال در" />
-
-      {/* سطح ۲ — گرهٔ هدف */}
-      <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">سطح ۲ — گرهٔ هدف (مفهومِ دارای اختلال)</p>
-      <div className="mx-auto mt-2 max-w-md rounded-2xl border-2 border-emerald-600/60 bg-gradient-to-br from-emerald-600 to-teal-700 p-4 text-center shadow-lift">
-        <GitBranch className="mx-auto h-6 w-6 text-emerald-100" strokeWidth={1.8} />
-        <p className="mt-1.5 text-[14px] font-black text-white">{target}</p>
-        <p className="mt-1 text-[10px] font-bold leading-5 text-emerald-100/90">
-          ضعف‌های سطح ۱ همین‌جا خودشان را نشان می‌دهند؛ اصلاح هر گره، گرهٔ هدف را سبک‌تر می‌کند.
-        </p>
-      </div>
-
-      <p className="mt-3 text-center text-[10px] font-medium leading-5 text-slate-500">
-        جریان وابستگی: از پیش‌نیاز به‌سمتِ مفهوم هدف · این نمودار جایگزین نمرهٔ عددی نیست؛ فقط مسیرِ علّیِ خطا را نشان می‌دهد.
-      </p>
-    </div>
-  )
-}
-
-const EXAM_TYPE_TITLES = {
-  conceptual: 'مفهومی/استدلالی',
-  real_world: 'کاربرد واقعی',
-  diagram: 'نموداری/شکلی',
-  misconception_trap: 'تلهٔ بدفهمی',
-  computational: 'محاسباتی/رویه‌ای',
-  definitional: 'حفظی/تعریفی',
-  novel_application: 'کاربرد نو',
-  phenomenon_explain: 'تبیین پدیده',
-  compare_explanations: 'مقایسهٔ تبیین‌ها',
-  predict: 'پیش‌بینی',
-  categorize: 'دسته‌بندی',
-  error_identify: 'شناسایی خطا',
-  identify_error: 'شناسایی خطا',
-  explain: 'توضیح مفهومی',
-  calculate: 'محاسبه',
-  compare: 'مقایسه',
-  formulate: 'فرمول‌بندی',
-  evaluate: 'ارزیابی',
-  recall: 'یادآوری',
-  solve: 'حل مسئله',
-  convert_representation: 'تبدیل بازنمایی',
-  // اگر بک‌اند عنوانِ فارسیِ آماده بدهد، همان نمایش داده می‌شود
-  'مفهومی/استدلالی': 'مفهومی/استدلالی',
-  'کاربرد واقعی': 'کاربرد واقعی',
-  'نموداری/شکلی': 'نموداری/شکلی',
-  'تلهٔ بدفهمی': 'تلهٔ بدفهمی',
-  'محاسباتی/رویه‌ای': 'محاسباتی/رویه‌ای',
-  'حفظی/تعریفی': 'حفظی/تعریفی',
-}
-
-// ── نگاشت دفاعی عناوین/متون انگلیسیِ احتمالی به فارسی (UI هرگز انگلیسی نشان نمی‌دهد) ──
-const DIMENSION_FA = {
-  'Conceptual/Causal Understanding': 'درک مفهومی و علّی',
-  'Conceptual-Causal Understanding': 'درک مفهومی و علّی',
-  'Conceptual Causal Understanding': 'درک مفهومی و علّی',
-  'Conceptual Understanding': 'درک مفهومی و علّی',
-  'Causal Understanding': 'درک مفهومی و علّی',
-  'فهم مفهومی/علّی': 'درک مفهومی و علّی',
-  'فهم مفهومی و علّی': 'درک مفهومی و علّی',
-  'درک مفهومی/علّی': 'درک مفهومی و علّی',
-  'Real-World Application': 'کاربرد در دنیای واقعی',
-  'Real World Application': 'کاربرد در دنیای واقعی',
-  'Real-world application': 'کاربرد در دنیای واقعی',
-  'Application in the Real World': 'کاربرد در دنیای واقعی',
-  'Practical Application': 'کاربرد در دنیای واقعی',
-  'کاربرد واقعی': 'کاربرد در دنیای واقعی',
-  'کاربرد عملی': 'کاربرد در دنیای واقعی',
-  'Quantitative and Computational Skills': 'مهارت‌های کمی و محاسباتی',
-  'Quantitative/Computational Skills': 'مهارت‌های کمی و محاسباتی',
-  'Quantitative Skills': 'مهارت‌های کمی و محاسباتی',
-  'Computational Skills': 'مهارت‌های کمی و محاسباتی',
-  'Computational Procedure': 'مهارت‌های کمی و محاسباتی',
-  'Numerical Computation': 'مهارت‌های کمی و محاسباتی',
-  'رویهٔ حل‌سازی': 'مهارت‌های کمی و محاسباتی',
-  'مهارت محاسباتی': 'مهارت‌های کمی و محاسباتی',
-  'Diagram/Visual Representation': 'بازنمایی نموداری و تصویری',
-  'Visual Representation': 'بازنمایی نموداری و تصویری',
-  'Diagrammatic Representation': 'بازنمایی نموداری و تصویری',
-  'Graph Reading': 'بازنمایی نموداری و تصویری',
-  'Chart Reading': 'بازنمایی نموداری و تصویری',
-  'Diagram Interpretation': 'بازنمایی نموداری و تصویری',
-  'خواندن نمودار و داده': 'بازنمایی نموداری و تصویری',
-  'نموداری': 'بازنمایی نموداری و تصویری',
-  'Misconception Trap': 'مواجهه با تله‌ها و بدفهمی‌ها',
-  'Misconception Traps': 'مواجهه با تله‌ها و بدفهمی‌ها',
-  'Common Misconceptions': 'مواجهه با تله‌ها و بدفهمی‌ها',
-  'Misconceptions': 'مواجهه با تله‌ها و بدفهمی‌ها',
-  'Identifying Misconceptions': 'مواجهه با تله‌ها و بدفهمی‌ها',
-  'ردیابی بدفهمی شایع': 'مواجهه با تله‌ها و بدفهمی‌ها',
-  'ردیابی بدفهمی‌های رایج': 'مواجهه با تله‌ها و بدفهمی‌ها',
-  'تلهٔ بدفهمی': 'مواجهه با تله‌ها و بدفهمی‌ها',
-  'تله‌های بدفهمی': 'مواجهه با تله‌ها و بدفهمی‌ها',
-  'Clarity of Explanation': 'شفافیت بیان و خودپایشی',
-  'Clarity and Self-monitoring': 'شفافیت بیان و خودپایشی',
-  'Clarity and Self-Monitoring': 'شفافیت بیان و خودپایشی',
-  'Self-monitoring': 'شفافیت بیان و خودپایشی',
-  'Self Monitoring': 'شفافیت بیان و خودپایشی',
-  'Metacognitive Clarity': 'شفافیت بیان و خودپایشی',
-  'Expression Clarity': 'شفافیت بیان و خودپایشی',
-  'شفافیت بیان': 'شفافیت بیان و خودپایشی',
-  'خودپایشی': 'شفافیت بیان و خودپایشی',
-}
-
 const _faDire = /[؀-ۿﭐ-﷿ﹰ-﻿]/g
 const _enWord = /[A-Za-z]{4,}/g
 
@@ -624,10 +467,6 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
     .filter((q) => q && (q.status || q.cognitive_verdict || q.qualitative_feedback))
     .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
   const aiUsage = report.ai_usage && typeof report.ai_usage === 'object' ? report.ai_usage : null
-  const openGears = stageDimensions.filter(
-    (q) => String(q.missing_gear ?? '').trim().length > 0,
-  )
-  const rootCauses = report.root_causes ?? []
   const suggestions = cleanSuggestions(report.suggestions)
   const crossCheck = Array.isArray(report.cross_check_findings) ? report.cross_check_findings : []
   // نامِ مدلِ ارزیاب — از متادیتای کارنامه (بک‌اند: model_name)
@@ -764,31 +603,6 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
               </div>
             )}
 
-            {perQuestion.some((q) => q.missing_gear) && (
-              <div className="mt-4 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-100 via-amber-50 to-orange-50/60 p-4 shadow-sm">
-                <p className="flex items-center gap-1.5 text-[12px] font-black text-amber-900">
-                  <Puzzle className="h-3.5 w-3.5" /> گره‌های کلیدی برای تسلط کامل
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {perQuestion
-                    .filter((q) => q.missing_gear)
-                    .map((q, i) => (
-                      <span
-                        key={i}
-                        title={faText(q.missing_gear, '')}
-                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-300/60 bg-gradient-to-l from-white to-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-sm transition hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-md"
-                      >
-                        <Puzzle className="h-3 w-3 shrink-0 text-amber-500" />
-                        <span className="truncate">
-                          {q.stage_title || `مرحلهٔ ${toFarsiNumber(q.order ?? i + 1)}`}
-                        </span>
-                        <span className="text-amber-300">|</span>
-                        <span className="truncate font-black">{faText(q.missing_gear, '')}</span>
-                      </span>
-                    ))}
-                </div>
-              </div>
-            )}
           </div>
         </section>
       )}
@@ -839,10 +653,11 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
         <DetailedQuestions questions={perQuestion} sessionId={Number(report.session_id ?? sessionIdProp)} />
       </SectionCard>
 
-      {/* ── (ج) تحلیل ریشه‌ای بدفهمی‌ها — گراف وابستگی مفاهیم (DAG) ── */}
-      <SectionCard Icon={GitBranch} title="تحلیل ریشه‌ای بدفهمی‌ها — گراف وابستگی مفاهیم" tone="amber">
-        <RootCauseDag target={report.concept_name ?? 'مفهوم هدف'} nodes={rootCauses} />
-      </SectionCard>
+      {/* ── (ج) حذف‌شده در فاز ۲۰ ──
+          سکشنِ نمودارِ گره‌ایِ وابستگی (فاز ۲۰) حذف شد. برای دانش‌آموز نمودارِ گره‌ای
+          خوانا نبود و وقتی داده‌ای نبود، باکسِ خالی «الگوی بدفهمی یافت نشد»
+          رندر می‌شد — که بیشتر از نبودنش گیج‌کننده بود. تشخیصِ ریشه‌ای حالا
+          از دلِ «تحلیل تفصیلی تک‌تک سوالات» و «پیشنهادهای قدم‌به‌قدم» می‌آید. */}
 
       {/* ── (د) پیشنهادهای بهبود کیفی ── */}
       <SectionCard Icon={Lightbulb} title={mode === 'teacher' ? 'پیشنهادهای بهبود (برای برنامه‌ریزی معلم)' : 'پیشنهادهای بهبود — قدم‌به‌قدم'}>
@@ -893,30 +708,12 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
         )}
       </SectionCard>
 
-      {/* ── موارد هنوز روشن‌نشده ──
-          فقط گرهٔ کلیدیِ واقعی نمایش داده می‌شود. فهرستِ ساختگیِ
-          «سؤال ۳ (نامشخص)» که از نبودِ تحلیل ساخته می‌شد، حذف شده است. */}
-      {openGears.length > 0 && (
-        <SectionCard Icon={HelpCircle} title="حلقه‌های مفقوده در یادگیری" tone="amber">
-          <ul className="space-y-2">
-            {openGears.map((g, i) => (
-              <li
-                key={i}
-                className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200/60 bg-gradient-to-l from-white to-amber-50/70 px-4 py-2.5 text-justify text-right text-[12px] leading-6 text-amber-950 shadow-sm"
-              >
-                {/* اصلِ مفهوم اول می‌آید — این چیزی است که دانش‌آموز باید یاد بگیرد.
-                    نامِ مرحله فقط یک برچسبِ کوچک کنارش است، نه تیترِ جمله. */}
-                <span className="min-w-0 flex-1 font-bold">
-                  {faText(g.missing_gear, 'این بخش هنوز روشن نشده است.')}
-                </span>
-                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700 ring-1 ring-amber-200">
-                  {faStageTitle(g, i)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      )}
+      {/* ── حذف‌شده در فاز ۲۰ ──
+          بلوکِ فهرستِ کمبودها (فاز ۲۰) حذف شد. برچسب‌هایی مثل
+          «پل بین مشاهدهٔ ظاهری…» برای دانش‌آموز مبهم بودند و همان پیام را
+          تکرار می‌کردند که کارتِ هر سؤال از قبل می‌گوید. جمع‌بندیِ پایانی
+          حالا «پیشنهادهای بهبود — قدم‌به‌قدم» است: یک فهرستِ عملی، نه
+          فهرستِ کمبودها. */}
 
       {/* ── ردیابیِ مدل/هزینه (فقط برای معلم) ── */}
       {mode === 'teacher' && aiUsage && aiUsage.call_count > 0 && (
@@ -1025,7 +822,6 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
   const s = report.sections ?? {}
   const observations = s['مشاهدات'] ?? []
   const evidenceLines = s['شواهد'] ?? []
-  const unclear = s['موارد هنوز روشن‌نشده'] ?? []
   const studentActions = s['پیشنهاد اقدام برای دانش‌آموز'] ?? []
   const teacherNotes = s['یادداشت برای معلم'] ?? []
   const propositionStatuses = report.proposition_statuses ?? {}
@@ -1080,21 +876,6 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
           )}
         </SectionCard>
 
-        <SectionCard Icon={HelpCircle} title="حلقه‌های مفقوده در یادگیری" tone="amber" className="lg:col-span-2">
-          {unclear.length === 0 ? (
-            <p className="flex items-center gap-2 text-[13px] font-bold text-emerald-800">
-              <CheckCircle2 className="h-5 w-5" /> مورد مبهمی باقی نمانده است 🌱
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {unclear.map((u, i) => (
-                <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 px-4 py-2.5 text-justify text-right text-[12px] leading-6 text-amber-950">
-                  {u}
-                </li>
-              ))}
-            </ul>
-          )}
-        </SectionCard>
       </div>
 
       {/* ── وضعیت گزاره‌های هسته‌ای ── */}
@@ -1121,14 +902,6 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
             </ol>
           </details>
         )}
-      </SectionCard>
-
-      {/* ── فرضیه‌های ریشهٔ خطا (مسیر B) — گراف وابستگی مفاهیم (DAG) ── */}
-      <SectionCard Icon={GitBranch} title="فرضیه‌های ریشهٔ خطا — گراف وابستگی مفاهیم" tone="amber">
-        <RootCauseDag
-          target={report.concept_name ?? 'مفهوم هدف'}
-          nodes={Array.isArray(report.root_causes) ? report.root_causes : []}
-        />
       </SectionCard>
 
       {/* ── پیشنهاد گام بعدی ── */}

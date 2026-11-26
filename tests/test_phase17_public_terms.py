@@ -144,42 +144,19 @@ def test_scrub_keeps_real_clock():
     assert scrub(text) == text
 
 
-def test_missing_gear_prompt_asks_for_the_concept_not_a_metaphor():
-    """فیلدِ گره‌های کلیدی باید اصلِ مفهوم را بخواهد، نه استعاره.
+def test_writing_law_asks_for_the_concept_not_a_metaphor():
+    """قانونِ نگارش باید اصلِ مفهوم را بخواهد، نه استعاره.
 
-    «چرخ‌دنده» در پرامپت هست، ولی فقط در فهرستِ ممنوعه و مثالِ ❌ — نه در
-    دستورِ تولید. پس وجودش در کلِ متن کافی نیست؛ باید مطمئن شویم تعریفِ
-    خودِ فیلد استعاره نمی‌خواهد.
+    فاز ۲۰ فیلدِ ``missing_gear`` را از قراردادِ خروجیِ مدل حذف کرد (کارنامه
+    دیگر بجِ گره‌های کلیدی را رندر نمی‌کند)، ولی قانونِ نگارش سرِ جایش است:
+    مدل هر جا به «چه چیزی جا نیفتاده» اشاره می‌کند باید اصلِ مفهوم را بنویسد.
     """
     from ai.cross_check import _EXAM_PROMPT
 
-    assert "اصلِ مفهومِ علمی" in _EXAM_PROMPT
-    # تعریفِ فیلد (خطِ JSON schema) نباید استعاره داشته باشد
-    field_line = next(
-        line for line in _EXAM_PROMPT.splitlines() if '"missing_gear"' in line
-    )
-    assert "چرخ‌دنده" not in field_line
-    assert "اصلِ مفهومِ علمی" in field_line
-
-
-def test_metaphor_only_appears_in_the_ban_section():
-    """«چرخ‌دنده» فقط باید در بلوکِ ممنوعه یا مثالِ ❌ باشد، نه در دستور.
-
-    بلوکِ ممنوعه با ⛔ شروع می‌شود و تا خطِ خالیِ بعدی ادامه دارد؛ خطوطِ
-    داخلِ آن علامتِ ⛔ جداگانه ندارند.
-    """
-    from ai.cross_check import _EXAM_PROMPT
-
-    in_ban_block = False
-    for line in _EXAM_PROMPT.splitlines():
-        if "⛔" in line:
-            in_ban_block = True
-        elif not line.strip():
-            in_ban_block = False
-        if "چرخ‌دنده" not in line:
-            continue
-        ok = in_ban_block or ("❌" in line)
-        assert ok, f"«چرخ‌دنده» در دستورِ مثبت آمده: {line.strip()[:80]}"
+    assert "اصلِ" in _EXAM_PROMPT
+    assert "قانون اکیدِ نگارش" in _EXAM_PROMPT
+    # فیلدِ حذف‌شده نباید برگردد
+    assert '"missing_gear"' not in _EXAM_PROMPT
 
 
 def test_assessment_prompt_has_the_writing_law():

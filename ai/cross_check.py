@@ -138,8 +138,8 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
   ❌ بد:  «رمزی برای ساعت‌سازِ آزمون.»
   ✅ خوب: «کلید مفهومی: ضریب ۱/۲ در قضیهٔ کار و انرژی جا می‌افتد.»
 
-در فیلدِ ``missing_gear`` **اصلِ مفهوم** را در ۴ تا ۸ کلمه بنویس، نه نامِ
-مرحله و نه استعاره. نمونه‌های درست:
+اگر لازم شد در جمله‌ای اشاره کنی که کدام بخشِ مفهوم جا نیفتاده، **اصلِ
+مفهوم** را بنویس، نه نامِ مرحله و نه استعاره. نمونه‌های درست:
   • «تسلط بر مفهوم انتقال الکترون در واکنش‌های بدون اکسیژن»
   • «تفکیک کاهش جرم از کاهش عدد اکسایش»
   • «در نظر گرفتن ضریب ۱/۲ در قضیه کار و انرژی»
@@ -176,11 +176,9 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
      "tutor_hint": "یک اشارهٔ کوتاهِ ۵ تا ۱۲ کلمه‌ای: هستهٔ آموزشی که معلمِ درلحظه روی آن بنا می‌شود",
      "expected_logic_missed": "کدام بخشِ منطقِ موردانتظار غایب است (اگر کامل است، null)",
      "evidence_type": "strong_confirming | weak_confirming | contradicting | none",
-     "missing_gear": "اصلِ مفهومِ علمی که هنوز جا نیفتاده — ۴ تا ۸ کلمه، مستقیم و بدونِ استعاره (یا null)",
      "confidence": 0.0}
   ],
   "dimension_findings": [],
-  "root_cause_hypotheses": [],
   "improvement_suggestions": []
 }
 
@@ -223,10 +221,22 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
   برای هر مرحله فیلدِ expected_logic_missed را هم پر کن؛ این فیلد به
   دانش‌آموز نشان داده نمی‌شود و مبنایِ جمع‌بندیِ کد است.
 
-نکته: فیلدهای dimension_findings و root_cause_hypotheses و
-improvement_suggestions را هم پر کن تا گزارش‌های قدیمی و PDF نشکنند.
-improvement_suggestions باید آرایه‌ای از **رشته‌های فارسیِ ساده** باشد
-(نه آبجکت/دیکشنری) — هر آیتم یک قدمِ عملیِ روشن.
+══════ خروجیِ تو دقیقاً چهار چیز است ══════
+
+  ۱. **تحلیل کلی ابعاد پنج‌گانه** — ``dimension_findings``: برای هر بُعد یک
+     جملهٔ روشن که می‌گوید دانش‌آموز کجای آن بُعد ایستاده.
+  ۲. **شکارِ تناقض‌های واقعی** — ``cross_check_findings``: فقط تضادِ
+     محتواییِ واقعی میان پاسخ‌ها. اگر واقعاً تناقضی نیست، آرایه را خالی
+     بگذار؛ تناقضِ ساختگی بدتر از نگفتنش است.
+  ۳. **تحلیل تشخیصیِ تک‌تکِ سؤال‌ها** — ``per_question``: ده رکورد، هر کدام
+     با حکمِ روشن و یک جملهٔ تشخیصی دربارهٔ همان سؤال.
+  ۴. **تمرین‌های شفاف** — ``improvement_suggestions``: آرایه‌ای از
+     **رشته‌های فارسیِ ساده** (نه آبجکت). هر آیتم باید یک تمرینِ عملیِ
+     قابل‌اجرا باشد که دانش‌آموز همین امروز بتواند انجام دهد — نه توصیهٔ
+     کلی مثل «بیشتر مطالعه کن».
+
+⛔ ``root_cause_hypotheses`` را تولید نکن. گرافِ وابستگی از کارنامه حذف شده
+و این فیلد مصرف‌کننده‌ای ندارد؛ ساختنش فقط توکن می‌سوزاند.
 
 <<<CONCEPT>>>{concept_name}<<<END>>>
 <<<EXPECTED_LOGIC>>>{expected_json}<<<END>>>
@@ -1559,7 +1569,6 @@ def _hard_fallback(
         "dimension_findings": [
             {"dimension": "تحلیلِ مقایسه‌ای", "status": "UNCLEAR", "finding": reason}
         ],
-        "root_cause_hypotheses": [],
         "improvement_suggestions": [
             "این آزمون را با معلم مرور کن؛ تحلیلِ خودکار این بار کامل نبود."
         ],
@@ -1780,7 +1789,6 @@ async def analyze_stage_chain(
         "cross_check_findings": findings,
         "per_question": per_question,
         "dimension_findings": data.get("dimension_findings") or [],
-        "root_cause_hypotheses": data.get("root_cause_hypotheses") or [],
         "improvement_suggestions": suggestions,
         "mastery_note": supremacy_note,
         "signals": signals,
