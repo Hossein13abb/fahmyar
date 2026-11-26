@@ -379,3 +379,47 @@ def test_chain_uses_real_dependency_graph():
         assert all(n["grade_and_subject"] for n in nodes)
     finally:
         db.close()
+
+
+# ══ فاز ۲۴: نظامِ طراحیِ یکپارچه و فونتِ محلی ══════════════════════════════
+
+def test_every_section_uses_the_shared_header():
+    """همهٔ بخش‌ها یک هدرِ مشترک دارند — وگرنه صفحه «چند محصولِ چسبیده» می‌شود."""
+    for rel in (
+        ("frontend", "src", "pages", "ReportView.jsx"),
+        ("frontend", "src", "components", "cognitive", "PrerequisiteSections.jsx"),
+    ):
+        src = _read(*rel)
+        assert "UnifiedSectionHeader" in src, rel
+
+
+def test_sections_share_one_surface_language():
+    """همهٔ سطوح یک جنس دارند: شیشه‌ایِ روشن با حاشیهٔ نرم."""
+    src = _read("frontend", "src", "pages", "ReportView.jsx")
+    assert "bg-white/85" in src
+    assert "backdrop-blur-md" in src
+    assert "rounded-3xl" in src
+
+
+def test_font_is_served_locally_not_from_google():
+    """اگر فونت از Google Fonts بیاید، در شبکهٔ بسته بی‌صدا به فونتِ ۴۰۰ می‌افتد.
+
+    این باگ در همین پروژه رخ داد: تمامِ متن‌های ``font-bold`` فیزیکاً نازک
+    رندر می‌شدند و کلِ کارنامه بی‌کنتراست می‌شد — بدونِ هیچ خطایی در کنسول.
+    فقط با اندازه‌گیریِ عددیِ ``font-weight`` پیدا شد.
+    """
+    html = _read("frontend", "index.html")
+    assert "fonts.googleapis.com" not in html
+    assert "fonts.gstatic.com" not in html
+    assert "/print-fonts/Vazirmatn-Regular.ttf" in html
+    assert "@font-face" in html
+    # هر سه وزنِ استفاده‌شده باید تعریف شده باشند
+    for w in ("Vazirmatn-Regular", "Vazirmatn-Bold", "Vazirmatn-ExtraBold"):
+        assert w in html
+
+
+def test_header_component_has_the_four_accent_colours():
+    """قراردادِ رنگِ پروژه: زمردی/ایندیگو/رز/کهربایی — نه بیشتر، نه کمتر."""
+    src = _read("frontend", "src", "components", "cognitive", "UnifiedSectionHeader.jsx")
+    for accent in ("emerald", "indigo", "rose", "amber"):
+        assert f"{accent}:" in src

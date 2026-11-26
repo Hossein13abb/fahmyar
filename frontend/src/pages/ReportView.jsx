@@ -8,6 +8,7 @@ import {
   LearningGapsSection,
   RootCauseAnalysisSection,
 } from '../components/cognitive/PrerequisiteSections'
+import { UnifiedSectionHeader } from '../components/cognitive/UnifiedSectionHeader'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -43,41 +44,35 @@ import { toFarsiNumber } from '../utils/faNumbers'
  * بدونِ این نوار، همهٔ بخش‌ها یک مستطیلِ تخت با یک آیکونِ کوچک دیده
  * می‌شدند و صفحه بی‌روح می‌شد. نوار مرجعِ بصریِ هر بخش است.
  */
-function SectionCard({ Icon, title, tone = 'brand', children, className = '' }) {
+function SectionCard({
+  Icon,
+  title,
+  tone = 'brand',
+  subtitle,
+  badgeText,
+  children,
+  className = '',
+}) {
   const tones = {
-    brand: {
-      rail: 'from-brand-400 via-emerald-400 to-teal-400',
-      head: 'bg-gradient-to-l from-brand-50/80 via-white to-white',
-      icon: 'bg-gradient-to-br from-brand-600 to-emerald-600 text-white shadow-sm',
-      ring: 'ring-slate-200/70',
-    },
-    amber: {
-      rail: 'from-amber-300 via-orange-300 to-calm-400',
-      head: 'bg-gradient-to-l from-amber-50/80 via-white to-white',
-      icon: 'bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm',
-      ring: 'ring-amber-100',
-    },
-    teal: {
-      rail: 'from-teal-300 via-cyan-400 to-brand-400',
-      head: 'bg-gradient-to-l from-teal-50/80 via-white to-white',
-      icon: 'bg-gradient-to-br from-teal-600 to-cyan-600 text-white shadow-sm',
-      ring: 'ring-teal-100',
-    },
+    brand: { accent: 'emerald', rail: 'from-brand-400 via-emerald-400 to-teal-400' },
+    amber: { accent: 'amber', rail: 'from-amber-300 via-orange-300 to-calm-400' },
+    teal: { accent: 'indigo', rail: 'from-teal-300 via-cyan-400 to-brand-400' },
   }
   const st = tones[tone] ?? tones.brand
   return (
     <section
-      className={`group relative overflow-hidden rounded-2xl bg-white shadow-panel ring-1 transition-shadow duration-300 hover:shadow-panel-hover ${st.ring} ${className}`}
+      className={`group relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/85 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] backdrop-blur-md transition-all duration-300 hover:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.08)] ${className}`}
     >
       <span className={`block h-1 w-full bg-gradient-to-l ${st.rail}`} aria-hidden="true" />
-      <div className="p-5">
-        <h2 className="flex items-center gap-2.5 text-[15px] font-black text-brand-950">
-          <span className={`rounded-2xl p-2 ${st.icon}`}>
-            <Icon className="h-5 w-5" />
-          </span>
-          {title}
-        </h2>
-        <div className="mt-3">{children}</div>
+      <div className="p-5 md:p-6">
+        <UnifiedSectionHeader
+          icon={Icon}
+          accentColor={st.accent}
+          title={title}
+          badgeText={badgeText}
+          subtitle={subtitle}
+        />
+        {children}
       </div>
     </section>
   )
@@ -490,7 +485,31 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
     : ''
 
   return (
-    <div className="animate-fade-up space-y-5">
+    <div className="relative">
+      {/* ── بومِ محیطیِ کارنامه ──
+          پیش از این، پس‌زمینهٔ صفحه سفیدِ تخت بود و کارت‌ها روی آن شناور
+          دیده می‌شدند بی‌آنکه عمقی داشته باشند. سه هالهٔ محو، رنگِ صفحه را
+          از «سفید» به «اتمسفر» می‌برند.
+
+          ⚠️ دو نکتهٔ فنی که با آزمون و خطا روشن شد:
+            ۱. ``overflow-hidden`` روی این ریشه، sticky/scroll را می‌شکند؛
+               هاله‌ها با ``pointer-events-none`` و موقعیتِ خودشان مهار می‌شوند.
+            ۲. ``-z-10`` بدونِ ``isolate`` می‌تواند هاله را زیرِ body ببرد و
+               کلاً ناپدید کند. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-10 left-10 -z-10 h-96 w-96 rounded-full bg-emerald-200/30 blur-3xl"
+      />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-1/3 -z-10 h-[30rem] w-[30rem] rounded-full bg-indigo-200/25 blur-3xl"
+      />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-10 right-1/4 -z-10 h-80 w-80 rounded-full bg-amber-200/20 blur-3xl"
+      />
+
+      <div className="animate-fade-up space-y-5">
       {/* ── سربرگ گزارش ── */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-l from-brand-900 via-brand-800 to-emerald-700 p-6 text-white shadow-panel">
         {/* هالهٔ گوشه‌ها — عمق بدونِ تیرگیِ اضافه */}
@@ -630,7 +649,12 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
           می‌سازد؛ پس کلیدها هرگز با فرانت ناهمخوان نمی‌شوند و «نامشخص» فقط برای
           مرحله‌ای است که واقعاً بی‌پاسخ مانده. */}
       {stageDims.length > 0 && (
-        <SectionCard Icon={Layers} title="ابعاد فهم — تحلیل کلی" tone="teal">
+        <SectionCard
+        Icon={Layers}
+        title="ابعاد فهم — تحلیل کلی"
+        tone="teal"
+        subtitle="پنج بُعدِ استانداردِ فهم، ساخته‌شده از شواهدِ واقعیِ ده سؤالِ همین آزمون"
+      >
           <div className="grid gap-2 md:grid-cols-2">
             {stageDims.map((d, i) => {
               const st = String(d.status ?? 'not_assessed').toLowerCase()
@@ -656,7 +680,11 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
       )}
 
       {/* ── (ب) تحلیل تفصیلی تک‌تک سوالات — کارت‌های ماژولار + معلمِ تعاملی ── */}
-      <SectionCard Icon={FileText} title="تحلیل تفصیلی تک‌تک سوالات">
+      <SectionCard
+        Icon={FileText}
+        title="کالبدشکافی سؤال‌به‌سؤال آزمون"
+        subtitle="تحلیلِ عملکرد در ده مرحلهٔ شناختی، همراه با میزِ معلم برای هر گره"
+      >
         <DetailedQuestions questions={perQuestion} sessionId={Number(report.session_id ?? sessionIdProp)} />
       </SectionCard>
 
@@ -796,6 +824,7 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
         sessionId={Number(report.session_id ?? sessionIdProp)}
         onClose={() => setGapOpen(false)}
       />
+      </div>
     </div>
   )
 }

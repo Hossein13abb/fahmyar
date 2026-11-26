@@ -24,6 +24,7 @@ import {
   Info,
   Sparkles,
 } from 'lucide-react'
+import { UnifiedSectionHeader } from './UnifiedSectionHeader'
 
 const faNum = (v) => String(v ?? '').replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)])
 
@@ -211,20 +212,13 @@ export function RootCauseAnalysisSection({ chains }) {
   if (list.length === 0) return null
 
   return (
-    <section className="rounded-2xl border border-indigo-100 bg-white p-6 shadow-panel">
-      <header className="mb-4 flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-sm">
-          <GitBranch className="h-4.5 w-4.5" strokeWidth={2.3} />
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-[15px] font-black text-slate-900">
-            ریشه‌یابی زنجیره‌ای لغزش‌ها و پیش‌نیازها
-          </h3>
-          <p className="mt-1 text-justify text-right text-[11px] leading-6 text-slate-500">
-            چگونه گره‌های پایه‌ای در مقاطعِ قبل، مانعِ تسلط بر مبحثِ فعلی شدند؟
-          </p>
-        </div>
-      </header>
+    <section className="rounded-3xl border border-slate-200/80 bg-white/85 p-5 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] backdrop-blur-md transition-all duration-300 hover:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.08)] md:p-6">
+      <UnifiedSectionHeader
+        icon={GitBranch}
+        accentColor="indigo"
+        title="ریشه‌یابی زنجیره‌ای لغزش‌ها و پیش‌نیازها"
+        subtitle="ردیابی این‌که کدام گره‌های پایه‌ای در مقاطع قبل، مانعِ تسلط بر مبحثِ فعلی شدند"
+      />
 
       {list.map((chain, i) => (
         <RootCauseChain key={i} chain={chain} index={i} />
@@ -374,27 +368,14 @@ export function LearningGapsSection({ gaps, onTeach }) {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200/90 bg-gradient-to-b from-slate-50/80 to-white p-6 shadow-panel">
-      <header className="mb-6 flex flex-col justify-between gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-center">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 ring-4 ring-emerald-50">
-            <Compass className="h-5 w-5" strokeWidth={2.3} />
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-[15px] font-black text-slate-900">
-                ایستگاه‌های نقشهٔ راه ترمیم
-              </h3>
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
-                {faNum(list.length)} گره شناسایی‌شده
-              </span>
-            </div>
-            <p className="mt-1 text-justify text-right text-[11px] leading-6 text-slate-500">
-              مفاهیمِ بنیادیِ پیش‌نیاز که با یک بار بازخوانیِ هدفمند، مسیرِ تسلط را باز می‌کنند.
-            </p>
-          </div>
-        </div>
-      </header>
+    <section className="rounded-3xl border border-slate-200/80 bg-white/85 p-5 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] backdrop-blur-md transition-all duration-300 hover:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.08)] md:p-6">
+      <UnifiedSectionHeader
+        icon={Compass}
+        accentColor="emerald"
+        title="ایستگاه‌های نقشهٔ راه ترمیم"
+        badgeText={`${faNum(list.length)} گره شناسایی‌شده`}
+        subtitle="مفاهیمِ بنیادیِ پیش‌نیاز که با یک بار بازخوانیِ هدفمند، مسیرِ تسلط را کامل می‌کنند"
+      />
 
       {/* خطِ زمانِ نقشه: در موبایل پشتِ نشان‌ها، در دسکتاپ درست زیرِ آن‌ها */}
       <ol className="relative space-y-5 before:absolute before:inset-y-2 before:right-[1.375rem] before:hidden before:w-0.5 before:bg-slate-200 md:before:block md:before:right-[1.75rem] md:before:content-['']">

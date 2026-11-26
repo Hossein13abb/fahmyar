@@ -12,12 +12,43 @@
       content="فهم‌یار؛ سامانهٔ فهم‌سنجی تشخیصیِ هوشمند برای دانش‌آموزان و کادر مدرسه — آزمون جامع تشخیصی، ریشه‌یابی بدفهمی‌ها و گزارش پیشرفت."
     />
     <title>فهم‌یار | فهم‌سنجی تشخیصی</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100..900&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      فونتِ Vazirmatn محلی سرو می‌شود، نه از Google Fonts.
+
+      چرا: وقتی گوگل‌فونت در دسترس نباشد (شبکهٔ مدرسه، تحریم، آفلاین یا
+      فیلترِ DNS)، مرورگر به فونتِ جانشینِ ۴۰۰ وزنی می‌افتد. نتیجه: تمامِ
+      متن‌های bold فیزیکاً نازک رندر می‌شوند و کلِ کارنامه بی‌کنتراست و
+      کم‌خوان دیده می‌شود — بدونِ هیچ خطایی. این حتی در اسکرین‌شات‌های خودمان
+      هم رخ داد و تا وقتی با عدد (font-weight: 400 روی کلاسِ font-bold)
+      اندازه‌گیری نشد، کسی متوجه نشد.
+
+      سه وزنِ موردِ استفاده (Regular/Bold/ExtraBold) از قبل در
+      ``public/print-fonts`` برای PDF وجود داشتند؛ همان فایل‌ها این‌جا هم
+      سرو می‌شوند. یک منبعِ واحد برای وب و PDF = یک ظاهرِ واحد.
+    -->
+    <style>
+      @font-face {
+        font-family: 'Vazirmatn';
+        src: url('/print-fonts/Vazirmatn-Regular.ttf') format('truetype');
+        font-weight: 100 500;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Vazirmatn';
+        src: url('/print-fonts/Vazirmatn-Bold.ttf') format('truetype');
+        font-weight: 600 800;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Vazirmatn';
+        src: url('/print-fonts/Vazirmatn-ExtraBold.ttf') format('truetype');
+        font-weight: 900;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
