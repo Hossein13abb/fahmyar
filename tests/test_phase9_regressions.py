@@ -289,7 +289,8 @@ def test_verdict_title_and_summary_come_from_one_status():
     status, note = derive_status("UNSTRUCTURED", per_q, {})
     assert status == "MASTERED"
     assert note is None
-    assert _STATUS_PERSONA[status] == "مهندسی که ساعت را بست"
+    # فاز ۱۹: عنوانِ شخصیت دیگر استعارهٔ ساعت ندارد.
+    assert _STATUS_PERSONA[status] == "مسلط بر مفهوم — پیوندها را می‌بینی"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -19,7 +19,7 @@ import {
   CheckCircle2,
   ScanSearch,
   GraduationCap,
-  Wrench,
+  Puzzle,
   Search,
   FileText,
   Layers,
@@ -767,7 +767,7 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
             {perQuestion.some((q) => q.missing_gear) && (
               <div className="mt-4 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-100 via-amber-50 to-orange-50/60 p-4 shadow-sm">
                 <p className="flex items-center gap-1.5 text-[12px] font-black text-amber-900">
-                  <Wrench className="h-3.5 w-3.5" /> چرخ‌دنده‌های گمشده
+                  <Puzzle className="h-3.5 w-3.5" /> گره‌های کلیدی برای تسلط کامل
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {perQuestion
@@ -778,7 +778,7 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
                         title={faText(q.missing_gear, '')}
                         className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-300/60 bg-gradient-to-l from-white to-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-sm transition hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-md"
                       >
-                        <Wrench className="h-3 w-3 shrink-0 text-amber-500" />
+                        <Puzzle className="h-3 w-3 shrink-0 text-amber-500" />
                         <span className="truncate">
                           {q.stage_title || `مرحلهٔ ${toFarsiNumber(q.order ?? i + 1)}`}
                         </span>
@@ -894,15 +894,24 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
       </SectionCard>
 
       {/* ── موارد هنوز روشن‌نشده ──
-          فقط «چرخ‌دندهٔ گمشده»ی واقعی نمایش داده می‌شود. فهرستِ ساختگیِ
+          فقط گرهٔ کلیدیِ واقعی نمایش داده می‌شود. فهرستِ ساختگیِ
           «سؤال ۳ (نامشخص)» که از نبودِ تحلیل ساخته می‌شد، حذف شده است. */}
       {openGears.length > 0 && (
-        <SectionCard Icon={HelpCircle} title="موارد هنوز روشن‌نشده" tone="amber">
+        <SectionCard Icon={HelpCircle} title="حلقه‌های مفقوده در یادگیری" tone="amber">
           <ul className="space-y-2">
             {openGears.map((g, i) => (
-              <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 px-4 py-2.5 text-justify text-right text-[12px] leading-6 text-amber-950">
-                <span className="font-black">{faStageTitle(g, i)}: </span>
-                {faText(g.missing_gear, 'این بخش هنوز روشن نشده است.')}
+              <li
+                key={i}
+                className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200/60 bg-gradient-to-l from-white to-amber-50/70 px-4 py-2.5 text-justify text-right text-[12px] leading-6 text-amber-950 shadow-sm"
+              >
+                {/* اصلِ مفهوم اول می‌آید — این چیزی است که دانش‌آموز باید یاد بگیرد.
+                    نامِ مرحله فقط یک برچسبِ کوچک کنارش است، نه تیترِ جمله. */}
+                <span className="min-w-0 flex-1 font-bold">
+                  {faText(g.missing_gear, 'این بخش هنوز روشن نشده است.')}
+                </span>
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700 ring-1 ring-amber-200">
+                  {faStageTitle(g, i)}
+                </span>
               </li>
             ))}
           </ul>
@@ -1071,7 +1080,7 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
           )}
         </SectionCard>
 
-        <SectionCard Icon={HelpCircle} title="موارد هنوز روشن‌نشده" tone="amber" className="lg:col-span-2">
+        <SectionCard Icon={HelpCircle} title="حلقه‌های مفقوده در یادگیری" tone="amber" className="lg:col-span-2">
           {unclear.length === 0 ? (
             <p className="flex items-center gap-2 text-[13px] font-bold text-emerald-800">
               <CheckCircle2 className="h-5 w-5" /> مورد مبهمی باقی نمانده است 🌱

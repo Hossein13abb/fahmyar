@@ -622,7 +622,7 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
                 Icon={KeyRound}
                 iconTone="text-amber-600"
                 step={3}
-                title="رمز طلایی ساعت‌ساز"
+                title="کلید مفهومی و نکتهٔ ماندگار"
                 className={`${BOX.amber} font-medium`}
               >
                 <RichText content={content.golden_tip} />
@@ -639,7 +639,7 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-brand-900 to-brand-800 px-6 py-3 text-sm font-bold text-white shadow-soft transition-all hover:from-brand-950 hover:to-brand-900 hover:shadow-lift"
             >
               <CheckCircle2 className="h-4 w-4" />
-              فهمیدم! ساعت رو بستم
+              متوجه شدم، کاملاً جا افتاد!
               <span aria-hidden="true">🚀</span>
               <ArrowLeft className="h-4 w-4" />
             </button>

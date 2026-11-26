@@ -1029,7 +1029,7 @@ class MockProvider(AIProvider):
         status = "JARGON_DEPENDENT" if forbidden_hit else ("MASTERED" if gave_debug else "PARTIAL_FRAGMENTED")
         persona = {
             "JARGON_DEPENDENT": "زندانیِ اصطلاحاتِ کتاب",
-            "MASTERED": "مهندسی که ساعت را بست",
+            "MASTERED": "مسلط بر مفهوم — پیوندها را می‌بینی",
             "PARTIAL_FRAGMENTED": "تفکرِ جزیره‌ای",
         }[status]
 

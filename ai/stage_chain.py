@@ -63,7 +63,7 @@ def stage_key(order: int) -> str:
 
 
 # برچسب‌های رو به کاربر — فقط زبانِ عمومی. اسم‌های متدولوژیکِ داخلی
-# («لایهٔ نقاب»، «فاینمن»، «ساعتِ خراب») عمداً این‌جا نیستند: داراییِ فکری
+# («نقاب»، «فاینمن»، «ساعتِ خراب») عمداً این‌جا نیستند: داراییِ فکری
 # است و نباید در UI دیده شود. منطقِ سنجش دست‌نخورده است.
 STAGE_TITLES: dict[str, str] = {
     "philosophy": PUBLIC_STAGE_BY_TYPE["philosophy"],
@@ -104,7 +104,7 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
 بسنجند — نه اینکه دومی تکرارِ اولی با عددِ دیگر باشد.
 ═══════════════════════════════════════════════════════════════
 
-🔹 مرحله ۱ — «فلسفه و تصویر کلان» (exam_type: "philosophy"، ترتیبِ ۱ و ۲)
+🔹 مرحله ۱ — «سؤال مفهومی» (exam_type: "philosophy"، ترتیبِ ۱ و ۲)
    **دو سؤالِ تشریحیِ کوتاه، مطلقاً بدونِ هیچ فرمول و عدد.**
    • سؤال ۱: **چراییِ پیدایشِ مفهوم** — انسان پیش از این مفهوم به چه
      بن‌بستِ علمی می‌خورد که مجبور شد آن را بسازد؟
@@ -126,12 +126,12 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
    می‌کنند و سنجش را بی‌اثر؛ دانش‌آموز باید خودش به آن برسد.
    واژگانِ کتابِ درسی بمان: ویژگیِ «ذاتی» رسانا، نه «محدودکنندهٔ ثابت مسیر».
 
-🔹 مرحله ۲ — «تست لایهٔ نقاب» (exam_type: "mask_mcq"، ترتیبِ ۳ و ۴)
+🔹 مرحله ۲ — «سؤال چهارگزینه‌ای» (exam_type: "mask_mcq"، ترتیبِ ۳ و ۴)
    **دو تستِ ۴ گزینه‌ای.** فیلدهای لازم برای هر کدام: "options" (آرایهٔ ۴
    رشته) و "correct_option_index" (عددِ ۰ تا ۳ — **یک‌پایه نیست، از ۰ شروع
    می‌شود**).
    هر دو سؤال تستِ استانداردِ کتابی دربارهٔ قانونِ اصلی‌اند و هر دو باید
-   **«چرخ‌دندهٔ اضافه»** داشته باشند: یک دادهٔ اضافیِ کاملاً معقول که در
+   **یک دادهٔ اضافی** داشته باشند: داده‌ای کاملاً معقول که در
    بافتِ مسئله طبیعی و از نظرِ علمی ممکن است، ولی در محاسبه به کار نمی‌آید.
    دو تست باید **دو قانونِ متفاوت** را بسنجند یا یک قانون را در دو شرایطِ
    متفاوت — نه یک محاسبهٔ تکراری.
@@ -148,17 +148,17 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
    هدف: ثبتِ اینکه قانونِ رسمی را می‌داند یا نه، تا در مرحله ۵ با شهودش
    مقایسه شود.
 
-🔹 مرحله ۳ — «مونتاژ ذهنی و دستکاری سیستم» (exam_type: "perturbation"، ترتیبِ ۵ و ۶)
+🔹 مرحله ۳ — «پیش‌بینی رفتار پدیده» (exam_type: "perturbation"، ترتیبِ ۵ و ۶)
    **دو سؤالِ تشریحیِ تحلیلی و مطلقاً بدونِ عدد و فرمول.**
    در هر سؤال یک سناریوی پویا هست که در آن تغییر **در ابتدای زنجیرهٔ علّی**
    اعمال می‌شود و دانش‌آموز باید اتفاقِ نهاییِ سیستم را پیش‌بینی کند: اول چه
    عوض می‌شود، بعدش چه، و سرانجام خروجی چه تغییری می‌کند و **چرا**.
    دو سؤال باید دو نقطهٔ متفاوتِ زنجیره را دستکاری کنند (مثلاً یکی ورودی و
-   یکی شرایطِ محیط) تا مونتاژِ ذهنی از دو جهت سنجیده شود.
+   یکی شرایطِ محیط) تا پیش‌بینیِ پدیده از دو جهت سنجیده شود.
    در صورتِ سؤال شرط‌ها را صریح بگذار («با ثابت ماندنِ ولتاژِ منبع»، «با
    نادیده گرفتنِ تغییرِ دما») تا فقط یک پاسخِ درست وجود داشته باشد.
 
-🔹 مرحله ۴ — «عیب‌یابی ساعت خراب» (exam_type: "debugging"، ترتیبِ ۷ و ۸)
+🔹 مرحله ۴ — «بررسی استدلال علمی» (exam_type: "debugging"، ترتیبِ ۷ و ۸)
    **شاه‌کلیدِ تشخیص — دو سؤالِ نقدِ استدلال.**
    در هر سؤال یک دانش‌آموزِ فرضی (امیر یا سارا - برای هر سؤال نامِ متفاوت)
    استدلالی مطرح می‌کند که ظاهرش بسیار منطقی و علمی است اما نتیجه‌اش غلط.
@@ -174,7 +174,7 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
    نه قانونِ طبیعت؛ استدلالِ غلط باید به همین پیش‌فرض تکیه کند، نه اینکه
    خودِ سؤال آن را قانونِ مطلق جا بزند.
 
-🔹 مرحله ۵ — «چالش فاینمن» (exam_type: "feynman_synthesis"، ترتیبِ ۹ و ۱۰)
+🔹 مرحله ۵ — «توضیح ساده و شهودی» (exam_type: "feynman_synthesis"، ترتیبِ ۹ و ۱۰)
    **دو سؤال.** از دانش‌آموز بخواه **دو جنبهٔ اصلیِ متفاوتِ مفهوم** را برای
    یک **بچهٔ ۱۰ ساله** توضیح دهد (مرتبط با منطقِ مرحلهٔ ۲).
    **قانونِ حیاتی:** فیلد "forbidden_words" باید برای **هر سؤال جداگانه**
@@ -217,53 +217,53 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
     "target_misconceptions": ["بدفهمی ۱", "بدفهمی ۲", "بدفهمی ۳"]
   },
   "questions": [
-    {"order": 1, "exam_type": "philosophy", "stage_title": "مرحله ۱: فلسفه و تصویر کلان",
+    {"order": 1, "exam_type": "philosophy", "stage_title": "سؤال مفهومی",
      "text": "چراییِ پیدایشِ مفهوم...", "difficulty": "medium", "cognitive_type": "conceptual",
      "options": null, "correct_option_index": null, "forbidden_words": [],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 2, "exam_type": "philosophy", "stage_title": "مرحله ۱: فلسفه و تصویر کلان",
+    {"order": 2, "exam_type": "philosophy", "stage_title": "سؤال مفهومی",
      "text": "تفاوتِ نگاهِ روزمره با نگاهِ علمی...", "difficulty": "medium", "cognitive_type": "conceptual",
      "options": null, "correct_option_index": null, "forbidden_words": [],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 3, "exam_type": "mask_mcq", "stage_title": "مرحله ۲: تست لایه نقاب (با اطلاعات انحرافی)",
+    {"order": 3, "exam_type": "mask_mcq", "stage_title": "سؤال چهارگزینه‌ای",
      "text": "...", "difficulty": "medium", "cognitive_type": "computational",
      "options": ["گزینه ۱", "گزینه ۲", "گزینه ۳", "گزینه ۴"], "correct_option_index": 1,
      "forbidden_words": [], "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 4, "exam_type": "mask_mcq", "stage_title": "مرحله ۲: تست لایه نقاب (با اطلاعات انحرافی)",
+    {"order": 4, "exam_type": "mask_mcq", "stage_title": "سؤال چهارگزینه‌ای",
      "text": "...", "difficulty": "medium", "cognitive_type": "computational",
      "options": ["گزینه ۱", "گزینه ۲", "گزینه ۳", "گزینه ۴"], "correct_option_index": 2,
      "forbidden_words": [], "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 5, "exam_type": "perturbation", "stage_title": "مرحله ۳: مونتاژ ذهنی و دستکاری سیستم",
+    {"order": 5, "exam_type": "perturbation", "stage_title": "پیش‌بینی رفتار پدیده",
      "text": "...", "difficulty": "hard", "cognitive_type": "conceptual",
      "options": null, "correct_option_index": null, "forbidden_words": [],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 6, "exam_type": "perturbation", "stage_title": "مرحله ۳: مونتاژ ذهنی و دستکاری سیستم",
+    {"order": 6, "exam_type": "perturbation", "stage_title": "پیش‌بینی رفتار پدیده",
      "text": "...", "difficulty": "hard", "cognitive_type": "conceptual",
      "options": null, "correct_option_index": null, "forbidden_words": [],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 7, "exam_type": "debugging", "stage_title": "مرحله ۴: عیب‌یابی ساعت خراب (نقد استدلال)",
+    {"order": 7, "exam_type": "debugging", "stage_title": "بررسی استدلال علمی",
      "text": "امیر می‌گوید: «...» — سوتیِ او کجاست؟", "difficulty": "hard", "cognitive_type": "conceptual",
      "options": null, "correct_option_index": null, "forbidden_words": [],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 8, "exam_type": "debugging", "stage_title": "مرحله ۴: عیب‌یابی ساعت خراب (نقد استدلال)",
+    {"order": 8, "exam_type": "debugging", "stage_title": "بررسی استدلال علمی",
      "text": "سارا می‌گوید: «...» — سوتیِ او کجاست؟", "difficulty": "hard", "cognitive_type": "conceptual",
      "options": null, "correct_option_index": null, "forbidden_words": [],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 9, "exam_type": "feynman_synthesis", "stage_title": "مرحله ۵: چالش فاینمن (توضیح با دستِ بسته!)",
+    {"order": 9, "exam_type": "feynman_synthesis", "stage_title": "توضیح ساده و شهودی",
      "text": "جنبهٔ اول را برای بچهٔ ۱۰ ساله توضیح بده...", "difficulty": "hard", "cognitive_type": "combined",
      "options": null, "correct_option_index": null,
      "forbidden_words": ["کلمه ۱", "کلمه ۲", "کلمه ۳", "کلمه ۴"],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 10, "exam_type": "feynman_synthesis", "stage_title": "مرحله ۵: چالش فاینمن (توضیح با دستِ بسته!)",
+    {"order": 10, "exam_type": "feynman_synthesis", "stage_title": "توضیح ساده و شهودی",
      "text": "جنبهٔ دوم را برای بچهٔ ۱۰ ساله توضیح بده...", "difficulty": "hard", "cognitive_type": "combined",
      "options": null, "correct_option_index": null,
      "forbidden_words": ["کلمه ۵", "کلمه ۶", "کلمه ۷", "کلمه ۸"],
@@ -370,7 +370,7 @@ _FALLBACK_STAGES: tuple[dict[str, Any], ...] = (
         "cognitive_type": "conceptual",
         "expected_logic": "زنجیرهٔ علّی معکوس با جهتِ درستِ تغییرات",
     },
-    # ── مرحله ۴: عیب‌یابیِ ساعتِ خراب (order ۷ و ۸) ──
+    # ── مرحله ۴: بررسی استدلال علمی (order ۷ و ۸) ──
     {
         "order": 7,
         "exam_type": "debugging",
