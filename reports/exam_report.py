@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from models.concept import Concept
 from models.question import AssessmentSession, EvidenceStatus, STATUS_FA
+from ai.brand_terms import PUBLIC_STAGE_TITLES, scrub_deep
 from ai.cross_check import normalize_suggestions
 from reports.dimensions import build_stage_dimensions, DIMENSION_STATUS_FA
 from reports.fa_map import (
@@ -131,6 +132,22 @@ _TUTOR_KEYS = ("misconception_root", "intuitive_explanation", "golden_tip")
 
 
 _RESOLUTION_KEYS = ("why_it_happened", "how_to_connect_bridge", "exam_shield_tip")
+
+
+def _public_stage_title(order: Any) -> str:
+    """«سؤال ۷ از ۱۰» → «بررسی استدلال علمی». هرگز نامِ متدولوژی.
+
+    آزمونِ جامع ۱۰ سؤال دارد (۲ سؤال در هر مرحله)، پس تقسیم بر ۲ لازم است.
+    ورودیِ نامعتبر به «سؤال تحلیلی» می‌افتد تا هیچ مصرف‌کننده‌ای ``None`` نگیرد.
+    """
+    try:
+        n = int(order)
+    except (TypeError, ValueError):
+        return "سؤال تحلیلی"
+    if n < 1:
+        return "سؤال تحلیلی"
+    stage = (n - 1) // 2 + 1
+    return PUBLIC_STAGE_TITLES.get(stage, "سؤال تحلیلی")
 
 
 def _contradiction_tutor_for_report(finding: dict[str, Any]) -> dict[str, Any]:
@@ -315,7 +332,11 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             "confidence": record.get("confidence", 0.0),
             "needs_teacher_review": bool(record.get("needs_teacher_review", False)),
             # فاز ۷ — کارنامهٔ X-Ray
-            "stage_title": entry.get("stage_title") or record.get("stage_title"),
+            # فاز ۱۷: عنوانِ مرحله همیشه برچسبِ عمومی است، از شمارهٔ ترتیب
+            # ساخته می‌شود — نه از ``stage_title`` ذخیره‌شده که در آزمون‌های
+            # قدیمی نامِ متدولوژیِ داخلی دارد. (رقمِ فارسی هم همین‌جا درست
+            # می‌شود؛ «مرحله 1» با رقمِ لاتین در تصاویر دیده شده بود.)
+            "stage_title": _public_stage_title(entry.get("order")),
             "cognitive_verdict": record.get("cognitive_verdict"),
             "missing_gear": record.get("missing_gear"),
             # ── معلمِ هوشمند (فاز ۱۲) ──
@@ -473,4 +494,9 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
         "generated_at": datetime.utcnow().isoformat(),
         # عمداً: هیچ نمره/رتبه/درصد/مقایسه‌ای در گزارش وجود ندارد
     }
-    return report
+    # ── دروازهٔ زبانِ عمومی (فاز ۱۷) ──
+    # این تابع از ``cognitive_report`` ذخیره‌شده در DB می‌خواند، پس گزارش‌های
+    # قدیمی هنوز نامِ متدولوژیِ داخلی را داخل خلاصه دارند. سانسور در
+    # ``build_exam_report`` تنها مسیرِ تولید نیست؛ پس همین‌جا هم لازم است.
+    # scrub_deep فقط رشته‌ها را عوض می‌کند و ساختار دست‌نخورده می‌ماند.
+    return scrub_deep(report)

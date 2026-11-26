@@ -16,6 +16,7 @@ import re
 from typing import Any, Optional
 
 from ai.booklet_cache import booklet_cache_key, get_cached_booklet, put_cached_booklet
+from ai.brand_terms import PUBLIC_STAGE_BY_TYPE, PUBLIC_STAGE_TITLES
 from ai.json_sanitize import extract_json_object
 from ai.model_abstraction import get_router
 from ai.prompt_safe import fill
@@ -61,21 +62,18 @@ def stage_key(order: int) -> str:
     return STAGE_ORDER[stage - 1]
 
 
+# برچسب‌های رو به کاربر — فقط زبانِ عمومی. اسم‌های متدولوژیکِ داخلی
+# («لایهٔ نقاب»، «فاینمن»، «ساعتِ خراب») عمداً این‌جا نیستند: داراییِ فکری
+# است و نباید در UI دیده شود. منطقِ سنجش دست‌نخورده است.
 STAGE_TITLES: dict[str, str] = {
-    "philosophy": "مرحله ۱: فلسفه و تصویر کلان",
-    "mask_mcq": "مرحله ۲: تست لایه نقاب (با اطلاعات انحرافی)",
-    "perturbation": "مرحله ۳: مونتاژ ذهنی و دستکاری سیستم",
-    "debugging": "مرحله ۴: عیب‌یابی ساعت خراب (نقد استدلال)",
-    "feynman_synthesis": "مرحله ۵: چالش فاینمن (توضیح با دستِ بسته!)",
+    "philosophy": PUBLIC_STAGE_BY_TYPE["philosophy"],
+    "mask_mcq": PUBLIC_STAGE_BY_TYPE["mask_mcq"],
+    "perturbation": PUBLIC_STAGE_BY_TYPE["perturbation"],
+    "debugging": PUBLIC_STAGE_BY_TYPE["debugging"],
+    "feynman_synthesis": PUBLIC_STAGE_BY_TYPE["feynman_synthesis"],
 }
 
-STAGE_TITLES_FA: dict[int, str] = {
-    1: "فلسفه و تصویر کلان",
-    2: "تستِ لایهٔ نقاب",
-    3: "مونتاژ ذهنی و دستکاریِ سیستم",
-    4: "عیب‌یابیِ ساعتِ خراب",
-    5: "چالشِ فاینمن",
-}
+STAGE_TITLES_FA: dict[int, str] = dict(PUBLIC_STAGE_TITLES)
 
 
 # ---------------------------------------------------------------------------

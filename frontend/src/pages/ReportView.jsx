@@ -328,12 +328,13 @@ const BADGE_STATUSES = [
 const validBadgeStatus = (status) => (BADGE_STATUSES.includes(status) ? status : 'UNCLEAR')
 
 // عنوانِ فارسیِ مرحله — هرگز «نامشخص» به‌جای عنوانِ مرحله نمی‌نشیند.
+// برچسب‌های عمومی — هم‌راستا با ai/brand_terms.py
 const STAGE_NAMES = [
-  'فلسفه و تصویر کلان',
-  'تستِ لایهٔ نقاب',
-  'دستکاریِ سیستم',
-  'عیب‌یابیِ ساعتِ خراب',
-  'چالشِ فاینمن',
+  'سؤال مفهومی',
+  'سؤال چهارگزینه‌ای',
+  'پیش‌بینی رفتار پدیده',
+  'بررسی استدلال علمی',
+  'توضیح ساده و شهودی',
 ]
 
 const faDigits = (text) =>
@@ -378,11 +379,18 @@ const selectedText = (q) => {
   return String(q?.options?.[idx] ?? '')
 }
 
+/**
+ * عنوانِ مرحله — همیشه برچسبِ عمومی، هرگز نامِ متدولوژیِ داخلی.
+ *
+ * ``stage_title`` ممکن است از سمتِ سرور بیاید و در کارنامه‌های قدیمی
+ * «مرحله ۲: تست لایه نقاب» باشد. پس به آن اعتماد نمی‌کنیم و از شمارهٔ
+ * ترتیب برچسبِ عمومی می‌سازیم. (سرور هم از فاز ۱۷ همین را می‌فرستد؛ این
+ * لایه برای داده‌های ذخیره‌شدهٔ قدیمی است.)
+ */
 const faStageTitle = (q, index) => {
-  const raw = String(q?.stage_title ?? '').trim()
-  if (raw && !latinHeavy(raw)) return faDigits(raw)
   const order = Number(q?.order) || index + 1
-  return `مرحله ${toFarsiNumber(order)}: ${STAGE_NAMES[order - 1] ?? 'مرحلهٔ زنجیره'}`
+  const stage = Math.min(5, Math.max(1, Math.ceil(order / 2)))
+  return STAGE_NAMES[stage - 1] ?? 'سؤال تحلیلی'
 }
 
 const stageFallback = (status) => {
@@ -407,30 +415,6 @@ const DIM_LABEL = {
   causal_reasoning: 'استدلال علّی',
   critical_debugging: 'نقد استدلال',
   simple_communication: 'انتقال ساده',
-}
-
-/** رنگِ کارت‌های «پنج مرحلهٔ زنجیره» — هم‌خانوادهٔ کارت‌های تناقض. */
-const STAGE_TONE = {
-  CORRECT: {
-    card: 'border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-emerald-50/70 to-teal-50/50',
-    title: 'text-emerald-950',
-    text: 'text-emerald-900/70',
-  },
-  HALF_CORRECT: {
-    card: 'border-amber-200/70 bg-gradient-to-br from-amber-50 via-amber-50/70 to-orange-50/50',
-    title: 'text-amber-950',
-    text: 'text-amber-900/70',
-  },
-  WRONG: {
-    card: 'border-rose-200/70 bg-gradient-to-br from-rose-50 via-rose-50/70 to-red-50/50',
-    title: 'text-rose-950',
-    text: 'text-rose-900/70',
-  },
-  INSUFFICIENT_EVIDENCE: {
-    card: 'border-slate-200/80 bg-gradient-to-br from-slate-50 via-slate-50/70 to-brand-50/40',
-    title: 'text-slate-800',
-    text: 'text-slate-600',
-  },
 }
 
 const DIM_STYLE = {
@@ -640,7 +624,6 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
     .filter((q) => q && (q.status || q.cognitive_verdict || q.qualitative_feedback))
     .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
   const aiUsage = report.ai_usage && typeof report.ai_usage === 'object' ? report.ai_usage : null
-  const hasStageEvidence = stageDimensions.length > 0
   const openGears = stageDimensions.filter(
     (q) => String(q.missing_gear ?? '').trim().length > 0,
   )
@@ -814,29 +797,11 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
           فقط زمانی رندر می‌شود که دادهٔ واقعیِ ۵ مرحله‌ای در per_question باشد.
           پیش‌تر وقتی تحلیلی نبود، همین‌جا پنج کارتِ «نامشخص» ساخته می‌شد و
           دانش‌آموز آن را «ابهام واقعی» می‌خواند؛ حالا معیار، وجودِ داده است. */}
-      {hasStageEvidence && (
-        <SectionCard Icon={Layers} title="ابعاد فهم — پنج مرحلهٔ زنجیره" tone="teal">
-          <div className="grid gap-2 md:grid-cols-2">
-            {stageDimensions.map((q, i) => {
-              const tone = STAGE_TONE[validBadgeStatus(q.status)] ?? STAGE_TONE.INSUFFICIENT_EVIDENCE
-              return (
-              <div
-                key={i}
-                className={`flex items-start gap-3 rounded-2xl border p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${tone.card}`}
-              >
-                <Badge status={validBadgeStatus(q.status)} className="mt-0.5 shrink-0" />
-                <div className="min-w-0">
-                  <p className={`text-[13px] font-black ${tone.title}`}>{faStageTitle(q, i)}</p>
-                  <p className={`mt-1 text-[12px] leading-6 ${tone.text}`}>
-                    {faText(q.cognitive_verdict || q.qualitative_feedback || '', stageFallback(q.status))}
-                  </p>
-                </div>
-              </div>
-              )
-            })}
-          </div>
-        </SectionCard>
-      )}
+      {/* ── (الف) حذف‌شده در فاز ۱۷ ──
+          سکشنِ «ابعاد فهم — پنج مرحلهٔ زنجیره» (۱۰ باکسِ کوچک) عمداً حذف شد:
+          هم نامِ متدولوژیِ داخلی را لو می‌داد، هم با «تحلیل کلی» که همان
+          پنج بُعد را معنادارتر نشان می‌دهد هم‌پوشانی داشت. تنها منبعِ شواهدِ
+          مرحله‌ای، سکشنِ «تحلیل کلی» است. */}
 
       {/* ── ابعاد فهم — تحلیل کلی ──
           پنج بُعدِ استاندارد با کلیدهای ثابت (conceptual_knowledge …). داده از
@@ -858,7 +823,7 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
                     <p className="text-[13px] font-black text-brand-950">
                       {DIM_LABEL[d.key] ?? d.label ?? 'بُعد فهم'}
                     </p>
-                    <p className="mt-1 text-[12px] leading-6 text-slate-600">
+                    <p className="mt-1 text-justify text-right text-[12px] leading-6 text-slate-600">
                       {faText(d.finding, style.fallback)}
                     </p>
                   </div>
@@ -935,7 +900,7 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
         <SectionCard Icon={HelpCircle} title="موارد هنوز روشن‌نشده" tone="amber">
           <ul className="space-y-2">
             {openGears.map((g, i) => (
-              <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 px-4 py-2.5 text-[12px] leading-6 text-amber-950">
+              <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 px-4 py-2.5 text-justify text-right text-[12px] leading-6 text-amber-950">
                 <span className="font-black">{faStageTitle(g, i)}: </span>
                 {faText(g.missing_gear, 'این بخش هنوز روشن نشده است.')}
               </li>
@@ -1114,7 +1079,7 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
           ) : (
             <ul className="space-y-2">
               {unclear.map((u, i) => (
-                <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 px-4 py-2.5 text-[12px] leading-6 text-amber-950">
+                <li key={i} className="rounded-2xl border border-amber-200/60 bg-white/70 px-4 py-2.5 text-justify text-right text-[12px] leading-6 text-amber-950">
                   {u}
                 </li>
               ))}
@@ -1140,7 +1105,7 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
         {evidenceLines.length > 0 && (
           <details className="mt-4 rounded-2xl border border-teal-100 bg-white/60 p-4">
             <summary className="cursor-pointer text-[12px] font-black text-teal-900">شواهد تفصیلیِ تحلیل‌گر ({evidenceLines.length} مورد)</summary>
-            <ol className="mt-3 list-decimal space-y-1.5 pr-5 text-[12px] leading-7 text-slate-600">
+            <ol className="mt-3 list-decimal space-y-1.5 pr-5 text-justify text-right text-[12px] leading-7 text-slate-600">
               {evidenceLines.map((line, i) => (
                 <li key={i}>{line}</li>
               ))}

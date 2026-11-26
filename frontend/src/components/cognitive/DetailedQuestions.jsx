@@ -36,12 +36,19 @@ const faNum = (v) => String(v ?? '').replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷�
 // نه با رنگِ دکمه. چهار دکمهٔ چهار‌رنگ، صفحه را پراکنده می‌کرد.
 const CTA = 'from-brand-700 to-emerald-600 hover:from-brand-800 hover:to-emerald-700'
 
+/**
+ * برچسبِ رو به کاربرِ مراحل.
+ *
+ * نام‌های متدولوژیِ داخلی («لایهٔ نقاب»، «فاینمن»، «ساعتِ خراب») عمداً
+ * این‌جا نیستند — داراییِ فکری است و نباید در UI دیده شود. منطقِ سنجش
+ * دست‌نخورده است؛ فقط زبانِ نمایش عوض شده.
+ */
 export const STAGE_NAMES = [
-  'فلسفه و تصویر کلان',
-  'تستِ لایهٔ نقاب',
-  'مونتاژ ذهنی و دستکاری',
-  'عیب‌یابیِ ساعتِ خراب',
-  'چالشِ فاینمن',
+  'سؤال مفهومی',
+  'سؤال چهارگزینه‌ای',
+  'پیش‌بینی رفتار پدیده',
+  'بررسی استدلال علمی',
+  'توضیح ساده و شهودی',
 ]
 
 /**
@@ -94,12 +101,25 @@ export const toneOf = (status) =>
 
 const rawText = (value) => String(value ?? '').trim()
 
-/** متنِ چندخطی با رندرِ ریاضی (همان MathText بقیهٔ کارنامه). */
-function RichText({ content, className = '' }) {
+/**
+ * متنِ چندخطی با رندرِ ریاضی و ترازِ دوطرفه.
+ *
+ * ``text-justify`` عمداً **پیش‌فرض** است، نه چیزی که هر مصرف‌کننده یادش
+ * باشد اضافه کند. در متنِ فارسی، ترازِ چپ لبه‌ها را دندانه‌دار می‌کند و
+ * سند شبیهِ یادداشتِ دستی می‌شود؛ دوطرفه لبه‌ها را صاف و حرفه‌ای می‌کند.
+ *
+ * ``text-right`` هم لازم است: ``justify`` در خطِ آخر به ``text-align``
+ * برمی‌گردد و در RTL باید راست بماند، وگرنه خطِ آخر چپ می‌پرد.
+ * ``dir="rtl"`` صریح گذاشته شده تا اگر والد جهتِ دیگری داشت، نشکند.
+ */
+function RichText({ content, className = '', interactive = true }) {
   const text = rawText(content)
   if (!text) return null
   return (
-    <div className={`math-content whitespace-pre-line ${className}`}>
+    <div
+      dir="rtl"
+      className={`math-content whitespace-pre-line text-justify text-right ${className}`}
+    >
       <MathText content={text} />
     </div>
   )
@@ -139,7 +159,7 @@ export function QuestionCard({ q, index, onOpen }) {
               {faNum(order)}
             </span>
             <span className="rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-200/70">
-              مرحلهٔ {faNum(stage)}: {STAGE_NAMES[stage - 1] ?? 'زنجیرهٔ فهم'}
+              {STAGE_NAMES[stage - 1] ?? 'سؤال تحلیلی'}
             </span>
           </div>
           <span
@@ -153,7 +173,7 @@ export function QuestionCard({ q, index, onOpen }) {
         {rawText(q?.question_text) && (
           <RichText
             content={q.question_text}
-            className="mt-3 mb-3 text-sm font-medium leading-relaxed text-slate-800"
+            className="math-content mt-3 mb-3 text-justify text-right text-sm font-medium leading-relaxed text-slate-800"
           />
         )}
 
@@ -166,7 +186,7 @@ export function QuestionCard({ q, index, onOpen }) {
             pickedIdx === null ? (
               <p className="text-xs text-slate-400">بدون پاسخ</p>
             ) : (
-              <div className="text-xs leading-6 text-slate-700">
+              <div className="text-justify text-right text-xs leading-6 text-slate-700">
                 گزینهٔ {faNum(pickedIdx + 1)}:{' '}
                 <span className="math-inline font-bold text-slate-900">
                   <MathText content={selectedText} />
@@ -176,7 +196,7 @@ export function QuestionCard({ q, index, onOpen }) {
           ) : (
             <RichText
               content={answer || 'بدون پاسخ'}
-              className={`text-xs leading-6 ${answer ? 'text-slate-700' : 'text-slate-400'}`}
+              className={`text-justify text-right text-xs leading-6 ${answer ? 'text-slate-700' : 'text-slate-400'}`}
             />
           )}
         </div>
@@ -189,7 +209,7 @@ export function QuestionCard({ q, index, onOpen }) {
             </p>
             <RichText
               content={q.diagnostic_insight}
-              className="text-xs leading-relaxed text-emerald-900"
+              className="text-justify text-right text-xs leading-relaxed text-emerald-900"
             />
           </div>
         )}
@@ -328,11 +348,11 @@ export function ContradictionCard({ finding, onTeach, busy = false }) {
       </div>
 
       {rawText(finding?.description) && (
-        <p className={`relative mt-2 text-sm leading-relaxed ${look.text}`}>{finding.description}</p>
+        <p className={`relative mt-2 text-justify text-right text-sm leading-relaxed ${look.text}`}>{finding.description}</p>
       )}
 
       {rawText(finding?.resolution) && (
-        <div className="relative mt-3 rounded-xl border border-white/70 bg-white/60 p-3 text-xs leading-6 text-slate-700 shadow-sm backdrop-blur-sm">
+        <div className="relative mt-3 rounded-xl border border-white/70 bg-white/60 p-3 text-justify text-right text-xs leading-6 text-slate-700 shadow-sm backdrop-blur-sm">
           <span className={`font-black ${look.title}`}>توضیحِ خودت: </span>
           {finding.resolution}
         </div>
@@ -378,7 +398,7 @@ function TeachingBox({ Icon, iconTone, step, title, className, children }) {
         <span className="text-[10px] font-black opacity-50">بخش {faNum(step)}</span>
       </div>
       <h3 className="mb-1.5 text-sm font-black leading-6">{title}</h3>
-      <div className="text-sm leading-relaxed opacity-90">{children}</div>
+      <div className="text-justify text-right text-sm leading-relaxed opacity-90">{children}</div>
     </section>
   )
 }
@@ -518,10 +538,12 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
             <p className="mt-1 truncate text-xs font-medium text-emerald-800/70">
               {isContradiction
                 ? title || 'حلِ تناقض'
-                : `سؤال ${faNum(target?.order)} · مرحلهٔ ${faNum(
-                    Number(target?.q?.stage) ||
-                      Math.min(5, Math.floor(((Number(target?.order) || 1) - 1) / 2) + 1),
-                  )}`}
+                : `سؤال ${faNum(target?.order)} · ${
+                    STAGE_NAMES[
+                      (Number(target?.q?.stage) ||
+                        Math.min(5, Math.floor(((Number(target?.order) || 1) - 1) / 2) + 1)) - 1
+                    ] ?? 'سؤال تحلیلی'
+                  }`}
             </p>
           </div>
           <button

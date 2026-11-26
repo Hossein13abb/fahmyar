@@ -25,9 +25,11 @@ from typing import Any, Optional
 
 from ai.json_sanitize import extract_json_object
 from ai.model_abstraction import get_router
+from ai.brand_terms import scrub_deep
 from ai.stage_chain import (
     QUESTIONS_PER_STAGE,
     STAGE_TITLES_FA,
+    PUBLIC_STAGE_TITLES,
     TOTAL_QUESTIONS,
     stage_key,
     stage_of_order,
@@ -207,13 +209,8 @@ improvement_suggestions باید آرایه‌ای از **رشته‌های فا
 <<<END>>>
 """
 
-_NAMES = {
-    1: "فلسفه و تصویر کلان",
-    2: "تستِ لایهٔ نقاب",
-    3: "دستکاریِ سیستم",
-    4: "عیب‌یابیِ ساعتِ خراب",
-    5: "چالشِ فاینمن",
-}
+# برچسب‌های رو به کاربر — نام‌های متدولوژیک عمداً حذف شده‌اند (فاز ۱۷).
+_NAMES = dict(PUBLIC_STAGE_TITLES)
 
 
 # ---------------------------------------------------------------------------
@@ -812,13 +809,7 @@ def derive_status(
     return "PARTIAL_FRAGMENTED", note
 
 
-_STAGE_FA = {
-    1: "فلسفه و تصویر کلان",
-    2: "تستِ لایهٔ نقاب",
-    3: "دستکاریِ سیستم",
-    4: "عیب‌یابیِ ساعتِ خراب",
-    5: "چالشِ فاینمن",
-}
+_STAGE_FA = dict(PUBLIC_STAGE_TITLES)
 _STATUS_WORD_FA = {
     STAGE_STATUS_CORRECT: "درست",
     STAGE_STATUS_HALF: "نیمه‌درست",
@@ -1750,7 +1741,7 @@ async def analyze_stage_chain(
             "همان پدیده را برای یک بچهٔ ۱۰ ساله، بدونِ هیچ اصطلاحِ تخصصی، بازگو کن."
         ]
 
-    return {
+    report = {
         "needs_interrogation": needs,
         "interrogation": interrogation,
         # سازگاریِ عقب‌رو با مصرف‌کننده‌های قدیمی
@@ -1770,3 +1761,9 @@ async def analyze_stage_chain(
         # مصرفِ مدل برای همین آزمون (مدل، توکنِ ورودی/خروجی، هزینهٔ گزارش‌شده)
         "ai_usage": _usage_snapshot(),
     }
+    # ── دروازهٔ نهاییِ زبان ──
+    # برچسب‌های ثابت را که عوض کردیم کافی نیست: خودِ مدل هم نامِ
+    # متدولوژی را داخل خلاصه و توضیح می‌نویسد. آخرین نقطه‌ای که مطمئنیم
+    # همه‌چیز از آن می‌گذرد، همین‌جاست — پس کلِ دیکشنری از scrub می‌گذرد.
+    # (این تابع ساختمانِ داده را عوض نمی‌کند؛ فقط رشته‌ها را.)
+    return scrub_deep(report)

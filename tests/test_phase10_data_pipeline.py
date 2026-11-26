@@ -375,7 +375,9 @@ def test_summary_mentions_actual_failing_stages():
         {"order": 5, "status": "CORRECT"},
     ]
     summary = _summary_from_stages(per_question, "PARTIAL_FRAGMENTED")
-    assert "دستکاریِ سیستم" in summary
+    # فاز ۱۷: خلاصه دیگر نامِ متدولوژیِ داخلی نمی‌آورد؛ برچسبِ عمومی.
+    assert "پیش‌بینی رفتار پدیده" in summary
+    assert "دستکاریِ سیستم" not in summary
     assert "نادرست" in summary
 
 

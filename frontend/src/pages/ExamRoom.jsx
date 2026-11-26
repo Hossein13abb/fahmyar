@@ -140,12 +140,13 @@ const renderQuestionText = (text) => {
 
 // کلیدِ جداگانه برای انتخابِ گزینه — تا با متنِ پاسخ قاطی نشود
 // پنج مرحله — هر مرحله دو سؤال دارد (۱۰ سؤال در کل)
+// برچسب‌های عمومی — نامِ متدولوژیِ داخلی به دانش‌آموز نشان داده نمی‌شود.
 const STAGE_NAMES = [
-  'فلسفه و تصویر کلان',
-  'تستِ لایهٔ نقاب',
-  'مونتاژ ذهنی و دستکاری',
-  'عیب‌یابیِ ساعتِ خراب',
-  'چالشِ فاینمن',
+  'سؤال مفهومی',
+  'سؤال چهارگزینه‌ای',
+  'پیش‌بینی رفتار پدیده',
+  'بررسی استدلال علمی',
+  'توضیح ساده و شهودی',
 ]
 
 // شمارهٔ مرحله از روی ترتیبِ سؤال: ۱،۲→۱ … ۹،۱۰→۵
@@ -440,8 +441,8 @@ export default function ExamRoom() {
               key={q.id}
               onClick={() => setIndex(i)}
               aria-current={currentStep ? 'step' : undefined}
-              aria-label={`سؤال ${toFarsiNumber(i + 1)} از ${toFarsiNumber(total)} — مرحلهٔ ${toFarsiNumber(stageOfQuestion(q, i))}: ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}${done ? ' — پاسخ داده شده' : ''}`}
-              title={`مرحلهٔ ${toFarsiNumber(stageOfQuestion(q, i))}: ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}`}
+              aria-label={`سؤال ${toFarsiNumber(i + 1)} از ${toFarsiNumber(total)} — ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}${done ? ' — پاسخ داده شده' : ''}`}
+              title={`سؤال ${toFarsiNumber(i + 1)} — ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}`}
               className={[
                 'flex h-10 w-10 items-center justify-center rounded-2xl text-[12px] font-black tabular-nums transition',
                 currentStep
@@ -463,15 +464,9 @@ export default function ExamRoom() {
           <p className="text-[13px] font-black text-brand-700">
             سؤال {toFarsiNumber(index + 1)} از {toFarsiNumber(total)}
             <span className="mr-2 text-[11px] font-bold text-slate-500">
-              · مرحلهٔ {toFarsiNumber(stageOfQuestion(current, index))}:{' '}
-              {STAGE_NAMES[stageOfQuestion(current, index) - 1]}
+              · {STAGE_NAMES[stageOfQuestion(current, index) - 1]}
             </span>
           </p>
-          {current.stage_title && (
-            <span className="rounded-full bg-brand-50 px-3 py-1 text-[11px] font-black text-brand-800 ring-1 ring-brand-200">
-              {current.stage_title}
-            </span>
-          )}
         </div>
 
         <div className="mt-5 text-[16px] font-bold leading-9 text-brand-950">
