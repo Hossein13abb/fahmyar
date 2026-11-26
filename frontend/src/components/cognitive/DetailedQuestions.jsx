@@ -1,34 +1,32 @@
 /**
- * اجزای بصریِ کارنامه — نسخهٔ نسلِ جدید (فاز ۱۴)
+ * اجزای کارنامه — تمِ روشنِ «فهم‌یار» (فاز ۱۵)
  *
- * سه چیز در این فایل:
- *   ۱. <QuestionCard>  — کارتِ گلس‌مورفیکِ هر سؤال با نوارِ گرادیانتی
- *   ۲. <ContradictionCard> — کارتِ «شکار تناقض» با حاشیهٔ درخشان
- *   ۳. <LiveTutorModal> — مودالِ مشترکِ درلحظه (سؤال و تناقض)
+ * قراردادِ بصری: تمام سطوح روشن‌اند. هیچ `bg-slate-900` و متنِ سفید روی
+ * سرمه‌ای در این فایل نیست — کارنامه یک سندِ آموزشی است، نه داشبوردِ شبانه.
  *
- * همهٔ متن‌های آموزشی از `POST /api/tutor/explain` می‌آیند — هیچ متنی از
- * پیش در پاسخِ کارنامه تولید نمی‌شود.
+ * سه جزء:
+ *   ۱. <QuestionCard>       — کارتِ سؤال با حاشیهٔ فوقانیِ رنگی
+ *   ۲. <ContradictionCard>  — کارتِ شکارِ تناقض، روشن و کهربایی‌لبه
+ *   ۳. <LiveTutorModal>     — مودالِ «میز معلم»، محتوا از /api/tutor/explain
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   AlertTriangle,
   ArrowLeft,
   BookOpen,
   CheckCircle2,
-  GitCompareArrows,
-  GraduationCap,
   KeyRound,
   Lightbulb,
   MessageCircleQuestion,
-  ShieldCheck,
   Sparkles,
   Target,
   Workflow,
   Wrench,
+  X,
 } from 'lucide-react'
 import client from '../../api/client'
 import MathText from '../MathText'
-import TutorModalShell from './TutorModalShell'
 
 const faNum = (v) => String(v ?? '').replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)])
 
@@ -40,43 +38,34 @@ export const STAGE_NAMES = [
   'چالشِ فاینمن',
 ]
 
-// ─────────────────────────── رنگ‌بندیِ وضعیت ───────────────────────────
+/**
+ * وضعیت → حاشیهٔ فوقانی، بج و برچسب.
+ * کلیدها همان چهار حالتِ استانداردِ بک‌اند هستند (نگاشت در لایهٔ نمایش).
+ */
 export const TONE = {
   CORRECT: {
-    rail: 'from-emerald-400 via-emerald-500 to-teal-500',
-    glow: 'shadow-emerald-200/50',
-    ring: 'ring-emerald-200/70',
-    chip: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/25',
+    border: 'border-t-emerald-500',
+    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     label: 'درست',
     Icon: CheckCircle2,
-    cta: 'درست رفتی! می‌خوای عمیق‌ترش کنیم؟',
   },
   HALF_CORRECT: {
-    rail: 'from-amber-300 via-amber-400 to-orange-400',
-    glow: 'shadow-amber-200/50',
-    ring: 'ring-amber-200/70',
-    chip: 'bg-amber-500/10 text-amber-700 border-amber-500/25',
+    border: 'border-t-amber-500',
+    badge: 'bg-amber-50 text-amber-700 border-amber-200',
     label: 'نیمه‌درست',
     Icon: AlertTriangle,
-    cta: 'نصفِ راه را رفتی! بقیه‌اش رو با هم ببندیم؟',
   },
   WRONG: {
-    rail: 'from-rose-400 via-rose-500 to-pink-500',
-    glow: 'shadow-rose-200/50',
-    ring: 'ring-rose-200/70',
-    chip: 'bg-rose-500/10 text-rose-700 border-rose-500/25',
+    border: 'border-t-rose-500',
+    badge: 'bg-rose-50 text-rose-700 border-rose-200',
     label: 'نادرست',
     Icon: AlertTriangle,
-    cta: 'اینجا گره خوردیم! می‌خوای بازش کنیم؟',
   },
   INSUFFICIENT_EVIDENCE: {
-    rail: 'from-slate-300 via-slate-400 to-slate-500',
-    glow: 'shadow-slate-200/50',
-    ring: 'ring-slate-200/70',
-    chip: 'bg-slate-500/10 text-slate-600 border-slate-500/25',
+    border: 'border-t-slate-300',
+    badge: 'bg-slate-100 text-slate-600 border-slate-200',
     label: 'شواهد ناکافی',
     Icon: BookOpen,
-    cta: 'از صفر با هم شروع کنیم؟',
   },
 }
 
@@ -107,260 +96,247 @@ export function QuestionCard({ q, index, onOpen }) {
     ? Number(q.selected_option_index)
     : null
   const selectedText =
-    pickedIdx !== null
-      ? rawText(q?.selected_option_text ?? q?.options?.[pickedIdx])
-      : ''
+    pickedIdx !== null ? rawText(q?.selected_option_text ?? q?.options?.[pickedIdx]) : ''
+  const answer = rawText(q?.response)
 
   return (
     <article
-      className={`group relative flex flex-col overflow-hidden rounded-3xl bg-white/80 shadow-lg backdrop-blur-sm ring-1 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl ${tone.ring} ${tone.glow}`}
+      className={`flex flex-col justify-between rounded-2xl border border-slate-200/80 border-t-4 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md ${tone.border}`}
     >
-      {/* نوارِ گرادیانتیِ وضعیت */}
-      <span
-        className={`absolute inset-y-0 right-0 w-1.5 bg-gradient-to-b ${tone.rail}`}
-        aria-hidden="true"
-      />
-
-      <header className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 pr-6">
+      {/* هدر: شماره + مرحله در راست، وضعیت در چپ */}
+      <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-700 to-brand-900 text-[12px] font-black text-white shadow-sm tabular-nums">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[11px] font-black text-slate-700 tabular-nums">
             {faNum(order)}
           </span>
-          <div className="min-w-0">
-            <span
-              className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-black ${tone.chip}`}
-            >
-              مرحلهٔ {faNum(stage)} · {STAGE_NAMES[stage - 1] ?? 'زنجیرهٔ فهم'}
-            </span>
-          </div>
+          <span className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-600">
+            مرحلهٔ {faNum(stage)}: {STAGE_NAMES[stage - 1] ?? 'زنجیرهٔ فهم'}
+          </span>
         </div>
         <span
-          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black ${tone.chip}`}
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black ${tone.badge}`}
         >
           <ToneIcon className="h-3 w-3" strokeWidth={2.5} />
           {tone.label}
         </span>
       </header>
 
-      <div className="flex flex-1 flex-col gap-2.5 px-4 pb-4 pr-6">
-        {/* سؤال */}
-        {rawText(q?.question_text) && (
-          <div className="rounded-2xl bg-slate-50/90 px-3.5 py-2.5 ring-1 ring-slate-100">
-            <p className="flex items-center gap-1.5 text-[10px] font-black text-slate-400">
-              <MessageCircleQuestion className="h-3.5 w-3.5" /> سؤال
-            </p>
-            <RichText
-              content={q.question_text}
-              className="mt-1 text-[12.5px] font-bold leading-7 text-slate-700"
-            />
-          </div>
-        )}
+      {/* صورتِ سؤال */}
+      {rawText(q?.question_text) && (
+        <RichText
+          content={q.question_text}
+          className="mt-3 mb-3 text-sm font-medium leading-relaxed text-slate-800"
+        />
+      )}
 
-        {/* پاسخِ تو — باکسِ کوتیشن */}
-        <div className="relative rounded-2xl border-r-[3px] border-brand-400/70 bg-brand-50/50 px-3.5 py-2.5">
-          <p className="text-[10px] font-black text-brand-800">پاسخِ تو</p>
-          {hasOptions ? (
-            pickedIdx === null ? (
-              <p className="mt-1 text-[12px] font-bold text-slate-400">بدون پاسخ</p>
-            ) : (
-              <div className="mt-1 text-[12.5px] leading-7 text-slate-700">
-                گزینهٔ {faNum(pickedIdx + 1)}:{' '}
-                <span className="math-inline font-black text-brand-950">
-                  <MathText content={selectedText} />
-                </span>
-              </div>
-            )
+      {/* پاسخِ تو */}
+      <div className="mb-3 rounded-xl border border-slate-200/60 bg-slate-50/80 p-3">
+        <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black text-slate-500">
+          <MessageCircleQuestion className="h-3 w-3" /> پاسخِ تو
+        </p>
+        {hasOptions ? (
+          pickedIdx === null ? (
+            <p className="text-xs text-slate-400">بدون پاسخ</p>
           ) : (
-            <RichText
-              content={rawText(q?.response) || 'بدون پاسخ'}
-              className={`mt-1 text-[12.5px] leading-7 ${
-                rawText(q?.response) ? 'text-slate-700' : 'text-slate-400'
-              }`}
-            />
-          )}
-        </div>
-
-        {/* تحلیلِ تشخیصی */}
-        {rawText(q?.diagnostic_insight) && (
-          <div className="flex items-start gap-2 px-0.5">
-            <Sparkles className="mt-1 h-3.5 w-3.5 shrink-0 text-brand-500" />
-            <div className="min-w-0">
-              <p className="text-[10px] font-black text-slate-400">تحلیلِ تشخیصی</p>
-              <RichText
-                content={q.diagnostic_insight}
-                className="mt-0.5 text-[12px] leading-6 text-brand-950"
-              />
+            <div className="text-xs leading-6 text-slate-700">
+              گزینهٔ {faNum(pickedIdx + 1)}:{' '}
+              <span className="math-inline font-bold text-slate-900">
+                <MathText content={selectedText} />
+              </span>
             </div>
-          </div>
+          )
+        ) : (
+          <RichText
+            content={answer || 'بدون پاسخ'}
+            className={`text-xs leading-6 ${answer ? 'text-slate-700' : 'text-slate-400'}`}
+          />
         )}
-
-        <button
-          type="button"
-          onClick={() => onOpen?.(q, order)}
-          className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-brand-700 to-brand-600 px-4 py-2.5 text-[12px] font-black text-white shadow-md shadow-brand-200/60 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-300/60 active:translate-y-0"
-        >
-          <Sparkles className="h-4 w-4" />
-          می‌خوای این گره رو باز کنیم؟ (آموزش زنده)
-        </button>
       </div>
+
+      {/* دیدگاهِ تشخیصی */}
+      {rawText(q?.diagnostic_insight) && (
+        <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+          <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black text-emerald-800">
+            <Sparkles className="h-3 w-3" /> دیدگاهِ تشخیصیِ فهم‌یار
+          </p>
+          <RichText
+            content={q.diagnostic_insight}
+            className="text-xs leading-relaxed text-emerald-900"
+          />
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => onOpen?.(q, order)}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-medium text-white shadow-sm transition-all hover:bg-emerald-700"
+      >
+        <Lightbulb className="h-4 w-4" />
+        می‌خوای این گره رو باز کنیم؟ (آموزش زنده)
+      </button>
     </article>
   )
 }
 
 // ═══════════════════════ کارتِ شکارِ تناقض ═══════════════════════
+/** نوعِ یافته → برچسب و رنگِ بج (همه روشن، بدونِ زمینهٔ تیره). */
 const FINDING_LOOK = {
   CONTRADICTION: {
     label: 'تناقض عمیق',
-    wrap: 'from-rose-500/40 via-amber-400/30 to-emerald-400/30',
-    chip: 'bg-rose-500/15 text-rose-200 border-rose-400/40',
-    pulse: true,
+    badge: 'bg-rose-50 text-rose-700 border-rose-200',
+    title: 'text-slate-800',
   },
   JARGON_VIOLATION: {
     label: 'زندانِ اصطلاح',
-    wrap: 'from-amber-400/40 via-orange-400/25 to-emerald-400/25',
-    chip: 'bg-amber-500/15 text-amber-100 border-amber-400/40',
-    pulse: false,
+    badge: 'bg-amber-50 text-amber-700 border-amber-200',
+    title: 'text-slate-800',
   },
   BLUFF_DETECTED: {
     label: 'بلوفِ شناخته‌شده',
-    wrap: 'from-rose-600/35 via-fuchsia-500/25 to-emerald-400/25',
-    chip: 'bg-rose-600/15 text-rose-100 border-rose-400/40',
-    pulse: false,
+    badge: 'bg-rose-50 text-rose-700 border-rose-200',
+    title: 'text-slate-800',
   },
   SYNERGY: {
     label: 'هم‌افزایی',
-    wrap: 'from-emerald-500/40 via-teal-400/25 to-cyan-400/25',
-    chip: 'bg-emerald-500/15 text-emerald-100 border-emerald-400/40',
-    pulse: false,
+    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    title: 'text-slate-800',
   },
   SLIP_RESOLVED: {
     label: 'حل‌شده در بازپرسی',
-    wrap: 'from-sky-500/40 via-cyan-400/25 to-emerald-400/25',
-    chip: 'bg-sky-500/15 text-sky-100 border-sky-400/40',
-    pulse: false,
+    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    title: 'text-slate-800',
   },
 }
 
 export function ContradictionCard({ finding, onTeach, busy = false }) {
-  const look = FINDING_LOOK[String(finding?.type ?? '').toUpperCase()] ?? FINDING_LOOK.SYNERGY
-  const isContradiction = String(finding?.type ?? '').toUpperCase() === 'CONTRADICTION'
+  const type = String(finding?.type ?? '').toUpperCase()
+  const look = FINDING_LOOK[type] ?? FINDING_LOOK.SYNERGY
+  const isContradiction = type === 'CONTRADICTION'
+  // «حل‌شده در بازپرسی» وقتی کارنامه خودش resolution ثبت کرده باشد.
+  const resolved = Boolean(rawText(finding?.resolution))
 
   return (
-    <div
-      className={`group relative overflow-hidden rounded-3xl bg-gradient-to-br p-[1.5px] shadow-lg transition-all duration-300 hover:shadow-2xl ${look.wrap}`}
-    >
-      <div className="relative h-full rounded-[22px] bg-slate-950/75 p-4 backdrop-blur-xl">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black ${look.chip}`}
-          >
-            {look.pulse && (
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
-              </span>
-            )}
-            {look.label}
-          </span>
-          <p className="min-w-0 text-[13px] font-black text-white drop-shadow-sm">
-            {finding?.contradiction_title || finding?.title}
-          </p>
-        </div>
-
-        {rawText(finding?.description) && (
-          <p className="mt-2 text-[12px] font-medium leading-7 text-slate-100">
-            {finding.description}
-          </p>
-        )}
-
-        {rawText(finding?.resolution) && (
-          <p className="mt-2 rounded-xl bg-emerald-400/10 px-3 py-2 text-[11px] font-bold leading-6 text-emerald-200 ring-1 ring-emerald-400/20">
-            توضیحِ خودت: {finding.resolution}
-          </p>
-        )}
-
-        {isContradiction && (
-          <button
-            type="button"
-            onClick={() => onTeach?.(finding)}
-            disabled={busy}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-amber-400 via-amber-500 to-orange-500 px-4 py-2.5 text-[12px] font-black text-slate-900 shadow-lg shadow-amber-500/25 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-amber-400/40 active:translate-y-0 disabled:opacity-60"
-          >
-            <Sparkles className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-            {busy ? 'معلم دارد تحلیل می‌کند...' : 'چرا این دو تا حرفم با هم نمی‌خوند؟ (تحلیل زنده با معلم)'}
-          </button>
-        )}
+    <div className="flex flex-col rounded-2xl border border-amber-200/80 bg-white p-5 shadow-sm transition-all hover:border-amber-300 hover:shadow-md">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className={`min-w-0 flex-1 text-sm font-bold leading-6 ${look.title}`}>
+          {finding?.contradiction_title || finding?.title}
+        </p>
+        <span
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black ${
+            resolved ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : look.badge
+          }`}
+        >
+          {resolved ? (
+            <>
+              <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
+              حل‌شده در بازپرسی
+            </>
+          ) : (
+            look.label
+          )}
+        </span>
       </div>
+
+      {rawText(finding?.description) && (
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">{finding.description}</p>
+      )}
+
+      {/* یادآوریِ دو حرفِ متناقض / توضیحِ خودِ دانش‌آموز */}
+      {rawText(finding?.resolution) && (
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-6 text-slate-700">
+          <span className="font-bold text-slate-800">توضیحِ خودت: </span>
+          {finding.resolution}
+        </div>
+      )}
+
+      {isContradiction && (
+        <button
+          type="button"
+          onClick={() => onTeach?.(finding)}
+          disabled={busy}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-900 shadow-sm transition-all hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-800 disabled:opacity-60"
+        >
+          <Sparkles className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
+          {busy ? 'معلم دارد تحلیل می‌کند...' : 'حل این تناقض با معلم (چرا تناقض داشتم؟)'}
+        </button>
+      )}
     </div>
   )
 }
 
-// ═════════════════════ مودالِ تدریسِ درلحظه ═════════════════════
-function StepBox({ Icon, badge, title, tone, children }) {
-  const styles = {
-    amber: {
-      card: 'border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-amber-50/50',
-      box: 'bg-amber-100 text-amber-600 ring-amber-200',
-      chip: 'bg-amber-100 text-amber-800',
-      title: 'text-amber-950',
-    },
-    brand: {
-      card: 'border-brand-200/80 bg-gradient-to-br from-brand-50 via-white to-brand-50/40',
-      box: 'bg-brand-100 text-brand-700 ring-brand-200',
-      chip: 'bg-brand-100 text-brand-800',
-      title: 'text-brand-950',
-    },
-    gold: {
-      card: 'border-yellow-300/70 bg-gradient-to-br from-yellow-50 via-amber-50 to-yellow-100/60 shadow-inner',
-      box: 'bg-yellow-200/80 text-yellow-700 ring-yellow-300',
-      chip: 'bg-yellow-200/70 text-yellow-900',
-      title: 'text-yellow-950',
-    },
-    rose: {
-      card: 'border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-rose-50/50',
-      box: 'bg-rose-100 text-rose-600 ring-rose-200',
-      chip: 'bg-rose-100 text-rose-800',
-      title: 'text-rose-950',
-    },
-  }[tone]
+// ══════════════════════ مودالِ «میز معلم» ══════════════════════
+const LOADING_LINES = [
+  'معلم فهم‌یار در حال بررسی گره ذهنی توست...',
+  'دارد ردِ پای فکرت را پیدا می‌کند...',
+  'دارد یک مثالِ روزمره برایت آماده می‌کند...',
+]
 
+/** سه باکسِ محتوا — همه روشن، بدونِ سایهٔ تیره. */
+const BOX = {
+  rose: 'border-rose-200 bg-rose-50 text-rose-950',
+  emerald: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+  amber: 'border-amber-200 bg-amber-50 text-amber-950',
+}
+
+function TeachingBox({ Icon, iconTone, step, title, className, children }) {
   return (
-    <section className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${styles.card}`}>
-      <div className="flex items-start gap-3">
-        <span
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${styles.box}`}
-        >
-          <Icon className="h-[18px] w-[18px]" strokeWidth={2.2} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-black ${styles.chip}`}>
-            {badge}
-          </span>
-          <h3 className={`mt-1 text-[14px] font-black leading-6 ${styles.title}`}>{title}</h3>
-        </div>
+    <section className={`mb-3 rounded-2xl border p-4 text-sm ${className}`}>
+      <div className="mb-1.5 flex items-center gap-2">
+        <Icon className={`h-4 w-4 shrink-0 ${iconTone}`} strokeWidth={2.3} />
+        <span className="text-[10px] font-black opacity-60">بخش {faNum(step)}</span>
       </div>
-      <div className="mt-3 text-[13px] leading-8 text-slate-700 sm:text-[13.5px]">{children}</div>
+      <h3 className="mb-1.5 text-sm font-black leading-6">{title}</h3>
+      <div className="text-sm leading-relaxed opacity-90">{children}</div>
     </section>
   )
 }
 
+function LoadingState() {
+  const [step, setStep] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setStep((s) => (s + 1) % LOADING_LINES.length), 2200)
+    return () => clearInterval(id)
+  }, [])
+
+  return (
+    <div className="space-y-3" role="status" aria-live="polite">
+      <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center">
+          <span className="absolute inset-0 animate-ping rounded-full bg-emerald-300/50" />
+          <Sparkles className="relative h-4 w-4 animate-pulse text-emerald-600" />
+        </span>
+        <p className="text-xs font-bold leading-6 text-emerald-900">{LOADING_LINES[step]}</p>
+      </div>
+
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="animate-pulse rounded-2xl border border-slate-100 bg-slate-50 p-4"
+          style={{ animationDelay: `${i * 160}ms` }}
+        >
+          <div className="h-3 w-32 rounded-full bg-slate-200" />
+          <div className="mt-2.5 space-y-2">
+            <div className="h-2.5 w-full rounded-full bg-slate-200/80" />
+            <div className="h-2.5 w-[92%] rounded-full bg-slate-200/60" />
+            <div className="h-2.5 w-[68%] rounded-full bg-slate-200/50" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /**
- * مودالِ مشترک. محتوا را از اندپوینتِ `/api/tutor/explain` می‌گیرد و تا
- * رسیدنِ پاسخ، اسکلتونِ پالس‌دار نشان می‌دهد.
+ * مودالِ مرکزیِ آموزش زنده. تا رسیدنِ پاسخ، اسکلتونِ پالس‌دار نشان می‌دهد؛
+ * بعد سه باکسِ تدریس. محتوا از `POST /api/tutor/explain` می‌آید.
  */
 export function LiveTutorModal({ open, target, sessionId, onClose }) {
   const [state, setState] = useState({ loading: false, error: '', data: null })
-  const abort = useRef(null)
-
   const isContradiction = target?.type === 'contradiction'
 
   useEffect(() => {
-    if (!open || !target) {
-      abort.current?.abort?.()
-      return undefined
-    }
+    if (!open || !target) return undefined
     const ctrl = new AbortController()
-    abort.current = ctrl
     setState({ loading: true, error: '', data: null })
 
     client
@@ -380,100 +356,192 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
       .catch((err) => {
         if (ctrl.signal.aborted) return
         const msg =
-          err?.response?.data?.detail ||
-          'نشد به معلم وصل شویم. یک بار دیگر امتحان کن.'
+          err?.response?.data?.detail || 'نشد به معلم وصل شویم. یک بار دیگر امتحان کن.'
         setState({ loading: false, error: String(msg), data: null })
       })
 
     return () => ctrl.abort()
   }, [open, target, sessionId, isContradiction])
 
-  const stage = Number(target?.q?.stage) || Math.min(5, Math.floor(((Number(target?.order) || 1) - 1) / 2) + 1)
+  // Esc برای بستن + قفلِ اسکرولِ پشت
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose?.()
+    }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [open, onClose])
+
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    if (!open) {
+      setShown(false)
+      return undefined
+    }
+    const raf = requestAnimationFrame(() => setShown(true))
+    return () => cancelAnimationFrame(raf)
+  }, [open])
+
+  if (!open) return null
+
   const content = state.data?.content ?? {}
+  const title = isContradiction
+    ? state.data?.title || target?.finding?.contradiction_title || target?.finding?.title
+    : null
 
-  const header = (
-    <>
-      <p className="text-[10px] font-black text-brand-700">
-        معلمِ خصوصیِ فهم‌یار{isContradiction ? ' · شکارِ تناقض' : ` · سؤال ${faNum(target?.order)}`}
-      </p>
-      <h2
-        id="tutor-title"
-        className="mt-0.5 text-[17px] font-black leading-7 text-brand-950 sm:text-[19px]"
+  // Portal: بدونِ این، هر والدِ `transform`دار مرجعِ `fixed` می‌شود و مودال
+  // به کارت می‌چسبد نه به پنجره (این باگ در فاز ۱۲ هم رخ داده بود).
+  const modal = (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tutor-title"
+      aria-busy={state.loading}
+    >
+      <button
+        type="button"
+        aria-label="بستن"
+        onClick={onClose}
+        className="absolute inset-0 h-full w-full cursor-default"
+      />
+
+      <div
+        className={`relative flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl transition-all duration-200 ${
+          shown ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+        }`}
       >
-        {isContradiction ? 'بیا این تناقض رو با هم حل کنیم!' : 'بیا این گره رو با هم باز کنیم!'}
-      </h2>
-      <p className="mt-0.5 truncate text-[11px] font-bold text-slate-500">
-        {isContradiction
-          ? state.data?.title || target?.finding?.contradiction_title || target?.finding?.title || '—'
-          : `مرحلهٔ ${faNum(stage)}: ${STAGE_NAMES[stage - 1] ?? 'زنجیرهٔ فهم'}`}
-      </p>
-    </>
-  )
+        {/* هدر */}
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-emerald-100 bg-emerald-50/70 px-5 py-4">
+          <div className="min-w-0">
+            <h2
+              id="tutor-title"
+              className="flex items-center gap-2 text-base font-black text-emerald-950"
+            >
+              <span aria-hidden="true">👨‍🏫</span>
+              میز معلم فهم‌یار
+            </h2>
+            <p className="mt-1 truncate text-xs font-medium text-emerald-800/80">
+              {isContradiction
+                ? title || 'حلِ تناقض'
+                : `سؤال ${faNum(target?.order)} · مرحلهٔ ${faNum(
+                    Number(target?.q?.stage) ||
+                      Math.min(5, Math.floor(((Number(target?.order) || 1) - 1) / 2) + 1),
+                  )}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="بستنِ میز معلم"
+            className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
 
-  const footer = (
-    <button
-      type="button"
-      onClick={onClose}
-      className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-brand-800 to-brand-600 px-4 py-3 text-[13px] font-black text-white shadow-md shadow-brand-200 transition hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
-    >
-      <CheckCircle2 className="h-4 w-4" />
-      فهمیدم! ساعت رو بستم
-      <span aria-hidden="true">🚀</span>
-      <ArrowLeft className="h-4 w-4" />
-    </button>
-  )
-
-  return (
-    <TutorModalShell
-      open={open}
-      header={header}
-      footer={footer}
-      onClose={onClose}
-      loading={state.loading}
-    >
-      {state.error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-          <p className="flex items-center gap-2 text-[13px] font-black text-rose-900">
-            <AlertTriangle className="h-4 w-4" /> {state.error}
-          </p>
-          <p className="mt-1 text-[11px] font-bold leading-6 text-rose-700">
-            هیچ داده‌ای از دست نرفت — می‌توانی دوباره امتحان کنی یا به کارنامه برگردی.
-          </p>
+        {/* بدنه */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+          {state.loading ? (
+            <LoadingState />
+          ) : state.error ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+              <p className="flex items-center gap-2 text-sm font-bold text-rose-900">
+                <AlertTriangle className="h-4 w-4" /> {state.error}
+              </p>
+              <p className="mt-1 text-xs leading-6 text-rose-700">
+                هیچ داده‌ای از دست نرفت — می‌توانی دوباره امتحان کنی.
+              </p>
+            </div>
+          ) : isContradiction ? (
+            <>
+              <TeachingBox
+                Icon={Target}
+                iconTone="text-rose-600"
+                step={1}
+                title="چرا این تناقض در ذهنت شکل گرفت؟"
+                className={BOX.rose}
+              >
+                <RichText content={content.why_it_happened} />
+              </TeachingBox>
+              <TeachingBox
+                Icon={Workflow}
+                iconTone="text-emerald-600"
+                step={2}
+                title="پلِ اتصالِ این دو مفهوم"
+                className={BOX.emerald}
+              >
+                <RichText content={content.how_to_connect_bridge} />
+              </TeachingBox>
+              <TeachingBox
+                Icon={KeyRound}
+                iconTone="text-amber-600"
+                step={3}
+                title="چطور سرِ آزمون در این دام نیفتیم؟"
+                className={`${BOX.amber} font-medium`}
+              >
+                <RichText content={content.exam_shield_tip} />
+              </TeachingBox>
+            </>
+          ) : (
+            <>
+              <TeachingBox
+                Icon={Target}
+                iconTone="text-rose-600"
+                step={1}
+                title="کجای ماجرا لغزیدی؟"
+                className={BOX.rose}
+              >
+                <RichText content={content.misconception_root} />
+              </TeachingBox>
+              <TeachingBox
+                Icon={Lightbulb}
+                iconTone="text-emerald-600"
+                step={2}
+                title="اصل ماجرا چیه؟ (آموزش مفهومی)"
+                className={BOX.emerald}
+              >
+                <RichText content={content.intuitive_explanation} />
+              </TeachingBox>
+              <TeachingBox
+                Icon={KeyRound}
+                iconTone="text-amber-600"
+                step={3}
+                title="رمز طلایی ساعت‌ساز"
+                className={`${BOX.amber} font-medium`}
+              >
+                <RichText content={content.golden_tip} />
+              </TeachingBox>
+            </>
+          )}
         </div>
-      ) : isContradiction ? (
-        <>
-          <StepBox Icon={Target} badge="بخش ۱" title="چرا این تناقض در ذهنت شکل گرفت؟" tone="rose">
-            <RichText content={content.why_it_happened} />
-          </StepBox>
-          <StepBox Icon={Workflow} badge="بخش ۲" title="پلِ اتصالِ این دو مفهوم" tone="brand">
-            <RichText content={content.how_to_connect_bridge} />
-          </StepBox>
-          <StepBox Icon={ShieldCheck} badge="بخش ۳" title="چطور سرِ آزمون در این دام نیفتیم؟" tone="gold">
-            <RichText content={content.exam_shield_tip} />
-          </StepBox>
-        </>
-      ) : (
-        <>
-          <StepBox Icon={Target} badge="بخش ۱" title="کجای مسیر لغزیدی؟" tone="rose">
-            <RichText content={content.misconception_root} />
-          </StepBox>
-          <StepBox Icon={BookOpen} badge="بخش ۲" title="اصلِ ماجرا چیه؟" tone="brand">
-            <RichText content={content.intuitive_explanation} />
-          </StepBox>
-          <StepBox Icon={KeyRound} badge="بخش ۳" title="کلیدِ طلاییِ ساعت‌ساز" tone="gold">
-            <RichText content={content.golden_tip} />
-          </StepBox>
-        </>
-      )}
 
-      {!state.loading && !state.error && (
-        <p className="flex items-start gap-1.5 px-1 text-[10px] font-bold leading-5 text-slate-400">
-          <Lightbulb className="mt-0.5 h-3 w-3 shrink-0" />
-          این تدریس همین حالا و مخصوصِ همین پاسخ ساخته شد — نه یک متنِ آمادهٔ تکراری.
-        </p>
-      )}
-    </TutorModalShell>
+        {/* فوتر */}
+        {!state.loading && (
+          <footer className="shrink-0 px-5 pb-5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-3 text-sm font-medium text-white transition-all hover:bg-slate-800"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              فهمیدم! ساعت رو بستم
+              <span aria-hidden="true">🚀</span>
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          </footer>
+        )}
+      </div>
+    </div>
   )
+
+  return typeof document === 'undefined' ? modal : createPortal(modal, document.body)
 }
 
 // ═════════════════ بخشِ «تحلیل تفصیلی» ═════════════════
@@ -487,10 +555,7 @@ export default function DetailedQuestions({ questions = [], sessionId }) {
   }
 
   const cards = useMemo(
-    () =>
-      questions.map((q, i) => (
-        <QuestionCard key={q.question_id ?? i} q={q} index={i} onOpen={openFor} />
-      )),
+    () => questions.map((q, i) => <QuestionCard key={q.question_id ?? i} q={q} index={i} onOpen={openFor} />),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [questions],
   )
@@ -512,4 +577,4 @@ export default function DetailedQuestions({ questions = [], sessionId }) {
   )
 }
 
-export { GraduationCap, GitCompareArrows, Sparkles, Wrench }
+export { Wrench }

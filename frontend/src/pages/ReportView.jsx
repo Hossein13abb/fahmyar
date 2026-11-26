@@ -487,12 +487,13 @@ const MASTERY_LABEL = {
   UNSTRUCTURED: 'بی‌ساختار',
 }
 
+// هدرِ «کارنامهٔ اشعهٔ ایکس» هم روشن است، هم‌خانواده با بقیهٔ کارت‌ها.
 const MASTERY_STYLE = {
-  MASTERED: { head: 'bg-emerald-700' },
-  ILLUSION_OF_COMPETENCE: { head: 'bg-rose-700' },
-  JARGON_DEPENDENT: { head: 'bg-orange-600' },
-  PARTIAL_FRAGMENTED: { head: 'bg-amber-600' },
-  UNSTRUCTURED: { head: 'bg-slate-600' },
+  MASTERED: { head: 'border-emerald-200 bg-emerald-50' },
+  ILLUSION_OF_COMPETENCE: { head: 'border-rose-200 bg-rose-50' },
+  JARGON_DEPENDENT: { head: 'border-orange-200 bg-orange-50' },
+  PARTIAL_FRAGMENTED: { head: 'border-amber-200 bg-amber-50' },
+  UNSTRUCTURED: { head: 'border-slate-200 bg-slate-50' },
 }
 
 const FINDING_LABEL = {
@@ -504,13 +505,6 @@ const FINDING_LABEL = {
 }
 
 // قرمز/نارنجی = یافتهٔ منفی؛ سبز/آبی = یافتهٔ مثبت
-const FINDING_STYLE = {
-  CONTRADICTION: { wrap: 'border-rose-300 bg-rose-50', chip: 'bg-rose-600 text-white' },
-  JARGON_VIOLATION: { wrap: 'border-orange-300 bg-orange-50', chip: 'bg-orange-600 text-white' },
-  BLUFF_DETECTED: { wrap: 'border-rose-300 bg-rose-50', chip: 'bg-rose-700 text-white' },
-  SYNERGY: { wrap: 'border-emerald-300 bg-emerald-50', chip: 'bg-emerald-600 text-white' },
-  SLIP_RESOLVED: { wrap: 'border-sky-300 bg-sky-50', chip: 'bg-sky-600 text-white' },
-}
 
 const _modelMarkers = ['<<<', '"per_question"', '"dimension_findings"', '"root_cause_hypotheses"', '"improvement_suggestions"']
 const rawStudentAnswer = (text) => {
@@ -633,20 +627,20 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
       {/* ── کارنامهٔ اشعهٔ ایکس — حکمِ شناختی ── */}
       {(mastery || personaTitle || crossCheck.length > 0 || executiveSummary) && (
         <section className="card overflow-hidden p-0">
-          <div className={`px-6 py-5 ${MASTERY_STYLE[mastery]?.head ?? MASTERY_STYLE.UNSTRUCTURED.head}`}>
+          <div className={`border-b px-6 py-5 ${MASTERY_STYLE[mastery]?.head ?? MASTERY_STYLE.UNSTRUCTURED.head}`}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-white/25 px-2.5 py-1 text-[10px] font-black text-white">
+              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black text-slate-600">
                 کارنامهٔ اشعهٔ ایکس
               </span>
-              <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-brand-900">
+              <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-brand-900 shadow-sm">
                 {MASTERY_LABEL[mastery] ?? 'وضعیتِ نامشخص'}
               </span>
             </div>
             {personaTitle && (
-              <h2 className="mt-2 text-xl font-black text-white sm:text-2xl">«{personaTitle}»</h2>
+              <h2 className="mt-2 text-xl font-black text-slate-800 sm:text-2xl">«{personaTitle}»</h2>
             )}
             {executiveSummary && (
-              <p className="mt-2 max-w-3xl text-[13px] font-bold leading-8 text-white/95">{executiveSummary}</p>
+              <p className="mt-2 max-w-3xl text-[13px] font-bold leading-8 text-slate-600">{executiveSummary}</p>
             )}
           </div>
 
