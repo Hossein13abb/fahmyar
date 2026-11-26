@@ -54,16 +54,20 @@ function SectionCard({
   className = '',
 }) {
   const tones = {
-    brand: { accent: 'emerald', rail: 'from-brand-400 via-emerald-400 to-teal-400' },
-    amber: { accent: 'amber', rail: 'from-amber-300 via-orange-300 to-calm-400' },
-    teal: { accent: 'indigo', rail: 'from-teal-300 via-cyan-400 to-brand-400' },
+    brand: { accent: 'emerald', rail: 'from-emerald-500 via-teal-400 to-emerald-300' },
+    amber: { accent: 'amber', rail: 'from-amber-500 via-orange-400 to-amber-300' },
+    teal: { accent: 'indigo', rail: 'from-indigo-500 via-violet-400 to-indigo-300' },
   }
   const st = tones[tone] ?? tones.brand
   return (
     <section
-      className={`group relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/85 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] backdrop-blur-md transition-all duration-300 hover:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.08)] ${className}`}
+      className={`group relative overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_rgba(15,23,42,0.10)] ${className}`}
     >
-      <span className={`block h-1 w-full bg-gradient-to-l ${st.rail}`} aria-hidden="true" />
+      {/* ریلِ رنگیِ بخش — ۳px به‌جای ۱px تا روی بومِ آبی دیده شود */}
+      <span
+        className={`block h-[3px] w-full bg-gradient-to-l ${st.rail} opacity-90`}
+        aria-hidden="true"
+      />
       <div className="p-5 md:p-6">
         <UnifiedSectionHeader
           icon={Icon}
@@ -485,40 +489,48 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
     : ''
 
   return (
-    <div className="relative">
-      {/* ── بومِ محیطیِ کارنامه ──
-          پیش از این، پس‌زمینهٔ صفحه سفیدِ تخت بود و کارت‌ها روی آن شناور
-          دیده می‌شدند بی‌آنکه عمقی داشته باشند. سه هالهٔ محو، رنگِ صفحه را
-          از «سفید» به «اتمسفر» می‌برند.
+    <div className="relative isolate">
+      {/* ── هاله‌های محیطیِ کارنامه ──
+          فاز ۲۴ نسخهٔ محوِ این‌ها را با ۲۰٪ آلفا گذاشت و نتیجه روی نمایشگرِ
+          واقعی عملاً دیده نمی‌شد. این نسخه از ``fixed`` استفاده می‌کند (نه
+          absolute نسبت به کارتِ اول)، رنگِ سیر‌تر و شعاعِ بزرگ‌تر دارد، و
+          به‌جای ``-z-10`` که در بعضی استک‌ها زیرِ body می‌رود، با z-index
+          منفیِ محلی و ``isolate`` روی ریشه مهار شده است.
 
-          ⚠️ دو نکتهٔ فنی که با آزمون و خطا روشن شد:
-            ۱. ``overflow-hidden`` روی این ریشه، sticky/scroll را می‌شکند؛
-               هاله‌ها با ``pointer-events-none`` و موقعیتِ خودشان مهار می‌شوند.
-            ۲. ``-z-10`` بدونِ ``isolate`` می‌تواند هاله را زیرِ body ببرد و
-               کلاً ناپدید کند. */}
-      <span
+          ⚠️ overflow-hidden روی ریشه گذاشته نمی‌شود: sticky و اسکرول را
+          می‌شکند. هاله‌ها با ``pointer-events-none`` مهار می‌شوند. */}
+      <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-10 left-10 -z-10 h-96 w-96 rounded-full bg-emerald-200/30 blur-3xl"
+        className="pointer-events-none fixed -right-40 -top-40 -z-10 h-[38rem] w-[38rem] rounded-full bg-emerald-400/20 blur-[130px]"
       />
-      <span
+      <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-0 top-1/3 -z-10 h-[30rem] w-[30rem] rounded-full bg-indigo-200/25 blur-3xl"
+        className="pointer-events-none fixed -left-48 top-1/3 -z-10 h-[34rem] w-[34rem] rounded-full bg-indigo-400/18 blur-[140px]"
       />
-      <span
+      <div
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-10 right-1/4 -z-10 h-80 w-80 rounded-full bg-amber-200/20 blur-3xl"
+        className="pointer-events-none fixed -bottom-40 right-1/3 -z-10 h-[30rem] w-[30rem] rounded-full bg-amber-300/18 blur-[130px]"
       />
 
       <div className="animate-fade-up space-y-5">
       {/* ── سربرگ گزارش ── */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-l from-brand-900 via-brand-800 to-emerald-700 p-6 text-white shadow-panel">
-        {/* هالهٔ گوشه‌ها — عمق بدونِ تیرگیِ اضافه */}
+      {/* ── سربرگِ فرمان‌دهی (command-center) ──
+          فاز ۲۴ هدرِ زمردی را — چون تأییدشده بود — دست نگذاشت. در فاز ۲۶
+          کاربر صریحاً لغوش کرد: گرادیانتِ عمیقِ slate→indigo با حلقهٔ
+          درخشانِ زمردی. زمردی حذف نشده؛ نقشش عوض شده: از «پس‌زمینه» به
+          «نورِ لهجه». هویتِ سبز می‌ماند، ولی سربرگ دیگر یک نوارِ تخت نیست. */}
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-[#0F172A] to-indigo-950 p-6 text-white shadow-[0_20px_50px_-12px_rgba(15,23,42,0.55)] md:p-8">
+        {/* هالهٔ زمردیِ پشتِ نشان — نورِ اصلیِ صحنه */}
         <span
-          className="pointer-events-none absolute -left-16 -top-20 h-52 w-52 rounded-full bg-emerald-400/25 blur-3xl"
+          className="pointer-events-none absolute -left-24 -top-28 h-72 w-72 rounded-full bg-emerald-500/25 blur-[90px]"
           aria-hidden="true"
         />
         <span
-          className="pointer-events-none absolute -bottom-24 -right-10 h-56 w-56 rounded-full bg-teal-300/20 blur-3xl"
+          className="pointer-events-none absolute -bottom-32 -right-16 h-72 w-72 rounded-full bg-indigo-500/30 blur-[100px]"
+          aria-hidden="true"
+        />
+        <span
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-l from-transparent via-emerald-400/60 to-transparent"
           aria-hidden="true"
         />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -529,8 +541,8 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
           </p>
           <h1 className="mt-1.5 text-2xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.18)] sm:text-3xl">{report.concept_name ?? 'مفهوم نامشخص'}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="chip bg-white/15 text-white ring-1 ring-white/25 backdrop-blur-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_6px_rgba(110,231,183,0.9)]" />
+            <span className="chip bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30 backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]" />
               تکمیل‌شده
             </span>
             <span className="chip bg-white/10 text-white/90 ring-1 ring-white/20">{toFarsiNumber(report.questions_answered ?? perQuestion.length)} سؤال تحلیل شد</span>

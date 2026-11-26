@@ -14,10 +14,11 @@ body,
 
 body {
   font-family: 'Vazirmatn', Tahoma, ui-sans-serif, system-ui, sans-serif;
-  background:
-    radial-gradient(1100px 520px at 88% -12%, rgba(178, 230, 207, 0.35), transparent 62%),
-    radial-gradient(850px 480px at -8% 108%, rgba(237, 218, 185, 0.28), transparent 58%),
-    #f8fafc; /* slate-50 */
+  /* ── بومِ سردِ آبیِ محسوس ──
+     قبل از این ``#f8fafc`` بود که روی نمایشگر عملاً سفید دیده می‌شد.
+     ``#eef2f9`` فاصلهٔ رنگیِ کافی با کارت‌های سفید دارد تا کارت‌ها «بلند
+     شوند» و صفحه حسِ فرمِ بیمارستانی نداشته باشد. */
+  background: #eef2f9;
   color: #0f172a;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
