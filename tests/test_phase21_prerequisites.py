@@ -423,3 +423,39 @@ def test_header_component_has_the_four_accent_colours():
     src = _read("frontend", "src", "components", "cognitive", "UnifiedSectionHeader.jsx")
     for accent in ("emerald", "indigo", "rose", "amber"):
         assert f"{accent}:" in src
+
+
+# ══ فاز ۲۵: بدونِ شکستِ بی‌صدا — دادهٔ نامعتبر باید خطا شود ══════════════════
+
+def test_report_view_rejects_non_report_payloads():
+    """HTML به‌جای JSON نباید بی‌صدا به کارنامهٔ قدیمی بیفتد.
+
+    این باگ واقعی بود: اگر ``dist`` با یک سرورِ استاتیکِ ساده سرو شود
+    (بدونِ پروکسیِ /api)، ``/api/assess/{id}/report`` با SPA-fallback یک
+    صفحهٔ HTML و status 200 برمی‌گرداند. axios آن را «داده» می‌بیند،
+    ``report.exam`` تهی می‌شود و اپ بی‌صدا مسیرِ کارنامهٔ پیش از آزمون را
+    رندر می‌کند — یعنی «مفهوم نامشخص» و هیچ‌کدام از بخش‌های تازه.
+    کاربر فکر می‌کند UI عوض نشده است.
+    """
+    src = _read("frontend", "src", "pages", "ReportView.jsx")
+    assert "looksLikeReport" in src
+    assert "'exam' in data" in src
+    assert "LegacyReportNotice" in src
+
+
+def test_production_preview_has_an_api_proxy():
+    """بیلدِ تولیدی باید راهی برای رسیدن به /api داشته باشد."""
+    src = _read("tools", "serve_dist.py")
+    assert "/api/" in src
+    assert "SPA fallback" in src  # fallback فقط برای مسیرهای غیرِ /api
+    # /api هرگز نباید به index.html بیفتد
+    assert 'if self.path.startswith("/api/")' in src
+
+
+def test_font_files_exist_in_public_dir():
+    """@font-face به فایل‌هایی اشاره می‌کند که باید واقعاً موجود باشند."""
+    from pathlib import Path
+
+    base = REPO / "frontend" / "public" / "print-fonts"
+    for name in ("Vazirmatn-Regular.ttf", "Vazirmatn-Bold.ttf", "Vazirmatn-ExtraBold.ttf"):
+        assert (base / name).is_file(), name

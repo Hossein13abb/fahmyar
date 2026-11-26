@@ -829,6 +829,64 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
   )
 }
 
+
+/**
+ * کارنامهٔ قدیمی — اعلامِ صادقانه، نه نمایشِ گمراه‌کننده.
+ *
+ * چرا این کامپوننت وجود دارد: پیش از این، هر پاسخی که فیلدِ ``exam`` نداشت
+ * بی‌صدا از مسیرِ ``ReportBody`` (کارنامهٔ پیش از آزمونِ ۱۰ سؤالی) رندر
+ * می‌شد. نتیجه، صفحه‌ای بود با «مفهوم نامشخص» و «مشاهدات (چه چیزی دیدیم؟)»
+ * که هیچ‌کدام از بخش‌های تازه را نداشت — و کاربر فکر می‌کرد کارنامه‌اش
+ * همین است، در حالی که در واقع دادهٔ درستی به فرانت نرسیده بود.
+ *
+ * این صفحه سه چیز را می‌گوید: چه اتفاقی افتاده، چرا بخش‌های تحلیلی نیست، و
+ * قدمِ بعدی چیست.
+ */
+function LegacyReportNotice({ report, onBack, backLabel }) {
+  const conceptName = report?.concept_name ?? report?.sections?.['موضوع بررسی']
+  return (
+    <div className="mx-auto max-w-2xl animate-fade-up">
+      <section className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/85 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] backdrop-blur-md">
+        <span className="block h-1 w-full bg-gradient-to-l from-amber-300 via-orange-300 to-calm-400" aria-hidden="true" />
+        <div className="p-6 md:p-8">
+          <div className="flex items-start gap-3">
+            <span className="flex shrink-0 items-center justify-center rounded-2xl bg-amber-500/10 p-2.5 text-amber-600 ring-4 ring-amber-500/20">
+              <AlertTriangle className="h-5 w-5" strokeWidth={2.2} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-[16px] font-black text-slate-900">
+                این نشست کارنامهٔ آزمونِ تشخیصی ندارد
+              </h2>
+              <p className="mt-1.5 text-justify text-right text-[12px] leading-7 text-slate-600">
+                نشستی که باز کردی از نسخهٔ قدیمیِ گزارش است. تحلیلِ سؤال‌به‌سؤال،
+                ریشه‌یابی زنجیره‌ای و نقشهٔ راه ترمیم فقط برای آزمون‌های ده‌سؤالیِ
+                فهم‌سنجی ساخته می‌شوند.
+              </p>
+              {conceptName && (
+                <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-[12px] font-bold text-slate-700">
+                  موضوعِ ثبت‌شده: {conceptName}
+                </p>
+              )}
+              <p className="mt-3 text-justify text-right text-[12px] leading-7 text-slate-500">
+                برای دیدنِ بخش‌های کامل، یک آزمونِ تازه شروع کن — کارنامهٔ آن با
+                تحلیلِ گام‌به‌گام ساخته می‌شود.
+              </p>
+              <button
+                type="button"
+                onClick={onBack}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-[12px] font-black text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-indigo-600 hover:shadow-md active:translate-y-0"
+              >
+                <ArrowRight className="h-4 w-4" />
+                {backLabel || 'بازگشت به داشبورد'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 export default function ReportView({ mode = 'student', onBackToDashboard }) {
   const { sessionId, studentId } = useParams()
   const navigate = useNavigate()
@@ -847,7 +905,26 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
         : `/api/assess/${sessionId}/report`
     client
       .get(url)
-      .then(({ data }) => alive && setReport(data))
+      .then(({ data }) => {
+        if (!alive) return
+        // ── گاردِ شکلِ پاسخ ──
+        // اگر پروکسی/سرور به‌جای JSON، HTML برگرداند (مثلاً SPA fallback یا
+        // صفحهٔ ورودِ یک CDN)، axios آن را با status 200 می‌دهد و این‌جا
+        // ``report.exam`` تهی می‌شود؛ نتیجه: بی‌صدا کارنامهٔ قدیمی می‌افتد و
+        // کاربر فکر می‌کند کارنامه‌اش همین است. یک اپلیکیشنِ استاتیک بدونِ
+        // پروکسیِ /api دقیقاً همین را تجربه می‌کند.
+        const looksLikeReport =
+          data && typeof data === 'object' && !Array.isArray(data) &&
+          ('exam' in data || 'sections' in data || 'concept_name' in data)
+        if (!looksLikeReport) {
+          setError(
+            'پاسخِ سرور قابلِ خواندن نبود. اگر نسخهٔ نصب‌شده را مستقیم باز کرده‌ای، ' +
+              'باید پشتِ سروری اجرا شود که /api را به بک‌اند وصل می‌کند.',
+          )
+          return
+        }
+        setReport(data)
+      })
       .catch((err) => alive && setError(friendlyError(err)))
       .finally(() => alive && setLoading(false))
     return () => {
@@ -870,6 +947,15 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
 
   if (report?.exam) {
     return <ExamReport report={report} mode={mode} onBackToDashboard={onBackToDashboard} sessionIdProp={sessionId} />
+  }
+
+  // ── مسیرِ کارنامهٔ قدیمی (پیش از آزمونِ ۱۰ سؤالی) ──
+  // این شکل داده هنوز برای نشست‌های قدیمی معتبر است، ولی نباید شبیهِ
+  // کارنامهٔ اصلی باشد: دانش‌آموزِ امروز انتظارِ تحلیلِ سؤال‌به‌سؤال و
+  // نقشهٔ راه دارد و «مفهوم نامشخص» را باگ می‌بیند.
+  const isLegacy = !report?.exam && !report?.per_question
+  if (isLegacy) {
+    return <LegacyReportNotice report={report} onBack={handleBack} backLabel={backLabel} />
   }
 
   const s = report.sections ?? {}
