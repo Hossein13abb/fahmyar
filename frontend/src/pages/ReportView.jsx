@@ -511,36 +511,43 @@ const MASTERY_LABEL = {
 
 // هدرِ «کارنامهٔ اشعهٔ ایکس» هم روشن است، هم‌خانواده با بقیهٔ کارت‌ها.
 // هدرِ «کارنامهٔ اشعهٔ ایکس»: گرادیانتِ دو‌رنگ + هاله، نه یک زمینهٔ تک‌رنگ.
+/**
+ * هدرِ «کارنامهٔ اشعهٔ ایکس» — نواری پُررنگ و اشباع، با متنِ سفید.
+ *
+ * کاربر صریحاً همین را خواست: نسخهٔ روشنِ کم‌رنگ سرد و بی‌روح بود. ولی
+ * یک گرادیانتِ ملایمِ هم‌خانواده به آن اضافه شده تا «مستطیلِ تک‌رنگ»
+ * نباشد؛ هرچند جنسِ رنگ همان رنگِ برند است، نه صورتیِ تهاجمی.
+ */
 const MASTERY_STYLE = {
   MASTERED: {
-    head: 'from-emerald-50 via-teal-50/60 to-white',
-    rail: 'from-emerald-400 via-teal-400 to-cyan-400',
-    aurora: 'bg-emerald-300/25',
-    chip: 'bg-emerald-600 text-white',
+    head: 'bg-gradient-to-l from-emerald-600 via-emerald-500 to-teal-500',
+    aurora: 'bg-teal-200/25',
+    chip: 'bg-white text-emerald-800',
+    chipGhost: 'bg-white/20 text-white ring-1 ring-white/25',
   },
   ILLUSION_OF_COMPETENCE: {
-    head: 'from-rose-50 via-pink-50/50 to-white',
-    rail: 'from-rose-400 via-pink-400 to-fuchsia-400',
-    aurora: 'bg-rose-300/25',
-    chip: 'bg-rose-600 text-white',
+    head: 'bg-gradient-to-l from-rose-600 via-rose-500 to-red-500',
+    aurora: 'bg-rose-200/25',
+    chip: 'bg-white text-rose-800',
+    chipGhost: 'bg-white/20 text-white ring-1 ring-white/25',
   },
   JARGON_DEPENDENT: {
-    head: 'from-orange-50 via-amber-50/50 to-white',
-    rail: 'from-orange-400 via-amber-400 to-yellow-400',
-    aurora: 'bg-orange-300/25',
-    chip: 'bg-orange-600 text-white',
+    head: 'bg-gradient-to-l from-orange-500 via-orange-500 to-amber-500',
+    aurora: 'bg-amber-200/25',
+    chip: 'bg-white text-orange-800',
+    chipGhost: 'bg-white/20 text-white ring-1 ring-white/25',
   },
   PARTIAL_FRAGMENTED: {
-    head: 'from-amber-50 via-calm-50/60 to-white',
-    rail: 'from-amber-400 via-orange-300 to-calm-400',
-    aurora: 'bg-amber-300/25',
-    chip: 'bg-amber-600 text-white',
+    head: 'bg-gradient-to-l from-amber-600 via-amber-500 to-orange-500',
+    aurora: 'bg-orange-200/25',
+    chip: 'bg-white text-amber-800',
+    chipGhost: 'bg-white/20 text-white ring-1 ring-white/25',
   },
   UNSTRUCTURED: {
-    head: 'from-slate-100 via-slate-50 to-white',
-    rail: 'from-slate-400 via-slate-300 to-slate-200',
-    aurora: 'bg-slate-300/25',
-    chip: 'bg-slate-700 text-white',
+    head: 'bg-gradient-to-l from-slate-700 via-slate-600 to-slate-500',
+    aurora: 'bg-slate-200/20',
+    chip: 'bg-white text-slate-800',
+    chipGhost: 'bg-white/20 text-white ring-1 ring-white/25',
   },
 }
 
@@ -678,32 +685,32 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
           {(() => {
             const st = MASTERY_STYLE[mastery] ?? MASTERY_STYLE.UNSTRUCTURED
             return (
-              <div className="relative overflow-hidden">
-                <span className={`block h-1.5 w-full bg-gradient-to-l ${st.rail}`} aria-hidden="true" />
-                <div className={`relative border-b border-slate-100 bg-gradient-to-l px-6 py-5 ${st.head}`}>
+              <div className={`relative overflow-hidden px-6 py-5 ${st.head}`}>
+                {/* هالهٔ گوشه — همان نوارِ رنگی، ولی با عمق */}
+                <span
+                  className={`pointer-events-none absolute -left-12 -top-16 h-44 w-44 rounded-full blur-3xl ${st.aurora}`}
+                  aria-hidden="true"
+                />
+                <div className="relative flex flex-wrap items-center gap-2">
                   <span
-                    className={`pointer-events-none absolute -left-10 -top-12 h-40 w-40 rounded-full blur-3xl ${st.aurora}`}
-                    aria-hidden="true"
-                  />
-                  <div className="relative flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-white/70 bg-white/80 px-2.5 py-1 text-[10px] font-black text-slate-600 backdrop-blur">
-                      کارنامهٔ اشعهٔ ایکس
-                    </span>
-                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-black shadow-sm ${st.chip}`}>
-                      {MASTERY_LABEL[mastery] ?? 'وضعیتِ نامشخص'}
-                    </span>
-                  </div>
-                  {personaTitle && (
-                    <h2 className="relative mt-2 text-xl font-black text-brand-950 drop-shadow-sm sm:text-2xl">
-                      «{personaTitle}»
-                    </h2>
-                  )}
-                  {executiveSummary && (
-                    <p className="relative mt-2 max-w-3xl text-[13px] font-bold leading-8 text-slate-600">
-                      {executiveSummary}
-                    </p>
-                  )}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-black ${st.chipGhost}`}
+                  >
+                    کارنامهٔ اشعهٔ ایکس
+                  </span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black shadow-sm ${st.chip}`}>
+                    {MASTERY_LABEL[mastery] ?? 'وضعیتِ نامشخص'}
+                  </span>
                 </div>
+                {personaTitle && (
+                  <h2 className="relative mt-2 text-xl font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.15)] sm:text-2xl">
+                    «{personaTitle}»
+                  </h2>
+                )}
+                {executiveSummary && (
+                  <p className="relative mt-2 max-w-3xl text-[13px] font-bold leading-8 text-white/95">
+                    {executiveSummary}
+                  </p>
+                )}
               </div>
             )
           })()}
