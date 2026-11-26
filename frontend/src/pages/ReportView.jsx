@@ -118,7 +118,7 @@ function DownloadPdfButton({ sessionId }) {
     <button
       onClick={download}
       disabled={downloading}
-      className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-[13px] font-black text-white shadow-lift transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-80"
+      className="flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-[13px] font-black text-brand-900 shadow-lift transition hover:bg-emerald-50 disabled:cursor-wait disabled:opacity-80"
     >
       {downloading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileDown className="h-5 w-5" />}
       {downloading ? 'در حال ساخت PDF…' : 'دانلود PDF کارنامه'}
@@ -639,24 +639,37 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
   return (
     <div className="animate-fade-up space-y-5">
       {/* ── سربرگ گزارش ── */}
-      <section className="card flex flex-wrap items-start justify-between gap-4 p-6">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-l from-brand-900 via-brand-800 to-emerald-700 p-6 text-white shadow-panel">
+        {/* هالهٔ گوشه‌ها — عمق بدونِ تیرگیِ اضافه */}
+        <span
+          className="pointer-events-none absolute -left-16 -top-20 h-52 w-52 rounded-full bg-emerald-400/25 blur-3xl"
+          aria-hidden="true"
+        />
+        <span
+          className="pointer-events-none absolute -bottom-24 -right-10 h-56 w-56 rounded-full bg-teal-300/20 blur-3xl"
+          aria-hidden="true"
+        />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="flex items-center gap-2 text-[11px] font-bold text-brand-600">
+          <p className="flex items-center gap-2 text-[11px] font-bold text-emerald-200">
             <ClipboardList className="h-4 w-4" />
             گزارش تشخیصی آزمون جامع · {generatedAt}
           </p>
-          <h1 className="mt-1.5 text-2xl font-black text-brand-950 sm:text-3xl">{report.concept_name ?? 'مفهوم نامشخص'}</h1>
+          <h1 className="mt-1.5 text-2xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.18)] sm:text-3xl">{report.concept_name ?? 'مفهوم نامشخص'}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Badge status="completed" />
-            <span className="chip bg-slate-100 text-slate-600 ring-1 ring-slate-200">{toFarsiNumber(report.questions_answered ?? perQuestion.length)} سؤال تحلیل شد</span>
+            <span className="chip bg-white/15 text-white ring-1 ring-white/25 backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_6px_rgba(110,231,183,0.9)]" />
+              تکمیل‌شده
+            </span>
+            <span className="chip bg-white/10 text-white/90 ring-1 ring-white/20">{toFarsiNumber(report.questions_answered ?? perQuestion.length)} سؤال تحلیل شد</span>
             {/* بجِ مدلِ ارزیاب — کاربر همیشه می‌داند کارنامه با چه مدلی ساخته شده */}
             {modelName && (
               <span
-                className="chip inline-flex items-center gap-1.5 border border-brand-200 bg-white text-brand-800 shadow-sm"
+                className="chip inline-flex items-center gap-1.5 bg-white/95 text-brand-900 shadow-sm"
                 dir="ltr"
                 title="مدل هوش مصنوعی که این آزمون را تولید و ارزیابی کرده است"
               >
-                <Cpu className="h-3.5 w-3.5 text-brand-600" />
+                <Cpu className="h-3.5 w-3.5 text-brand-700" />
                 <span className="font-black">مدل ارزیاب:</span>
                 <code className="font-mono text-[11px] font-bold">{modelName}</code>
               </span>
@@ -665,17 +678,18 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
         </div>
         <div className="no-print flex shrink-0 flex-col gap-2">
           <DownloadPdfButton sessionId={report.session_id} />
-          <button onClick={() => window.print()} className="flex items-center justify-center gap-2 rounded-2xl bg-brand-700 px-5 py-3 text-[13px] font-black text-white shadow-card transition hover:bg-brand-800">
+          <button onClick={() => window.print()} className="flex items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-[13px] font-black text-white backdrop-blur-sm transition hover:bg-white/20">
             <Printer className="h-5 w-5" />
             چاپ / دانلود گزارش
           </button>
           <button
             onClick={handleBack}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-white px-5 py-3 text-[13px] font-bold text-brand-800 transition hover:bg-brand-50"
+            className="flex items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-[13px] font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
           >
             <ArrowRight className="h-5 w-5" />
             {backLabel}
           </button>
+        </div>
         </div>
       </section>
 
