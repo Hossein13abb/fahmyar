@@ -660,7 +660,10 @@ def test_tutor_for_unanswered_question_is_educational():
     records = _normalize_per_question(data, rows, answers, {})
     # پاسخ خالی ⇒ وضعیت به INSUFFICIENT تنزل می‌کند و متن آموزشی می‌شود
     assert all(r["status"] == "INSUFFICIENT_EVIDENCE" for r in records)
-    assert "پاسخی نرسید" in records[0]["tutor_teaching"]["misconception_root"]
+    root = records[0]["tutor_teaching"]["misconception_root"]
+    # متنِ آموزشیِ «از صفر»، با لحنِ دوم‌شخص — نه گزارشِ سوم‌شخص
+    assert "جوابی ندادی" in root
+    assert "بیا" in root
 
 
 def test_tutor_teaching_reaches_the_report_shape():
@@ -722,3 +725,114 @@ def test_diagnostic_insight_present_for_every_status():
         text = _diagnostic_fallback({"status": status})
         assert text.strip(), status
         assert "نامشخص" not in text
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# فاز ۱۳ — لحنِ معلمِ خصوصی + معلمِ تناقض
+# ═══════════════════════════════════════════════════════════════════════════
+def test_prompt_forbids_third_person_reporting_tone():
+    import ai.cross_check as cc
+
+    prompt = cc._EXAM_PROMPT
+    assert "سومِ‌شخص" in prompt, "پرامپت باید لحنِ سوم‌شخص را صریحاً ممنوع کند"
+    assert "دانش‌آموز فکر" in prompt, "نمونهٔ ممنوعه باید در پرامپت باشد"
+    assert "معلم" in prompt
+
+
+def test_prompt_demands_second_person_examples():
+    import ai.cross_check as cc
+
+    prompt = cc._EXAM_PROMPT
+    # نمونهٔ لحنِ دوم‌شخص که کاربر خواسته بود
+    assert "ببین دوست من" in prompt
+    assert "بیا یک بار برای همیشه" in prompt
+
+
+def test_prompt_asks_for_contradiction_tutor():
+    import ai.cross_check as cc
+
+    prompt = cc._EXAM_PROMPT
+    for key in ("tutor_resolution", "why_it_happened", "how_to_connect_bridge", "exam_shield_tip"):
+        assert key in prompt, f"{key} در پرامپت نیست"
+    assert "contradiction_title" in prompt
+
+
+def test_clean_findings_keeps_contradiction_tutor():
+    from ai.cross_check import _clean_findings
+
+    out = _clean_findings(
+        [
+            {
+                "title": "روی، هم کاهنده هم اکسنده",
+                "type": "CONTRADICTION",
+                "description": "در تست الف گفتی، در تشریحی ب",
+                "contradiction_title": "روی، هم کاهنده هم اکسنده؟!",
+                "tutor_resolution": {
+                    "why_it_happened": "چون فرمول را حفظ کردی",
+                    "how_to_connect_bridge": "پل",
+                    "exam_shield_tip": "ترفند",
+                },
+            }
+        ]
+    )
+    f = out[0]
+    assert f["contradiction_title"] == "روی، هم کاهنده هم اکسنده؟!"
+    assert f["tutor_resolution"]["why_it_happened"] == "چون فرمول را حفظ کردی"
+    assert all(str(f["tutor_resolution"][k]).strip() for k in f["tutor_resolution"])
+
+
+def test_non_contradiction_findings_get_no_tutor():
+    from ai.cross_check import _clean_findings
+
+    out = _clean_findings(
+        [{"title": "هم‌افزایی", "type": "SYNERGY", "description": "x",
+          "tutor_resolution": {"why_it_happened": "نباید بیاید"}}]
+    )
+    assert "tutor_resolution" not in out[0]
+    assert "contradiction_title" not in out[0]
+
+
+def test_contradiction_without_model_tutor_is_filled_for_report():
+    from reports.exam_report import _contradiction_tutor_for_report
+
+    out = _contradiction_tutor_for_report(
+        {"title": "تناقضِ تست و تشریح", "type": "CONTRADICTION", "description": "دوجوابِ متفاوت"}
+    )
+    assert out["contradiction_title"].strip()
+    res = out["tutor_resolution"]
+    assert all(str(res[k]).strip() for k in res), res
+    assert "دوجوابِ متفاوت" in res["why_it_happened"]
+
+
+def test_report_rejects_raw_model_output_in_contradiction_tutor():
+    from reports.exam_report import _contradiction_tutor_for_report
+
+    out = _contradiction_tutor_for_report(
+        {
+            "title": "تناقض",
+            "type": "CONTRADICTION",
+            "description": "شرح",
+            "tutor_resolution": {
+                "why_it_happened": '{"per_question": []}',
+                "how_to_connect_bridge": "<<<STAGE 2>>>",
+                "exam_shield_tip": "",
+            },
+        }
+    )
+    res = out["tutor_resolution"]
+    assert "per_question" not in res["why_it_happened"]
+    assert "<<<" not in res["how_to_connect_bridge"]
+    assert all(str(res[k]).strip() for k in res)
+
+
+def test_fallback_tutor_texts_use_second_person():
+    """متن‌های جایگزین هم نباید لحنِ گزارشیِ سوم‌شخص داشته باشند."""
+    from ai.cross_check import _coerce_tutor
+
+    bad = ("دانش‌آموز فکر کرد", "ذهن او", "ذهنش به سمت", "پاسخ‌دهنده")
+    for status in ("CORRECT", "HALF_CORRECT", "WRONG", "INSUFFICIENT_EVIDENCE"):
+        tutor = _coerce_tutor(None, {"status": status, "wrong_claim": "فرضِ غلط"})
+        joined = " ".join(tutor.values())
+        for phrase in bad:
+            assert phrase not in joined, (status, phrase)
+        assert "تو" in joined or "خودت" in joined, f"لحنِ دوم‌شخص در {status} نیست"

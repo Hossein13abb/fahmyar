@@ -130,6 +130,56 @@ def _coerce_selected(raw: Any) -> Optional[int]:
 _TUTOR_KEYS = ("misconception_root", "intuitive_explanation", "golden_tip")
 
 
+_RESOLUTION_KEYS = ("why_it_happened", "how_to_connect_bridge", "exam_shield_tip")
+
+
+def _contradiction_tutor_for_report(finding: dict[str, Any]) -> dict[str, Any]:
+    """فیلدهای «معلمِ تناقض» را برای یک یافتهٔ کارنامه آماده می‌کند.
+
+    فقط یافتهٔ ``CONTRADICTION`` دکمهٔ معلم می‌گیرد؛ برای بقیهٔ انواع،
+    کلیدهای اضافه صادر نمی‌شوند تا فرانت مجبور نباشد حالتِ خالی را هم
+    مدیریت کند. اگر مدل آموزش را نداد، متنی از توضیحِ خودِ یافته ساخته
+    می‌شود — دکمه هرگز به پنجرهٔ خالی نمی‌رسد.
+    """
+    ftype = str(finding.get("type") or "").upper().strip()
+    if ftype != "CONTRADICTION":
+        return {}
+
+    raw = finding.get("tutor_resolution")
+    src = raw if isinstance(raw, dict) else {}
+    resolution = {k: str(src.get(k) or "").strip() for k in _RESOLUTION_KEYS}
+    for key, value in list(resolution.items()):
+        if value and _looks_like_model_output(value):
+            resolution[key] = ""
+
+    title = str(finding.get("contradiction_title") or finding.get("title") or "").strip()
+    description = str(finding.get("description") or "").strip()
+
+    if not resolution["why_it_happened"]:
+        resolution["why_it_happened"] = (
+            f"بین دو جوابت فاصله افتاد: {description}"
+            if description
+            else "دو جوابت یک حرف را نمی‌زنند — و این یعنی یکی‌شان از حفظ "
+            "آمده و آن یکی از شهودِ خودت."
+        )
+    if not resolution["how_to_connect_bridge"]:
+        resolution["how_to_connect_bridge"] = (
+            "هر دو پاسخ را کنارِ هم بگذار و ببین کدام‌شان با قانونِ اصلیِ "
+            "مفهوم هم‌خوان است؛ همان یکی حرفِ آخر را می‌زند و آن یکی باید "
+            "اصلاح شود."
+        )
+    if not resolution["exam_shield_tip"]:
+        resolution["exam_shield_tip"] = (
+            "قبل از زدنِ گزینه، یک بار با خودت بگو: «اگر همین را می‌خواستم "
+            "تشریح کنم، همین جواب را می‌دادم؟» همان یک جمله، تناقض را لو می‌دهد."
+        )
+
+    return {
+        "contradiction_title": title or "این دو حرفت با هم نمی‌خوانند",
+        "tutor_resolution": resolution,
+    }
+
+
 def _coerce_tutor_for_report(record: dict[str, Any]) -> dict[str, str]:
     """``tutor_teaching`` را برای کارنامه آماده می‌کند.
 
@@ -153,29 +203,34 @@ def _coerce_tutor_for_report(record: dict[str, Any]) -> dict[str, str]:
     wrong = str(record.get("wrong_claim") or "").strip()
     status = str(record.get("status") or "").upper()
 
+    # همهٔ متن‌ها با لحنِ دومِ‌شخصِ معلم نوشته می‌شوند (قراردادِ فاز ۱۳).
     if not out["misconception_root"]:
         if status == EvidenceStatus.CONFIRMED.value or status == "CORRECT":
-            out["misconception_root"] = "در این سؤال لغزشی نداشتی؛ استدلال کامل بود."
+            out["misconception_root"] = (
+                "این‌جا لغزشی نداشتی؛ استدلالت کامل بود. بیا یک قدم عمیق‌ترش کنیم."
+            )
         elif wrong:
             out["misconception_root"] = (
-                f"ذهن اینجا روی این فرض ایستاد: «{wrong}» — و همین فرض، "
-                "بقیهٔ استدلال را با خودش برد."
+                f"ببین دوست من! تو روی این فرض ایستادی: «{wrong}» — و همین "
+                "فرض، بقیهٔ استدلالت را با خودش برد."
             )
         else:
-            out["misconception_root"] = verdict or "استدلال در میانهٔ راه ناقص ماند."
+            out["misconception_root"] = (
+                verdict or "استدلالت در میانهٔ راه لنگ زد — بیا کاملش کنیم."
+            )
 
     if not out["intuitive_explanation"]:
         out["intuitive_explanation"] = feedback or (
-            f"قدم‌به‌قدم پیش برو: {missed}"
+            f"بیا قدم‌به‌قدم برویم: {missed}"
             if missed
-            else "این مفهوم را از پایه، بی‌آنکه فرمول حفظ کنی، یک بار با "
-            "مثالِ روزمره بازگو کن."
+            else "بیا این مفهوم را از پایه با هم بسازیم — بی‌آنکه فرمولی حفظ "
+            "کنی. یک مثالِ روزمره‌اش را برایم تصور کن و از همان‌جا شروع کنیم."
         )
 
     if not out["golden_tip"]:
         out["golden_tip"] = (
-            "قبل از هر محاسبه یک بار بپرس: «کدام کمیت واقعاً این‌جا نقش دارد "
-            "و کدام یکی فقط تماشاچی است؟»"
+            "رمزِ طلایی: قبل از هر محاسبه از خودت بپرس «کدام کمیت واقعاً "
+            "این‌جا نقش دارد و کدام یکی فقط تماشاچی است؟»"
         )
     return out
 
@@ -184,12 +239,12 @@ def _diagnostic_fallback(record: dict[str, Any]) -> str:
     """تشخیصِ یک‌خطی برای دادهٔ قدیمی که فیلدِ ``diagnostic_insight`` ندارد."""
     status = str(record.get("status") or "").upper()
     if status in ("CORRECT", EvidenceStatus.CONFIRMED.value):
-        return "استدلال در این بخش با منطقِ موردانتظار هم‌خوان بود."
+        return "استدلالت در این بخش با منطقِ موردانتظار هم‌خوان بود."
     if status == "HALF_CORRECT":
-        return "هستهٔ استدلال درست بود، اما حلقهٔ تعیین‌کنندهٔ آن کامل گفته نشد."
+        return "هستهٔ استدلالت درست بود، اما حلقهٔ تعیین‌کننده‌اش کامل گفته نشد."
     if status == "WRONG":
-        return "استدلال به نتیجه‌ای می‌رسد که با رفتارِ واقعیِ سیستم نمی‌خواند."
-    return "برای این سؤال شاهدِ کافی ثبت نشد؛ داوری ممکن نبود."
+        return "استدلالت به نتیجه‌ای می‌رسد که با رفتارِ واقعیِ سیستم نمی‌خواند."
+    return "برای این سؤال شاهدی ثبت نشد؛ داوری ممکن نبود."
 
 
 def _selected_text_for_report(entry: dict[str, Any]) -> Optional[str]:
@@ -289,6 +344,7 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             "type": str(f.get("type") or "SYNERGY").upper().strip(),
             "description": str(f.get("description") or "").strip(),
             "resolution": f.get("resolution"),
+            **_contradiction_tutor_for_report(f),
         }
         for f in (meta.get("cross_check_findings") or [])
         if isinstance(f, dict) and str(f.get("title") or "").strip()

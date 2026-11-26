@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import DetailedQuestions from '../components/cognitive/DetailedQuestions'
+import DetailedQuestions, { ContradictionTutorModal } from '../components/cognitive/DetailedQuestions'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -18,6 +18,7 @@ import {
   FlaskConical,
   CheckCircle2,
   ScanSearch,
+  GraduationCap,
   Search,
   FileText,
   Layers,
@@ -527,6 +528,9 @@ const rawStudentAnswer = (text) => {
 }
 
 function ExamReport({ report, mode, onBackToDashboard }) {
+  // معلمِ تناقض: کدام یافته باز است و آیا مودال نمایان است.
+  const [contradictionOpen, setContradictionOpen] = useState(false)
+  const [tutorFinding, setTutorFinding] = useState(null)
 
   const navigate = useNavigate()
   const handleBack = onBackToDashboard ?? (() => navigate(mode === 'teacher' ? '/staff' : '/dashboard'))
@@ -639,13 +643,18 @@ function ExamReport({ report, mode, onBackToDashboard }) {
               <ul className="mt-3 space-y-2">
                 {crossCheck.map((f, i) => {
                   const style = FINDING_STYLE[f.type] ?? FINDING_STYLE.SYNERGY
+                  const isContradiction = f.type === 'CONTRADICTION'
+                  const canTeach =
+                    isContradiction && Boolean(f.tutor_resolution && Object.keys(f.tutor_resolution).length)
                   return (
                     <li key={i} className={`rounded-2xl border-2 p-4 ${style.wrap}`}>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black ${style.chip}`}>
                           {FINDING_LABEL[f.type] ?? f.type}
                         </span>
-                        <p className="text-[13px] font-black text-slate-900">{f.title}</p>
+                        <p className="text-[13px] font-black text-slate-900">
+                          {f.contradiction_title || f.title}
+                        </p>
                       </div>
                       {f.description && (
                         <p className="mt-1.5 text-[12px] font-medium leading-7 text-slate-700">{f.description}</p>
@@ -654,6 +663,19 @@ function ExamReport({ report, mode, onBackToDashboard }) {
                         <p className="mt-1.5 rounded-xl bg-white/70 p-2 text-[11px] font-bold leading-6 text-emerald-800">
                           توضیحِ خودت: {f.resolution}
                         </p>
+                      )}
+                      {canTeach && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTutorFinding(f)
+                            setContradictionOpen(true)
+                          }}
+                          className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-[12px] font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-amber-700 hover:shadow-md active:translate-y-0"
+                        >
+                          <GraduationCap className="h-4 w-4" />
+                          حلِ این تناقض با معلم — چرا این دو حرفت با هم نمی‌خوند؟
+                        </button>
                       )}
                     </li>
                   )
@@ -819,6 +841,13 @@ function ExamReport({ report, mode, onBackToDashboard }) {
       <p className="pb-2 text-center text-[11px] text-slate-400">
         این گزارش فقط برای تو و معلمت قابل مشاهده است.
       </p>
+
+      {/* معلمِ تناقض — همان مودالِ وسط‌چین، با سه بخشِ حلِ تناقض */}
+      <ContradictionTutorModal
+        open={contradictionOpen}
+        finding={tutorFinding}
+        onClose={() => setContradictionOpen(false)}
+      />
     </div>
   )
 }

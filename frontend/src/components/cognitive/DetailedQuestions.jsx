@@ -4,8 +4,9 @@
  * دو چیز در این فایل است:
  *   ۱. <QuestionCard> — کارتِ ماژولار با نوارِ وضعیتِ رنگی، سربرگ، جعبهٔ
  *      «پاسخِ دانش‌آموز» و «دیدگاهِ تشخیصی».
- *   ۲. <TutorDrawer> — کشوی نیمه‌صفحهٔ تدریس با سه بخش (ریشهٔ خطا، اصلِ
- *      داستان، نکتهٔ طلایی).
+ *   ۲. <TutorModal> — مودالِ وسط‌چینِ تدریس با سه بخش (ریشهٔ گیر، اصلِ
+ *      داستان، رمزِ طلایی).
+ *   ۳. <ContradictionTutorModal> — همان مودال برای حلِ تناقضِ «شکارِ تناقض».
  *
  * اصلِ طراحی: این کامپوننت **هیچ داده‌ای از خودش نمی‌سازد**. هر متن از
  * `tutor_teaching` می‌آید که بک‌اند در همان فراخوانیِ اولِ ارزیابی تولید
@@ -22,7 +23,9 @@ import {
   KeyRound,
   Lightbulb,
   MessageCircleQuestion,
+  ShieldCheck,
   Sparkles,
+  Workflow,
   X,
 } from 'lucide-react'
 import MathText from '../MathText'
@@ -221,39 +224,72 @@ export function QuestionCard({ q, index, onOpenTutor }) {
   )
 }
 
-/** یک بخشِ کشو با آیکون و رنگِ اختصاصی. */
-function TutorSection({ Icon, step, title, children, tone }) {
+/** آیکون و لحنِ هر بخشِ مودال — یک‌جا، تا هر دو حالت از یک زبانِ بصری بیایند. */
+const SECTION_STYLE = {
+  rose: {
+    card: 'border-rose-200/80 bg-gradient-to-br from-rose-50 to-rose-50/40',
+    iconBox: 'bg-white text-rose-500 ring-rose-200 shadow-rose-100',
+    title: 'text-rose-900',
+    chip: 'bg-rose-100 text-rose-700',
+  },
+  brand: {
+    card: 'border-brand-200/80 bg-gradient-to-br from-brand-50 to-brand-50/30',
+    iconBox: 'bg-white text-brand-600 ring-brand-200 shadow-brand-100',
+    title: 'text-brand-950',
+    chip: 'bg-brand-100 text-brand-800',
+  },
+  amber: {
+    card: 'border-amber-200/80 bg-gradient-to-br from-amber-50 to-amber-50/40',
+    iconBox: 'bg-white text-amber-500 ring-amber-200 shadow-amber-100',
+    title: 'text-amber-900',
+    chip: 'bg-amber-100 text-amber-800',
+  },
+}
+
+/** یک باکسِ کارت‌مانندِ داخلِ مودال. */
+function TutorBox({ Icon, badge, title, tone, children }) {
+  const st = SECTION_STYLE[tone]
   return (
-    <section className={`rounded-2xl border p-4 ${tone.card}`}>
-      <div className="flex items-center gap-2">
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ring-1 ${tone.iconBox}`}>
-          <Icon className="h-4 w-4" strokeWidth={2.2} />
+    <section className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${st.card}`}>
+      <div className="flex items-start gap-3">
+        <span
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 shadow-sm ${st.iconBox}`}
+        >
+          <Icon className="h-[18px] w-[18px]" strokeWidth={2.2} />
         </span>
-        <div>
-          <p className="text-[10px] font-bold text-slate-400">بخش {faNum(step)}</p>
-          <h3 className={`text-[13px] font-black ${tone.title}`}>{title}</h3>
+        <div className="min-w-0 flex-1">
+          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-black ${st.chip}`}>
+            {badge}
+          </span>
+          <h3 className={`mt-1 text-[14px] font-black leading-6 ${st.title}`}>{title}</h3>
         </div>
       </div>
-      <div className="mt-2.5 text-[13px] leading-8 text-slate-700">{children}</div>
+      <div className="mt-3 text-[13px] leading-8 text-slate-700 sm:text-[13.5px]">{children}</div>
     </section>
   )
 }
 
-export function TutorDrawer({ open, q, order, onClose }) {
-  const [mounted, setMounted] = useState(false)
+/**
+ * شِلِ مشترکِ مودالِ معلم — وسطِ صفحه، شیشه‌ای، با انیمیشنِ scale+fade.
+ *
+ * هر دو حالت (تدریسِ سؤال و حلِ تناقض) از همین می‌گذرند تا تجربه یکدست بماند.
+ * رندر با `createPortal` روی `document.body` است: بدونِ آن، هر والدِ
+ * `transform`دار مرجعِ `fixed` می‌شود و مودال به کارت می‌چسبد نه به پنجره.
+ */
+function TutorModalShell({ open, titleId, header, children, footer, onClose }) {
+  const [shown, setShown] = useState(false)
   const closeRef = useRef(null)
 
-  // انیمیشنِ ورود: یک فریم صبر می‌کنیم تا transition اجرا شود.
   useEffect(() => {
     if (!open) {
-      setMounted(false)
+      setShown(false)
       return undefined
     }
-    const raf = requestAnimationFrame(() => setMounted(true))
+    // یک فریم بعد وارد شو تا transition واقعاً اجرا شود.
+    const raf = requestAnimationFrame(() => setShown(true))
     return () => cancelAnimationFrame(raf)
   }, [open])
 
-  // Esc برای بستن + قفلِ اسکرولِ پشت
   useEffect(() => {
     if (!open) return undefined
     const onKey = (e) => {
@@ -269,160 +305,226 @@ export function TutorDrawer({ open, q, order, onClose }) {
     }
   }, [open, onClose])
 
-  if (!open || !q) return null
+  if (!open) return null
 
-  const tone = toneOf(q.status)
-  const stage = Number(q.stage) || Math.min(5, Math.floor(((Number(q.order) || 1) - 1) / 2) + 1)
-  const tutor = q.tutor_teaching ?? {}
-  const studentAnswer = rawStudentAnswer(q.response)
-  const hasOptions = Array.isArray(q.options) && q.options.length > 0
-  const pickedIdx = Number.isInteger(Number(q.selected_option_index))
-    ? Number(q.selected_option_index)
-    : null
-
-  const drawer = (
-    <div className="fixed inset-0 z-[60] flex justify-start" role="dialog" aria-modal="true" aria-labelledby="tutor-title">
-      {/* پردهٔ پشت */}
+  const modal = (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+    >
+      {/* پردهٔ شیشه‌ایِ پشت */}
       <button
         type="button"
         aria-label="بستن"
         onClick={onClose}
-        className={`absolute inset-0 bg-brand-950/50 backdrop-blur-sm transition-opacity duration-300 ${
-          mounted ? 'opacity-100' : 'opacity-0'
+        className={`absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity duration-300 ${
+          shown ? 'opacity-100' : 'opacity-0'
         }`}
       />
 
-      {/* کشو */}
-      <aside
-        className={`relative ml-auto flex h-full w-full max-w-xl flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out sm:rounded-l-3xl ${
-          mounted ? 'translate-x-0' : 'translate-x-full'
+      {/* بدنهٔ مودال */}
+      <div
+        className={`relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 transition-all duration-300 ease-out ${
+          shown ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         }`}
       >
-        {/* سربرگِ کشو */}
-        <header className={`shrink-0 border-b border-slate-100 px-5 py-4 ${tone.soft}`}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="flex items-center gap-1.5 text-[10px] font-black text-brand-700">
-                <GraduationCap className="h-3.5 w-3.5" />
-                معلمِ هوشمند فهم‌یار · سؤال {faNum(order)}
-              </p>
-              <h2 id="tutor-title" className="mt-1 text-[17px] font-black text-brand-950">
-                بیا این گره رو با هم باز کنیم!
-              </h2>
-              <p className="mt-0.5 text-[11px] font-bold text-slate-500">
-                مرحلهٔ {faNum(stage)}: {STAGE_NAMES[stage - 1]}
-              </p>
+        <header className="relative shrink-0 overflow-hidden border-b border-slate-100 bg-gradient-to-l from-brand-50 via-white to-brand-50/40 px-5 py-4 sm:px-6 sm:py-5">
+          <div className="pointer-events-none absolute -left-8 -top-10 h-32 w-32 rounded-full bg-brand-100/40 blur-2xl" />
+          <div className="relative flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-700 text-white shadow-md shadow-brand-200">
+                <GraduationCap className="h-5 w-5" strokeWidth={2.2} />
+              </span>
+              <div className="min-w-0">{header}</div>
             </div>
             <button
               ref={closeRef}
               type="button"
               onClick={onClose}
               aria-label="بستنِ پنجرهٔ معلم"
-              className="shrink-0 rounded-xl p-2 text-slate-500 transition hover:bg-white/70 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              className="shrink-0 rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
-
-          {/* صورتِ سؤال و پاسخ */}
-          <div className="mt-3 space-y-2">
-            {String(q.question_text ?? '').trim() && (
-              <div className="rounded-xl bg-white/70 px-3 py-2">
-                <p className="text-[10px] font-black text-slate-500">صورتِ سؤال</p>
-                <RichText content={q.question_text} className="mt-0.5 text-[12px] font-bold leading-7 text-slate-700" />
-              </div>
-            )}
-            <div className={`rounded-xl px-3 py-2 ring-1 ${tone.ring} bg-white/70`}>
-              <p className="text-[10px] font-black text-slate-500">پاسخِ تو</p>
-              {hasOptions ? (
-                pickedIdx === null ? (
-                  <p className="mt-0.5 text-[12px] font-bold text-slate-500">بدون پاسخ</p>
-                ) : (
-                  <div className="mt-0.5 text-[12px] leading-7 text-slate-700">
-                    گزینهٔ {faNum(pickedIdx + 1)}:{' '}
-                    <span className="math-inline font-black text-brand-950">
-                      <MathText
-                        content={String(q.selected_option_text ?? q.options?.[pickedIdx] ?? '')}
-                      />
-                    </span>
-                  </div>
-                )
-              ) : (
-                <RichText
-                  content={studentAnswer || 'بدون پاسخ'}
-                  className={`mt-0.5 text-[12px] leading-7 ${studentAnswer ? 'text-slate-700' : 'text-slate-400'}`}
-                />
-              )}
-            </div>
-          </div>
         </header>
 
-        {/* بدنهٔ کشو — سه بخشِ تدریس */}
-        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          <TutorSection
-            Icon={MessageCircleQuestion}
-            step={1}
-            title="کجای ماجرا لغزیدی؟"
-            tone={{
-              card: 'border-rose-200/70 bg-rose-50/40',
-              iconBox: 'bg-white text-rose-600 ring-rose-200',
-              title: 'text-rose-900',
-            }}
-          >
-            <RichText content={tutor.misconception_root} />
-          </TutorSection>
-
-          <TutorSection
-            Icon={BookOpen}
-            step={2}
-            title="اصلِ داستان چیه؟"
-            tone={{
-              card: 'border-brand-200/70 bg-brand-50/40',
-              iconBox: 'bg-white text-brand-700 ring-brand-200',
-              title: 'text-brand-950',
-            }}
-          >
-            <RichText content={tutor.intuitive_explanation} />
-          </TutorSection>
-
-          <TutorSection
-            Icon={KeyRound}
-            step={3}
-            title="نکتهٔ طلاییِ ساعت‌ساز"
-            tone={{
-              card: 'border-amber-200/70 bg-amber-50/50',
-              iconBox: 'bg-white text-amber-600 ring-amber-200',
-              title: 'text-amber-900',
-            }}
-          >
-            <RichText content={tutor.golden_tip} />
-          </TutorSection>
-
-          <p className="flex items-start gap-1.5 rounded-xl bg-slate-50 px-3 py-2 text-[10px] font-bold leading-5 text-slate-400">
-            <Lightbulb className="mt-0.5 h-3 w-3 shrink-0" />
-            این توضیح با همان ارزیابیِ آزمون ساخته شده است — نه یک پاسخِ آمادهٔ
-            تکراری؛ همان‌جا که خودت لغزیدی.
-          </p>
+        {/* اسکرولِ نرمِ داخلی */}
+        <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+          {children}
         </div>
 
-        {/* دکمهٔ اقدام */}
-        <footer className="shrink-0 border-t border-slate-100 bg-white px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 px-4 py-3 text-[13px] font-black text-white transition hover:bg-brand-800 active:scale-[0.99]"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            متوجه شدم! برو سؤال بعدی
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-        </footer>
-      </aside>
+        {footer && (
+          <footer className="shrink-0 border-t border-slate-100 bg-slate-50/60 px-4 py-3 sm:px-6">
+            {footer}
+          </footer>
+        )}
+      </div>
     </div>
   )
 
-  // Portal: کشو باید به body بچسبد، نه به کارتی که transform دارد.
-  return typeof document === 'undefined' ? drawer : createPortal(drawer, document.body)
+  return typeof document === 'undefined' ? modal : createPortal(modal, document.body)
+}
+
+/** مودالِ تدریسِ یک سؤال — سه بخش: ریشهٔ گیر، اصلِ داستان، رمزِ طلایی. */
+export function TutorModal({ open, q, order, onClose }) {
+  const tone = toneOf(q?.status)
+  const stage =
+    Number(q?.stage) || Math.min(5, Math.floor(((Number(q?.order) || 1) - 1) / 2) + 1)
+  const tutor = q?.tutor_teaching ?? {}
+  const studentAnswer = rawStudentAnswer(q?.response)
+  const hasOptions = Array.isArray(q?.options) && q.options.length > 0
+  const pickedIdx = Number.isInteger(Number(q?.selected_option_index))
+    ? Number(q.selected_option_index)
+    : null
+
+  const header = (
+    <>
+      <p className="text-[10px] font-black text-brand-700">
+        معلمِ خصوصیِ فهم‌یار · سؤال {faNum(order)}
+      </p>
+      <h2 id="tutor-title" className="mt-0.5 text-[17px] font-black leading-7 text-brand-950 sm:text-[19px]">
+        بیا این گره رو با هم باز کنیم!
+      </h2>
+      <p className="mt-0.5 text-[11px] font-bold text-slate-500">
+        مرحلهٔ {faNum(stage)}: {STAGE_NAMES[stage - 1]}
+      </p>
+    </>
+  )
+
+  const footer = (
+    <button
+      type="button"
+      onClick={onClose}
+      className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 px-4 py-3 text-[13px] font-black text-white shadow-sm transition hover:bg-brand-800 active:scale-[0.99]"
+    >
+      <CheckCircle2 className="h-4 w-4" />
+      متوجه شدم!
+      <ArrowLeft className="h-4 w-4" />
+    </button>
+  )
+
+  return (
+    <TutorModalShell open={open} titleId="tutor-title" header={header} footer={footer} onClose={onClose}>
+      {/* صورتِ سؤال + پاسخِ دانش‌آموز */}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {String(q?.question_text ?? '').trim() && (
+          <div className="rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+            <p className="text-[10px] font-black text-slate-500">صورتِ سؤال</p>
+            <RichText
+              content={q.question_text}
+              className="mt-1 text-[12px] font-bold leading-7 text-slate-700"
+            />
+          </div>
+        )}
+        <div className={`rounded-2xl bg-white px-4 py-3 ring-1 ${tone.ring}`}>
+          <p className="text-[10px] font-black text-slate-500">پاسخِ تو</p>
+          {hasOptions ? (
+            pickedIdx === null ? (
+              <p className="mt-1 text-[12px] font-bold text-slate-400">بدون پاسخ</p>
+            ) : (
+              <div className="mt-1 text-[12px] leading-7 text-slate-700">
+                گزینهٔ {faNum(pickedIdx + 1)}:{' '}
+                <span className="math-inline font-black text-brand-950">
+                  <MathText
+                    content={String(q.selected_option_text ?? q.options?.[pickedIdx] ?? '')}
+                  />
+                </span>
+              </div>
+            )
+          ) : (
+            <RichText
+              content={studentAnswer || 'بدون پاسخ'}
+              className={`mt-1 text-[12px] leading-7 ${
+                studentAnswer ? 'text-slate-700' : 'text-slate-400'
+              }`}
+            />
+          )}
+        </div>
+      </div>
+
+      <TutorBox
+        Icon={MessageCircleQuestion}
+        tone="rose"
+        badge="بخش ۱"
+        title="کجای ماجرا گیر کردی؟"
+      >
+        <RichText content={tutor.misconception_root} />
+      </TutorBox>
+
+      <TutorBox Icon={BookOpen} tone="brand" badge="بخش ۲" title="اصلِ داستان به زبانِ ساده">
+        <RichText content={tutor.intuitive_explanation} />
+      </TutorBox>
+
+      <TutorBox Icon={KeyRound} tone="amber" badge="بخش ۳" title="رمزِ طلاییِ ساعت‌ساز">
+        <RichText content={tutor.golden_tip} />
+      </TutorBox>
+
+      <p className="flex items-start gap-1.5 px-1 text-[10px] font-bold leading-5 text-slate-400">
+        <Lightbulb className="mt-0.5 h-3 w-3 shrink-0" />
+        این توضیح با همان ارزیابیِ آزمون ساخته شده است — نه یک پاسخِ آمادهٔ تکراری؛
+        همان‌جا که خودت گیر کردی.
+      </p>
+    </TutorModalShell>
+  )
+}
+
+/**
+ * مودالِ «حلِ تناقض» — همان شِل، ولی محتوایش سه سؤالِ متفاوت است:
+ * چرا این تناقض شکل گرفت، پلِ اتصالِ دو مفهوم، و سپرِ آزمون.
+ */
+export function ContradictionTutorModal({ open, finding, onClose }) {
+  const res = finding?.tutor_resolution ?? {}
+  const header = (
+    <>
+      <p className="text-[10px] font-black text-amber-700">معلمِ خصوصیِ فهم‌یار · شکارِ تناقض</p>
+      <h2 id="tutor-title" className="mt-0.5 text-[17px] font-black leading-7 text-brand-950 sm:text-[19px]">
+        بیا این تناقض رو با هم حل کنیم!
+      </h2>
+      <p className="mt-0.5 text-[11px] font-bold text-slate-500">
+        {finding?.contradiction_title || finding?.title || 'دو حرفت با هم نمی‌خوانند'}
+      </p>
+    </>
+  )
+
+  const footer = (
+    <button
+      type="button"
+      onClick={onClose}
+      className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-[13px] font-black text-white shadow-sm transition hover:bg-amber-700 active:scale-[0.99]"
+    >
+      <CheckCircle2 className="h-4 w-4" />
+      قفلش کردم! بریم بعدی
+      <ArrowLeft className="h-4 w-4" />
+    </button>
+  )
+
+  return (
+    <TutorModalShell open={open} titleId="tutor-title" header={header} footer={footer} onClose={onClose}>
+      {String(finding?.description ?? '').trim() && (
+        <div className="rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+          <p className="text-[10px] font-black text-slate-500">آنچه در کارنامه دیدی</p>
+          <p className="mt-1 text-[12px] font-medium leading-7 text-slate-700">
+            {finding.description}
+          </p>
+        </div>
+      )}
+
+      <TutorBox Icon={Sparkles} tone="rose" badge="بخش ۱" title="چرا این تناقض در ذهنت شکل گرفت؟">
+        <RichText content={res.why_it_happened} />
+      </TutorBox>
+
+      <TutorBox Icon={Workflow} tone="brand" badge="بخش ۲" title="پلِ اتصالِ این دو مفهوم">
+        <RichText content={res.how_to_connect_bridge} />
+      </TutorBox>
+
+      <TutorBox Icon={ShieldCheck} tone="amber" badge="بخش ۳" title="چطور سرِ آزمون در این دام نیفتیم؟">
+        <RichText content={res.exam_shield_tip} />
+      </TutorBox>
+    </TutorModalShell>
+  )
 }
 
 /** بخشِ «تحلیل تفصیلی» با گریدِ کارت‌ها و کشوی معلم. */
@@ -448,7 +550,7 @@ export default function DetailedQuestions({ questions = [] }) {
           <QuestionCard key={q.question_id ?? i} q={q} index={i} onOpenTutor={openTutor} />
         ))}
       </div>
-      <TutorDrawer
+      <TutorModal
         open={tutorOpen}
         q={activeQ}
         order={activeOrder}
