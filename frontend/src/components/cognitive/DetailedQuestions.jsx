@@ -95,10 +95,34 @@ export const TONE = {
     Icon: BookOpen,
     cta: CTA,
   },
+  /* ── سؤالی که ارزیاب حکمِ توصیفی داده، ولی شاهدِ درست/غلط در دست نیست ──
+     در جلسه‌های قدیمی، پاسخ‌ها ذخیره نشده‌اند اما ارزیاب برای هر سؤال یک
+     حکمِ شناختی نوشته است. این‌جا «شواهد ناکافی» دروغ است (حکم داریم) و
+     «درست» هم دروغ است (شاهدش را نداریم). پس یک وضعیتِ صادقانهٔ سوم. */
+  ASSESSED: {
+    rail: 'from-analytic/40 via-analytic/25 to-analytic/10',
+    aurora: 'from-analytic/12',
+    ring: 'ring-analytic/10',
+    badge: 'bg-analytic-soft text-analytic border-analytic/25',
+    label: 'تحلیل‌شده',
+    Icon: MessageCircleQuestion,
+    cta: CTA,
+  },
 }
 
-export const toneOf = (status) =>
-  TONE[String(status ?? '').toUpperCase()] ?? TONE.INSUFFICIENT_EVIDENCE
+/**
+ * وضعیت → تُن.
+ *
+ * تفکیکِ مهم: ``status`` تهی یعنی **هیچ داوری‌ای نبوده**؛ ولی اگر
+ * ``cognitive_verdict`` متن داشته باشد یعنی ارزیاب حکم نوشته و فقط
+ * «درست/غلط»ِ ساختاری در دست نیست. این دو یکی نیستند و نباید یک‌شکل
+ * نشان داده شوند.
+ */
+export const toneOf = (status, verdict = '') => {
+  const key = String(status ?? '').toUpperCase()
+  if (key && TONE[key]) return TONE[key]
+  return rawText(verdict) ? TONE.ASSESSED : TONE.INSUFFICIENT_EVIDENCE
+}
 
 const rawText = (value) => String(value ?? '').trim()
 
@@ -128,7 +152,7 @@ function RichText({ content, className = '', interactive = true }) {
 
 // ═══════════════════════════ کارتِ سؤال ═══════════════════════════
 export function QuestionCard({ q, index, onOpen }) {
-  const tone = toneOf(q?.status)
+  const tone = toneOf(q?.status, q?.cognitive_verdict)
   const ToneIcon = tone.Icon
   const order = Number(q?.order) || index + 1
   const stage = Number(q?.stage) || Math.min(5, Math.floor((order - 1) / 2) + 1)
@@ -726,7 +750,7 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
  * فقط یک سؤال هم‌زمان باز است: تمرکز روی «همین یکی» می‌ماند.
  */
 function QuestionRow({ q, index, open, onToggle, onOpenTutor }) {
-  const tone = toneOf(q?.status)
+  const tone = toneOf(q?.status, q?.cognitive_verdict)
   const ToneIcon = tone.Icon
   const order = Number(q?.order) || index + 1
   const hasOptions = Array.isArray(q?.options) && q.options.length > 0
@@ -822,7 +846,7 @@ export default function DetailedQuestions({ questions = [], sessionId }) {
     setOpen(true)
   }
 
-  const statusOf = (q) => toneOf(q?.status)
+  const statusOf = (q) => toneOf(q?.status, q?.cognitive_verdict)
 
   if (!questions.length) {
     return <p className="text-[13px] text-ink-faint">سؤالی ثبت نشده است.</p>

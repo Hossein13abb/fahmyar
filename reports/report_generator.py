@@ -68,6 +68,239 @@ def _final_prop_status(statuses: list[str]) -> str:
     return EvidenceStatus.INSUFFICIENT_EVIDENCE.value
 
 
+def _persisted_evaluation(session: AssessmentSession) -> dict[str, Any]:
+    """خروجیِ ارزیابِ ذخیره‌شده در خودِ جلسه — اگر کامل باشد.
+
+    ── باگِ «همه‌چیز نامشخص» (فاز ۲۸) ──
+    بعضی جلسه‌ها (``trigger_type == "cognitive_assessment"``) نتیجهٔ کاملِ
+    ارزیاب را در ``session.cognitive_report["evaluation_report"]`` دارند:
+    تیپ، جمع‌بندی، شواهد سؤال‌به‌سؤال، تناقض‌ها. ولی ``build_report`` که
+    مسیرِ *غیرِآزمونیِ* ``GET /api/assess/{id}/report`` است، این کلید را
+    هرگز نمی‌خواند و بی‌صدا گزارشِ متنیِ قدیمی را می‌ساخت.
+
+    نتیجهٔ آن باگ دقیقاً همان چیزی بود که در کارنامه دیده می‌شد:
+    ``concept_name = "نامشخص"``، صفر سؤال، پنج محورِ خالی و نوارهای بدونِ
+    داده — درحالی‌که تحلیلِ واقعی در همان ردیفِ دیتابیس نشسته بود.
+
+    این تابع اگر آن خروجی را بیابد و حداقل یک شاهد یا جمع‌بندی داشته باشد،
+    همان را برمی‌گرداند؛ وگرنه ``{}`` تا مسیرِ قدیمی دست‌نخورده بماند.
+    """
+    raw = session.cognitive_report
+    if not isinstance(raw, dict):
+        return {}
+    ev = raw.get("evaluation_report")
+    if not isinstance(ev, dict) or not ev:
+        return {}
+    # فقط وقتی جایگزین می‌شود که چیزی برای گفتن داشته باشد؛ یک دیکشنریِ
+    # تقریباً خالی نباید گزارشِ متنیِ معتبر را بپوشاند.
+    has_substance = bool(
+        ev.get("executive_summary")
+        or ev.get("persona_title")
+        or ev.get("mastery_status")
+        or (ev.get("question_by_question_insight") or [])
+        or (ev.get("cross_check_findings") or [])
+    )
+    return ev if has_substance else {}
+
+
+def _report_from_persisted_evaluation(
+    session: AssessmentSession,
+    concept: Concept | None,
+    ev: dict[str, Any],
+    report_text: str,
+) -> dict[str, Any]:
+    """گزارشِ کارنامه از خروجیِ ذخیره‌شدهٔ ارزیاب — بدونِ هیچ درخواستِ تازه.
+
+    شکلِ خروجی عمداً با ``exam_report`` یکی است تا ``ReportView`` یک زبانِ
+    دادهٔ واحد ببیند و لازم نباشد برای این جلسه‌ها شاخهٔ جدا بسازد.
+
+    قواعدِ سخت:
+      • هر کلیدی که در ارزیاب نبوده، **ساخته نمی‌شود**. بخشش در UI خالی
+        می‌ماند و خودش را رندر نمی‌کند — نه «نامشخص» به‌عنوان پرکننده.
+      • هیچ درصد/امتیاز/رتبه‌ای از شواهدِ کیفی ساخته نمی‌شود.
+    """
+    from reports.exam_report import build_stage_dimensions  # جلوگیری از import چرخشی
+
+    # ── شواهدِ سؤال‌به‌سؤال ──
+    #
+    # ⚠️ مهم: در این جلسه‌ها ``evidence_log`` خالی است و پاسخ‌ها هم در
+    # ``cognitive_payload.answers`` ذخیره نشده‌اند (باگِ ذخیره‌سازیِ نسخهٔ
+    # قدیمی). ولی ارزیاب حکمِ خود را برای **هر پنج سؤال** در
+    # ``question_by_question_insight`` نوشته است.
+    #
+    # پس این‌جا فقط همان حکم منتقل می‌شود. هیچ ``status`` درست/غلط ساخته
+    # نمی‌شود، چون شواهدش در دست نیست — و ارزیابی کل‌نگر است، پس از روی
+    # حکمِ توصیفی هم نمی‌توان درست/غلط استنتاج کرد.
+    insights = ev.get("question_by_question_insight") or []
+    payload = session.cognitive_payload if isinstance(session.cognitive_payload, dict) else {}
+    payload_questions = payload.get("questions") or []
+
+    # ایندکسِ متنِ سؤال، بر اساسِ idِ سؤال در payload
+    qtext_by_id: dict[int, str] = {}
+    for q in payload_questions:
+        if not isinstance(q, dict):
+            continue
+        try:
+            qtext_by_id[int(q.get("id"))] = str(q.get("question_text") or "")
+        except (TypeError, ValueError):
+            continue
+
+    per_question: list[dict[str, Any]] = []
+    seen_orders: set[int] = set()
+
+    for item in insights:
+        if not isinstance(item, dict):
+            continue
+        try:
+            order_i = int(item.get("question_id") or item.get("question_number"))
+        except (TypeError, ValueError):
+            continue
+        if order_i in seen_orders:
+            continue
+        seen_orders.add(order_i)
+        verdict = str(item.get("cognitive_verdict") or "").strip()
+        per_question.append({
+            "order": order_i,
+            "question_text": qtext_by_id.get(order_i, ""),
+            # ``status`` عمداً None است: شاهدِ قابلِ اتکا برای درست/غلط نداریم.
+            "status": None,
+            "cognitive_verdict": verdict,
+            # «بینشِ تشخیصی» = همان حکمِ ارزیاب، نه جملهٔ ساخته‌شده.
+            "diagnostic_insight": verdict,
+            "response": "",
+            "options": [],
+            "selected_option_index": None,
+            "needs_teacher_review": False,
+        })
+
+    # اگر جلسه‌ای شواهدِ ساختاریافته داشت، همان‌ها هم اضافه شوند
+    # (مسیرِ معمول: ``evidence_log`` پُر است).
+    for entry in session.evidence_log or []:
+        try:
+            order_i = int(entry.get("order"))
+        except (TypeError, ValueError):
+            continue
+        if order_i in seen_orders:
+            continue
+        seen_orders.add(order_i)
+        record = (entry.get("evidence") or [{}])[0] if isinstance(entry.get("evidence"), list) else {}
+        per_question.append({
+            "question_id": entry.get("question_id"),
+            "order": order_i,
+            "exam_type": entry.get("exam_type") or "",
+            "exam_type_raw": entry.get("exam_type"),
+            "status": (record.get("status") or "").upper() or None,
+            "cognitive_verdict": record.get("cognitive_verdict"),
+            "diagnostic_insight": record.get("diagnostic_insight") or "",
+            "question_text": entry.get("question_text") or "",
+            "response": entry.get("response") or "",
+            "options": entry.get("options") or [],
+            "selected_option_index": entry.get("selected_option_index"),
+            "needs_teacher_review": bool(record.get("needs_teacher_review", False)),
+        })
+    per_question.sort(key=lambda q: q.get("order") or 999)
+
+    stage_dimensions = build_stage_dimensions(per_question)
+
+    # ── ابعاد: فقط آن‌چه ارزیاب گفته ──
+    # ارزیابِ این مسیر ابعادِ آزاد نمی‌دهد؛ از شواهدِ واقعیِ پنج سؤال ساخته
+    # می‌شود و اگر هیچ سؤالی نبود، لیست خالی می‌ماند (نه پنج ردیفِ «نامشخص»).
+    # ── ابعاد ──
+    # ``build_stage_dimensions`` وضعیت را از خودِ شواهد می‌سازد. اگر سؤالی
+    # شاهد نداشته باشد، ``has_evidence=False`` می‌شود و آن ردیف **حذف**
+    # می‌شود — نه اینکه با «نامشخص» پر شود.
+    dimensions = [
+        {"dimension": d["label"], "status": _DIM_STATUS[d["status"]], "finding": d["finding"]}
+        for d in stage_dimensions
+        if d.get("has_evidence") and str(d.get("finding") or "").strip()
+    ]
+
+    cross_check = [
+        {
+            "title": str(f.get("title") or "").strip(),
+            "type": str(f.get("type") or "SYNERGY").upper().strip(),
+            "description": str(f.get("description") or "").strip(),
+            "resolution": f.get("resolution"),
+        }
+        for f in (ev.get("cross_check_findings") or [])
+        if isinstance(f, dict) and str(f.get("title") or "").strip()
+    ]
+
+    # ── نامِ مبحث ──
+    # این جلسه‌ها ``concept_id`` ندارند (میراثِ نسخهٔ قدیمی)، ولی موضوعِ
+    # واقعی در ``cognitive_payload.topic`` نوشته شده. اگر از قلم بیفتد،
+    # عنوانِ کارنامه خالی می‌ماند و دانش‌آموز نمی‌داند کارنامهٔ چه چیزی است.
+    topic_name = str(payload.get("topic") or "").strip()
+    display_name = concept.name if concept else topic_name
+
+    sections = {
+        "موضوع بررسی": display_name,
+        "مشاهدات": [p.get("diagnostic_insight") for p in per_question if p.get("diagnostic_insight")],
+        "پیشنهاد اقدام برای دانش‌آموز": [s for s in (ev.get("next_step"),) if s],
+    }
+
+    return {
+        "session_id": session.id,
+        "student_id": session.student_id,
+        "concept_id": session.concept_id,
+        "concept_name": display_name,
+        "status": session.status,
+        "questions_answered": len(per_question),
+        "report_text": report_text,
+        "sections": sections,
+        "proposition_statuses": {},
+        "root_causes": [],
+        "needs_teacher_review": bool(ev.get("needs_teacher_review")),
+        # ── همان کلیدهای کارنامهٔ آزمونی ──
+        "mastery_status": ev.get("mastery_status"),
+        "persona_title": ev.get("persona_title"),
+        "executive_summary": ev.get("executive_summary"),
+        "mastery_note": ev.get("mastery_note"),
+        "next_step": ev.get("next_step") or _advice_text(ev.get("actionable_advice")),
+        "cross_check_findings": cross_check,
+        "per_question": per_question,
+        "stage_dimensions": stage_dimensions,
+        "dimensions": dimensions,
+        "learning_gaps": [],
+        "root_cause_chains": [],
+        "suggestions": [],
+        "needs_clarification": bool(ev.get("needs_clarification")),
+        "clarification_data": ev.get("clarification_data"),
+        "exam_score_note": "توجه: نمرهٔ آزمون — نه سنجش فهم. این کارنامه نمره/رتبه/درصد ندارد و فقط شواهدِ کیفی را ثبت می‌کند.",
+        "generated_at": datetime.utcnow().isoformat(),
+    }
+
+
+# نگاشتِ وضعیتِ شاهد → وضعیتِ بُعد در کارنامه (کلیدهای انگلیسی، تا
+# نرمال‌سازِ پایین‌دست آن‌ها را به «نامشخص» برنگرداند — همان باگِ قدیمی).
+def _advice_text(advice: Any) -> str:
+    """اولین توصیهٔ ارزیاب، به‌صورتِ متن — بدونِ ساختنِ توصیهٔ تازه."""
+    if isinstance(advice, str):
+        return advice.strip()
+    if isinstance(advice, list):
+        for item in advice:
+            if isinstance(item, str) and item.strip():
+                return item.strip()
+            if isinstance(item, dict):
+                t = str(item.get("advice") or item.get("text") or item.get("title") or "").strip()
+                if t:
+                    return t
+    if isinstance(advice, dict):
+        for key in ("advice", "text", "summary"):
+            t = str(advice.get(key) or "").strip()
+            if t:
+                return t
+    return ""
+
+
+_DIM_STATUS = {
+    "mastered": "LIKELY_UNDERSTOOD",
+    "developing": "LIKELY_UNDERSTOOD",
+    "needs_work": "NEEDS_REVIEW",
+    "not_assessed": "INSUFFICIENT_EVIDENCE",
+}
+
+
 def build_report(db: Session, session: AssessmentSession) -> dict[str, Any]:
     concept = db.query(Concept).filter(Concept.id == session.concept_id).first() if session.concept_id else None
     concept_name = concept.name if concept else "نامشخص"
@@ -196,6 +429,11 @@ def build_report(db: Session, session: AssessmentSession) -> dict[str, Any]:
         "⚠️ نمرهٔ آزمون — نه سنجش فهم: اگر در کنار این جلسه نمرهٔ امتحانی وجود دارد، صرفاً یک دادهٔ جداست و با «فهمیدن» یکی نیست؛ این گزارش جایگزینِ نمره‌گذاری نیست.",
     ]
     report_text = "\n".join(lines)
+
+    # ── اگر ارزیابِ کل‌نگر خروجیِ ذخیره‌شده دارد، همان مرجع است ──
+    persisted = _persisted_evaluation(session)
+    if persisted:
+        return _report_from_persisted_evaluation(session, concept, persisted, report_text)
 
     return {
         "session_id": session.id,

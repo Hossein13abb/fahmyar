@@ -495,6 +495,8 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
   const perQuestion = report.per_question ?? []
   // «ابعاد فهم» فقط با شواهدِ واقعیِ ۵ مرحله‌ای معنا دارد؛ کارتِ خالی
   // («نامشخص») نشانهٔ ابهامِ دانش‌آموز نیست، نشانهٔ نبودِ تحلیل است.
+  // اقدامِ بعدی — فقط اگر ارزیاب واقعاً نوشته باشد
+  const nextStep = String(report?.next_step ?? '').trim()
   const stageDimensions = perQuestion
     .filter((q) => q && (q.status || q.cognitive_verdict || q.qualitative_feedback))
     .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
@@ -623,7 +625,11 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
         <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-rest">
           <div className="grid lg:grid-cols-12">
             {/* ── ستونِ راست: حکم و روایت ── */}
-            <div className="relative p-5 md:p-7 lg:col-span-7 xl:col-span-8">
+            <div
+              className={`relative p-5 md:p-7 ${
+                dimensions.length > 0 ? 'lg:col-span-7 xl:col-span-8' : 'lg:col-span-12'
+              }`}
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black ${verdict.chip}`}
@@ -711,7 +717,9 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
                 <Search className="h-4 w-4 text-danger" />
                 جایی که دو جوابت با هم نمی‌خوانند
               </h3>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {/* تک‌ستون: متنِ هر یافته طولانی است و در دو ستون، ارتفاعِ
+                  نامتعادل و ستونِ خالیِ بلند می‌سازد. */}
+              <div className="mt-3 grid gap-3">
                 {crossCheck.map((f, i) => (
                   <ContradictionCard
                     key={i}
@@ -767,54 +775,73 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
         }}
       />
 
-      {/* ── (د) پیشنهادهای بهبود کیفی ── */}
-      <SectionCard Icon={Lightbulb} title={mode === 'teacher' ? 'پیشنهادهای بهبود (برای برنامه‌ریزی معلم)' : 'پیشنهادهای بهبود — قدم‌به‌قدم'}>
-        <ul className="space-y-2">
-          {suggestions.map((sug, i) => {
-            const done = doneSuggestions.has(i)
-            return (
-              <li key={i}>
-                <button
-                  type="button"
-                  onClick={() => toggleSuggestion(i)}
-                  aria-pressed={done}
-                  className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-right text-[13px] leading-7 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                    done
-                      ? 'border-emerald-200 bg-gradient-to-l from-emerald-50 to-teal-50/40 text-emerald-900'
-                      : 'border-brand-100 bg-gradient-to-l from-white to-brand-50/40 text-brand-950 hover:border-brand-300'
-                  }`}
-                >
-                  <span
-                    className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition-colors ${
-                      done
-                        ? 'border-emerald-500 bg-emerald-500 text-white'
-                        : 'border-slate-300 bg-white text-transparent'
-                    }`}
-                  >
-                    <CheckCircle2 className="h-4 w-4" strokeWidth={3} />
-                  </span>
-                  <span className={done ? 'line-through decoration-emerald-400/60' : ''}>
-                    {faSuggestion(sug)}
-                  </span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-        {suggestions.length > 0 && (
-          <div className="mt-3 flex items-center gap-2">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-gradient-to-l from-emerald-400 via-teal-400 to-brand-500 shadow-[0_0_8px_rgba(46,163,127,0.5)] transition-all duration-500"
-                style={{ width: `${Math.round((doneSuggestions.size / suggestions.length) * 100)}%` }}
-              />
+      {/* ══════════ برنامهٔ اقدام ══════════
+          ── قاعده‌ای که قبلاً نقض می‌شد (فاز ۲۸) ──
+          این بخش بی‌قید رندر می‌شد و برای جلسه‌هایی که ``suggestions`` نداشتند
+          یک کارتِ سفیدِ کاملاً خالی می‌ساخت — همان «فضای خالیِ ناشی از ارتفاع
+          ثابت» که اسپک ممنوع کرده.
+
+          حالا:
+            • اگر ``suggestions`` واقعیِ ارزیاب هست، همان فهرست می‌آید.
+            • وگرنه اگر ``next_step`` دارد، به‌صورتِ یک قدمِ واحد می‌آید.
+            • وگرنه کلِ بخش **حذف** می‌شود. کارتِ خالی ساخته نمی‌شود.
+       */}
+      {(suggestions.length > 0 || nextStep) && (
+        <SectionCard
+          Icon={Lightbulb}
+          title={mode === 'teacher' ? 'پیشنهادهای بهبود (برای برنامه‌ریزی معلم)' : 'قدمِ بعدی تو'}
+          tone="brand"
+        >
+          {suggestions.length > 0 ? (
+            <ul className="space-y-1.5">
+              {suggestions.map((sug, i) => {
+                const done = doneSuggestions.has(i)
+                return (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onClick={() => toggleSuggestion(i)}
+                      aria-pressed={done}
+                      className={`flex w-full items-start gap-2.5 rounded-lg border px-3 py-2.5 text-right text-[12px] leading-7 transition ${
+                        done
+                          ? 'border-primary/30 bg-primary-soft/60 text-primary-deep'
+                          : 'border-slate-200 bg-white text-ink hover:border-primary/40 hover:bg-surface-muted'
+                      }`}
+                    >
+                      <span
+                        className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                          done ? 'border-primary bg-primary text-white' : 'border-slate-300 bg-white text-transparent'
+                        }`}
+                      >
+                        <CheckCircle2 className="h-3 w-3" strokeWidth={3.5} />
+                      </span>
+                      <span className={`text-justify ${done ? 'line-through decoration-primary/40' : ''}`}>
+                        {faSuggestion(sug)}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p className="text-justify text-right text-[12.5px] leading-8 text-ink-soft">{nextStep}</p>
+          )}
+
+          {suggestions.length > 0 && (
+            <div className="mt-3 flex items-center gap-2">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-300"
+                  style={{ width: `${Math.round((doneSuggestions.size / suggestions.length) * 100)}%` }}
+                />
+              </div>
+              <span className="shrink-0 text-[10px] font-black tabular-nums text-ink-faint">
+                {toFarsiNumber(doneSuggestions.size)} از {toFarsiNumber(suggestions.length)}
+              </span>
             </div>
-            <span className="shrink-0 text-[10px] font-black tabular-nums text-slate-500">
-              {toFarsiNumber(doneSuggestions.size)} از {toFarsiNumber(suggestions.length)}
-            </span>
-          </div>
-        )}
-      </SectionCard>
+          )}
+        </SectionCard>
+      )}
 
       {/* ── حذف‌شده در فاز ۲۰ ──
           بلوکِ فهرستِ کمبودها (فاز ۲۰) حذف شد. برچسب‌هایی مثل
@@ -1009,156 +1036,60 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
     )
   }
 
-  if (report?.exam) {
+  // ══════════════════ دروازهٔ رندر ══════════════════
+  //
+  // ── باگِ «کارنامهٔ ناقص» (فاز ۲۸) — ریشهٔ واقعی ──
+  //
+  // شرطِ این‌جا قبلاً ``if (report?.exam)`` بود. یعنی کارنامهٔ کامل فقط برای
+  // جلسه‌های آزمونِ ده‌سؤالی رندر می‌شد و هر چیزِ دیگری — حتی وقتی
+  // ``per_question`` پنج حکمِ واقعی و ``cross_check_findings`` سه تناقضِ
+  // واقعی داشت — به ``LegacyReportNotice`` می‌افتاد: صفحهٔ «این نشست
+  // کارنامه ندارد».
+  //
+  // مهم‌تر: ``exam`` یک کلیدِ **اختیاری** است که فقط ``build_exam_report``
+  // تولید می‌کند. ``build_report`` (مسیرِ ارزیابیِ کل‌نگر) هرگز آن را
+  // نمی‌سازد، هرچند همان داده‌های کارنامه را دارد. پس معیارِ «کارنامه بودن»
+  // نباید وجودِ ``exam`` باشد؛ باید وجودِ **تحلیل** باشد:
+  // ``per_question`` یا ``dimensions`` یا جمع‌بندی.
+  //
+  // این همان دلیلی است که دانش‌آموز در کارنامه «نامشخص» می‌دید: هیچ‌کدام از
+  // این داده‌ها به کامپوننتِ کارنامه نمی‌رسید.
+  const hasPerQuestion = Array.isArray(report?.per_question) && report.per_question.length > 0
+  const hasDimensions = Array.isArray(report?.dimensions) && report.dimensions.length > 0
+  const hasNarrative = Boolean(
+    String(report?.persona_title ?? '').trim() ||
+      String(report?.executive_summary ?? '').trim() ||
+      (Array.isArray(report?.cross_check_findings) && report.cross_check_findings.length > 0),
+  )
+
+  if (hasPerQuestion || hasDimensions || hasNarrative) {
     return <ExamReport report={report} mode={mode} onBackToDashboard={onBackToDashboard} sessionIdProp={sessionId} />
   }
 
-  // ── مسیرِ کارنامهٔ قدیمی (پیش از آزمونِ ۱۰ سؤالی) ──
-  // این شکل داده هنوز برای نشست‌های قدیمی معتبر است، ولی نباید شبیهِ
-  // کارنامهٔ اصلی باشد: دانش‌آموزِ امروز انتظارِ تحلیلِ سؤال‌به‌سؤال و
-  // نقشهٔ راه دارد و «مفهوم نامشخص» را باگ می‌بیند.
-  const isLegacy = !report?.exam && !report?.per_question
-  if (isLegacy) {
-    return <LegacyReportNotice report={report} onBack={handleBack} backLabel={backLabel} />
-  }
-
-  const s = report.sections ?? {}
-  const observations = s['مشاهدات'] ?? []
-  const evidenceLines = s['شواهد'] ?? []
-  const studentActions = s['پیشنهاد اقدام برای دانش‌آموز'] ?? []
-  const teacherNotes = s['یادداشت برای معلم'] ?? []
-  const propositionStatuses = report.proposition_statuses ?? {}
-  const generatedAt = report.generated_at ? new Date(report.generated_at).toLocaleDateString('fa-IR', { dateStyle: 'long' }) : ''
-
-  return (
-    <div className="animate-fade-up space-y-5">
-      {/* ── سربرگ گزارش ── */}
-      <section className="card flex flex-wrap items-start justify-between gap-4 p-6">
-        <div>
-          <p className="flex items-center gap-2 text-[11px] font-bold text-brand-600">
-            <ClipboardList className="h-4 w-4" />
-            گزارش فهم · {generatedAt}
-          </p>
-          <h1 className="mt-1.5 text-2xl font-black text-brand-950 sm:text-3xl">{report.concept_name ?? 'مفهوم نامشخص'}</h1>
-          <p className="mt-1.5 max-w-xl text-[13px] leading-7 text-slate-500">زمینهٔ بررسی: {s['زمینه'] ?? '—'}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Badge status={report.status} />
-            <span className="chip bg-slate-100 text-slate-600 ring-1 ring-slate-200">{report.questions_answered ?? 0} پاسخ ثبت شد</span>
-          </div>
-        </div>
-        <div className="no-print flex shrink-0 flex-col gap-2">
-          <DownloadPdfButton sessionId={report.session_id} />
-          <button onClick={() => window.print()} className="flex items-center justify-center gap-2 rounded-2xl bg-brand-700 px-5 py-3 text-[13px] font-black text-white shadow-card transition hover:bg-brand-800">
-            <Printer className="h-5 w-5" />
-            چاپ / دانلود گزارش
-          </button>
-          <button
-            onClick={handleBack}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-white px-5 py-3 text-[13px] font-bold text-brand-800 transition hover:bg-brand-50"
-          >
-            <ArrowRight className="h-5 w-5" />
-            {backLabel}
-          </button>
-        </div>
-      </section>
-
-      {/* ── مشاهدات + مبهم‌ها ── */}
-      <div className="grid gap-4 lg:grid-cols-5">
-        <SectionCard Icon={Eye} title="مشاهدات (چه چیزی دیدیم؟)" className="lg:col-span-3">
-          {observations.length === 0 ? (
-            <p className="text-[13px] text-slate-500">پاسخی ثبت نشده است.</p>
-          ) : (
-            <ul className="space-y-2">
-              {observations.map((o, i) => (
-                <li key={i} className="flex items-start gap-2 rounded-2xl border border-brand-50 bg-brand-50/40 px-4 py-2.5 text-[13px] leading-7 text-brand-950">
-                  <span className="mt-0.5 shrink-0 font-black text-brand-400">{toFarsiNumber(i + 1)}.</span>
-                  <span>{o}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SectionCard>
-
-      </div>
-
-      {/* ── وضعیت گزاره‌های هسته‌ای ── */}
-      <SectionCard Icon={FlaskConical} title="وضعیت گزاره‌های هسته‌ای" tone="teal">
-        <div className="grid gap-2 md:grid-cols-2">
-          {Object.entries(propositionStatuses).map(([prop, status]) => (
-            <div key={prop} className="flex items-start gap-3 rounded-2xl border border-teal-100 bg-white/80 p-4">
-              <Badge status={status} className="mt-0.5 shrink-0" />
-              <p className="text-[13px] leading-7 text-brand-950">{prop}</p>
-            </div>
-          ))}
-          {Object.keys(propositionStatuses).length === 0 && (
-            <p className="text-[13px] text-slate-500">هنوز گزاره‌ای سنجیده نشده است.</p>
-          )}
-        </div>
-
-        {evidenceLines.length > 0 && (
-          <details className="mt-4 rounded-2xl border border-teal-100 bg-white/60 p-4">
-            <summary className="cursor-pointer text-[12px] font-black text-teal-900">شواهد تفصیلیِ تحلیل‌گر ({evidenceLines.length} مورد)</summary>
-            <ol className="mt-3 list-decimal space-y-1.5 pr-5 text-justify text-right text-[12px] leading-7 text-slate-600">
-              {evidenceLines.map((line, i) => (
-                <li key={i}>{line}</li>
-              ))}
-            </ol>
-          </details>
-        )}
-      </SectionCard>
-
-      {/* ── پیشنهاد گام بعدی ── */}
-      <div className={`grid gap-4 ${mode === 'teacher' ? 'lg:grid-cols-2' : ''}`}>
-        <SectionCard Icon={Lightbulb} title={mode === 'teacher' ? 'پیشنهاد برای دانش‌آموز' : 'گام بعدی تو'}>
-          <ul className="space-y-2">
-            {studentActions.map((a, i) => (
-              <li key={i} className="flex items-start gap-2 text-[13px] leading-7 text-brand-950">
-                <span className="mt-0.5 shrink-0 font-black text-brand-400">{toFarsiNumber(i + 1)}.</span>
-                {a}
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-
-        {mode === 'teacher' && (
-          <SectionCard Icon={NotebookPen} title="یادداشت برای معلم" tone="amber">
-            {teacherNotes.length === 0 ? (
-              <p className="text-[13px] text-slate-500">یادداشت ویژه‌ای ثبت نشده است.</p>
-            ) : (
-              <ul className="space-y-2">
-                {teacherNotes.map((t, i) => (
-                  <li key={i} className="flex items-start gap-2 text-[13px] leading-7 text-amber-950">
-                    <span className="mt-0.5 shrink-0 font-black text-amber-500">{toFarsiNumber(i + 1)}.</span>
-                    {t}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {Array.isArray(report.evidence_log) && report.evidence_log.length > 0 && (
-              <details className="mt-4 rounded-2xl border border-amber-200/60 bg-white/60 p-4">
-                <summary className="cursor-pointer text-[12px] font-black text-amber-900">لاگ خام شواهد (برای معلم)</summary>
-                <div className="mt-3 max-h-72 space-y-2 overflow-auto">
-                  {report.evidence_log.map((entry, i) => (
-                    <div key={i} className="rounded-2xl border border-slate-100 bg-white p-3 text-[11px] leading-6 text-slate-600">
-                      <p className="font-black text-slate-500">پاسخ {toFarsiNumber(i + 1)} — سؤال {toFarsiNumber(entry.question_id)}</p>
-                      <p className="mt-0.5 line-clamp-2">{rawStudentAnswer(entry.response) || '— پاسخی ثبت نشده بود —'}</p>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {(entry.evidence ?? []).map((ev, j) => (
-                          <Badge key={j} status={validBadgeStatus(ev.status)} />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </SectionCard>
-        )}
-      </div>
-
-      <p className="pb-2 text-center text-[11px] text-slate-400">
-        این گزارش شخصی است و فقط برای تو (و معلمت) قابل مشاهده است — هرگز مقایسه یا رتبه‌بندی نمی‌شود.
-      </p>
-    </div>
-  )
+  // ── مسیرِ کارنامهٔ قدیمی ──
+  //
+  // ── باگِ «کارنامهٔ ناقص» (فاز ۲۸) ──
+  // معیارِ قبلی ``!report.exam && !report.per_question`` بود و هر گزارشی را
+  // که ``per_question`` نداشت به این صفحه می‌فرستاد. غافل از این‌که آن
+  // شرط با ``!report.per_question`` **آرایهٔ خالی** را هم می‌گرفت، درحالی‌که
+  // بک‌اند برای جلسه‌های ارزیابیِ کل‌نگر، ``per_question`` را با مصادیقِ
+  // واقعی برمی‌گرداند و فقط ``exam`` ندارد.
+  //
+  // نتیجه: کارنامه‌ای که تیپ، جمع‌بندی، پنج حکمِ سؤال‌به‌سؤال و سه تناقضِ
+  // واقعی داشت، به یک صفحهٔ متنیِ خالی می‌افتاد — همان «نامشخص» و
+  // نوارهای بی‌داده‌ای که در تصویر دیده شد.
+  //
+  // ── گزارش متنیِ قدیمی ──
+  //
+  // این شاخه (~۱۳۰ خط) با کلاس‌های منسوخِ ``card`` و ``bg-brand-50`` رندر
+  // می‌شد و هیچ‌کدام از قواعدِ فاز ۲۷/۲۸ را رعایت نمی‌کرد: هدرِ دکمه‌های
+  // عمودی، دو کارتِ هم‌شکل، بخشِ «وضعیت گزاره‌های هسته‌ای» که برای این
+  // جلسه‌ها همیشه خالی بود.
+  //
+  // با اصلاحِ ``build_report`` (پایینِ همین فاز) این جلسه‌ها دیگر بدونِ
+  // ``per_question`` نمی‌آیند و تا وقتی داده دارند به ``ExamReport`` می‌روند.
+  // فقط جلسه‌هایی که واقعاً هیچ تحلیلِ ساختاریافته‌ای ندارند به
+  // ``LegacyReportNotice`` می‌رسند — و آن‌ها هم نباید صفحهٔ «کارنامه» را
+  // جعل کنند.
+  return <LegacyReportNotice report={report} onBack={handleBack} backLabel={backLabel} />
 }
