@@ -193,6 +193,70 @@ def test_sections_skip_rendering_when_empty():
     assert "if (list.length === 0) return null" in src
 
 
+def test_gaps_are_a_roadmap_not_exam_cards():
+    """بازطراحیِ فاز ۲۳: ایستگاه‌های نقشهٔ راه، نه کارتِ آزمون.
+
+    اگر کسی به گریدِ ۲ستونهٔ کارت‌های آزمونی برگردد، هویتِ «نسخهٔ درمانی»
+    از بین می‌رود و دانش‌آموز فکر می‌کند باید جواب بدهد، نه اینکه یاد بگیرد.
+    """
+    src = _read("frontend", "src", "components", "cognitive", "PrerequisiteSections.jsx")
+    assert "ایستگاه‌های نقشهٔ راه ترمیم" in src
+    assert "گره ذهنی و دامِ پرتکرار" in src
+    assert "نگاه درست و کلیدِ حلِ مسئله" in src
+    assert "رفع سریع این گره با معلم هوشمند" in src
+    # خطِ زمان، نه گرید
+    assert "<ol className=" in src
+    # دکمهٔ تمام‌عرضِ شبیهِ «ارسال پاسخ» نباید برگردد
+    assert "w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-l" not in src
+
+
+def test_tips_are_facts_not_test_instructions():
+    """``quick_fix_tip`` باید حقیقتِ علمی باشد، نه دستورِ آزمونی.
+
+    در فاز ۲۲ متنِ جایگزین با «قبل از حل، یک جمله بنویس…» ساخته می‌شد. اسپکِ
+    فاز ۲۳ یک sanitizer با regex خواست که همان عبارت را از خروجی حذف کند —
+    ولی حذفِ نشانه، درمانِ منبع نیست. منبع اصلاح شد.
+    """
+    # فقط مسیرِ گره‌ها را بررسی می‌کنیم؛ «قبل از زدنِ گزینه» در متنِ
+    # exam_shield_tip مسیرِ تناقض، جا و درست است و نباید حذف شود.
+    import inspect
+
+    from reports import exam_report as module
+
+    gap_source = inspect.getsource(module._fallback_gaps) + inspect.getsource(
+        module._insight_for
+    )
+    assert "قبل از حل، یک جمله بنویس" not in gap_source
+    assert "بنویس" not in gap_source
+    prompt = __import__("ai.cross_check", fromlist=["_EXAM_PROMPT"])._EXAM_PROMPT
+    assert "قبل از حل، بنویس" in prompt  # فقط به‌عنوان نمونهٔ ⛔ ممنوعه
+    assert "حقیقتِ علمیِ درست" in prompt
+
+
+def test_fallback_insight_is_a_real_fact():
+    """جملهٔ «نگاه درست» برای misconceptionِ شناخته‌شده واقعاً حقیقت علمی است."""
+    from reports.exam_report import _insight_for
+
+    tip = _insight_for("مقاومت را تابعی از ولتاژ می‌داند")
+    assert tip
+    assert "ویژگیِ خودِ رسانا" in tip
+    # هستهٔ امری/آزمونی نداشته باشد
+    for banned in ("بنویس", "یادت باشد", "قبل از"):
+        assert banned not in tip
+    # برای گره‌ای که حقیقتِ تأییدشده نداریم، جملهٔ ساختگی نمی‌سازیم
+    assert _insight_for("یک گرهٔ کاملاً ناشناخته") == ""
+
+
+def test_belief_tone_is_second_person():
+    """ستونِ «گره ذهنی» باورِ دانش‌آموز است، نه گزارشِ عملکردش."""
+    from reports.exam_report import _as_belief
+
+    out = _as_belief("مقاومت را تابعی از ولتاژ می‌داند", "خلطِ علت")
+    assert out.startswith("فکر می‌کردی")
+    assert "می‌دانستی" in out
+    assert "می‌داند" not in out
+
+
 def test_prerequisite_sections_have_no_internal_jargon():
     src = _read("frontend", "src", "components", "cognitive", "PrerequisiteSections.jsx")
     for banned in ("ساعت", "چرخ‌دنده", "نقاب", "فاینمن"):

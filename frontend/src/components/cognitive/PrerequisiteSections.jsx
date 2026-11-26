@@ -18,10 +18,10 @@ import { useState } from 'react'
 import {
   ArrowLeft,
   BookOpen,
+  Check,
   Compass,
   GitBranch,
   Info,
-  Lightbulb,
   Sparkles,
 } from 'lucide-react'
 
@@ -235,75 +235,127 @@ export function RootCauseAnalysisSection({ chains }) {
   )
 }
 
-// ═══════════════════ گره‌های پیش‌نیاز ═══════════════════
+// ═══════════════════ ایستگاه‌های نقشهٔ راه ترمیم ═══════════════════
 
 const SEVERITY = {
   critical: {
-    label: 'نیازمند یادگیری عمیق',
+    label: 'پیش‌نیاز حیاتی • نیازمند یادگیری عمیق',
     dot: '🔴',
+    pin: 'bg-rose-500 text-white ring-rose-100',
     badge: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
   },
   shaky: {
-    label: 'مرز لغزنده — نیازمند تثبیت',
+    label: 'مرز لغزنده • نیازمند تثبیت',
     dot: '🟡',
+    pin: 'bg-amber-400 text-slate-900 ring-amber-100',
     badge: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
   },
 }
 
 /**
- * کارتِ یک گره — دکمه‌اش مودالِ «میز معلم» را با ``type: "learning_gap"``
- * باز می‌کند. تا پاسخ نرسیده، دکمه در حالتِ انتظار می‌ماند.
+ * یک ایستگاه از نقشهٔ راه.
+ *
+ * تفاوتِ طراحی با کارتِ آزمونی، عمدی و معنادار است:
+ *
+ *   • ستونِ رز «گره ذهنی» است، نه «پاسخِ غلط». باورِ دانش‌آموز را نام می‌برد.
+ *   • ستونِ زمرد «نگاه درست» است، نه «پاسخِ صحیح». حقیقتِ علمی را می‌گوید.
+ *   • دکمه pill است، نه نوارِ تمام‌عرض — چون اینجا «ارسالِ پاسخ» نیست،
+ *     «رفتن به ایستگاه» است.
+ *
+ * اگر مدل هیچ متنی برای یکی از دو ستون نداد، همان ستون حذف می‌شود و
+ * ستونِ دیگر تمامِ عرض را می‌گیرد؛ جعبهٔ خالیِ برچسب‌دار ساخته نمی‌شود.
  */
-function GapCard({ gap, onTeach, busy }) {
+function GapStation({ gap, index, onTeach, busy }) {
   const sev = SEVERITY[gap.severity] ?? SEVERITY.shaky
+  const belief = rawText(gap.why_you_slipped)
+  const insight = rawText(gap.quick_fix_tip)
+  const station = faNum(index + 1).padStart(2, '۰')
+
   return (
-    <article className="flex flex-col rounded-xl border border-slate-200 bg-slate-50/70 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-white hover:shadow-md">
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${sev.badge}`}
+    <li className="relative flex flex-col items-start gap-4 md:flex-row md:gap-6">
+      {/* نشانِ ایستگاه — لنگرِ خطِ زمان */}
+      <div className="z-10 flex shrink-0 items-center gap-3 self-start md:flex-col">
+        <div
+          className={`flex h-11 w-11 flex-col items-center justify-center rounded-2xl shadow-sm ring-4 md:h-14 md:w-14 ${sev.pin}`}
         >
-          <span aria-hidden="true">{sev.dot}</span>
-          {sev.label}
-        </span>
-        {rawText(gap.source_topic) && (
-          <span
-            className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-200"
-            dir="auto"
-          >
-            {gap.source_topic}
+          <span className="text-[9px] font-medium leading-none opacity-80 md:text-[10px]">
+            ایستگاه
           </span>
-        )}
+          <span className="mt-0.5 text-sm font-black leading-none md:text-base">
+            {station}
+          </span>
+        </div>
       </div>
 
-      <h4 className="mt-2 text-justify text-right text-[13px] font-black leading-6 text-slate-900">
-        {rawText(gap.gap_title)}
-      </h4>
-
-      {rawText(gap.why_you_slipped) && (
-        <p className="mt-1.5 text-justify text-right text-[12px] leading-7 text-slate-700">
-          {gap.why_you_slipped}
-        </p>
-      )}
-
-      {rawText(gap.quick_fix_tip) && (
-        <div className="mt-3 flex items-start gap-1.5 rounded-lg border border-emerald-100 bg-emerald-50/60 p-2.5">
-          <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" strokeWidth={2.4} />
-          <p className="text-justify text-right text-[11px] leading-6 text-emerald-900">
-            <MathAwareText text={gap.quick_fix_tip} />
-          </p>
+      {/* بدنهٔ ایستگاه */}
+      <div className="w-full flex-1 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md md:p-6">
+        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          {rawText(gap.source_topic) && (
+            <span
+              className="rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-500"
+              dir="auto"
+            >
+              {gap.source_topic}
+            </span>
+          )}
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black ${sev.badge}`}
+          >
+            <span aria-hidden="true">{sev.dot}</span>
+            {sev.label}
+          </span>
         </div>
-      )}
 
-      <button
-        type="button"
-        onClick={() => onTeach?.(gap)}
-        disabled={busy}
-        className="mt-auto flex w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-l from-brand-700 to-emerald-600 px-4 py-2.5 text-[11px] font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:from-brand-800 hover:to-emerald-700 hover:shadow-md active:translate-y-0 disabled:opacity-60"
-      >
-        <Sparkles className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-        {busy ? 'معلم دارد آماده می‌کند…' : 'آموزش سریع و ریشه‌ای این گره'}
-      </button>
-    </article>
+        <h4 className="mb-4 text-justify text-right text-[14px] font-black leading-6 text-slate-800">
+          <MathAwareText text={gap.gap_title} />
+        </h4>
+
+        <div
+          className={`mb-4 grid gap-3 ${
+            belief && insight ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'
+          }`}
+        >
+          {belief && (
+            <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3.5">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-rose-800">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" />
+                گره ذهنی و دامِ پرتکرار
+              </div>
+              <p className="text-justify text-right text-[12px] leading-7 text-slate-700">
+                <MathAwareText text={belief} />
+              </p>
+            </div>
+          )}
+          {insight && (
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3.5">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-emerald-800">
+                <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={3} />
+                نگاه درست و کلیدِ حلِ مسئله
+              </div>
+              <p className="text-justify text-right text-[12px] leading-7 text-slate-700">
+                <MathAwareText text={insight} />
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+          <span className="text-[10px] font-medium text-slate-400">
+            آموزشِ مکالمه‌ای و مفهومی در ۲ دقیقه
+          </span>
+          <button
+            type="button"
+            onClick={() => onTeach?.(gap)}
+            disabled={busy}
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-[11px] font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-indigo-600 hover:shadow-md active:translate-y-0 disabled:opacity-60"
+          >
+            <Sparkles className={`h-3.5 w-3.5 text-amber-300 ${busy ? 'animate-spin' : ''}`} />
+            <span>{busy ? 'معلم دارد آماده می‌کند…' : 'رفع سریع این گره با معلم هوشمند'}</span>
+            <ArrowLeft className="h-3.5 w-3.5 text-slate-400" />
+          </button>
+        </div>
+      </div>
+    </li>
   )
 }
 
@@ -322,31 +374,40 @@ export function LearningGapsSection({ gaps, onTeach }) {
   }
 
   return (
-    <section className="rounded-2xl border border-emerald-100 bg-white p-6 shadow-panel">
-      <header className="mb-4 flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-sm">
-          <Compass className="h-4.5 w-4.5" strokeWidth={2.3} />
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-[15px] font-black text-slate-900">
-            ایستگاه‌های نیازمند ترمیم (حلقه‌های پیش‌نیاز)
-          </h3>
-          <p className="mt-1 text-justify text-right text-[11px] leading-6 text-slate-500">
-            گره‌هایی که با یک بار یادگیریِ هدفمند، مسیرِ تسلط را کامل می‌کنند.
-          </p>
+    <section className="rounded-2xl border border-slate-200/90 bg-gradient-to-b from-slate-50/80 to-white p-6 shadow-panel">
+      <header className="mb-6 flex flex-col justify-between gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-center">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 ring-4 ring-emerald-50">
+            <Compass className="h-5 w-5" strokeWidth={2.3} />
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-[15px] font-black text-slate-900">
+                ایستگاه‌های نقشهٔ راه ترمیم
+              </h3>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                {faNum(list.length)} گره شناسایی‌شده
+              </span>
+            </div>
+            <p className="mt-1 text-justify text-right text-[11px] leading-6 text-slate-500">
+              مفاهیمِ بنیادیِ پیش‌نیاز که با یک بار بازخوانیِ هدفمند، مسیرِ تسلط را باز می‌کنند.
+            </p>
+          </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {/* خطِ زمانِ نقشه: در موبایل پشتِ نشان‌ها، در دسکتاپ درست زیرِ آن‌ها */}
+      <ol className="relative space-y-5 before:absolute before:inset-y-2 before:right-[1.375rem] before:hidden before:w-0.5 before:bg-slate-200 md:before:block md:before:right-[1.75rem] md:before:content-['']">
         {list.map((gap, i) => (
-          <GapCard
+          <GapStation
             key={gap.id ?? i}
             gap={gap}
+            index={i}
             busy={busyId === (gap.id ?? gap.gap_title)}
             onTeach={teach}
           />
         ))}
-      </div>
+      </ol>
 
       <SourceNote items={list} />
     </section>
