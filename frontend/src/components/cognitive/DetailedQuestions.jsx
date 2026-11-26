@@ -19,6 +19,7 @@ import {
   ArrowLeft,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   KeyRound,
   Lightbulb,
   MessageCircleQuestion,
@@ -307,69 +308,93 @@ export function ContradictionCard({ finding, onTeach, busy = false }) {
   const resolved = Boolean(rawText(finding?.resolution))
   const Icon = look.Icon
 
+  // دو پاسخِ ناسازگار — اگر بک‌اند هر دو را داده باشد، کنارِ هم نشان داده
+  // می‌شوند تا دانش‌آموز خودش ناسازگاری را ببیند، نه اینکه فقط بخواند.
+  const quoteA = rawText(finding?.quote_a ?? finding?.first_quote)
+  const quoteB = rawText(finding?.quote_b ?? finding?.second_quote)
+  const hasPair = Boolean(quoteA && quoteB)
+
   return (
-    <div
-      className={`group relative flex flex-col overflow-hidden rounded-2xl ${look.body} p-5 shadow-panel ring-1 ring-black/[0.06] transition-all duration-300 hover:-translate-y-1 hover:shadow-panel-hover`}
-    >
-      {/* ریلِ بالای کارت — همان رنگِ خانواده، ولی براق */}
+    <article className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {/* نشانگرِ نوع — نوارِ نازکِ رنگی، نه بدنهٔ گرادیانتی */}
       <span
-        className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-l ${look.rail}`}
-        aria-hidden="true"
-      />
-      {/* هالهٔ گوشه — زمینه را از «رنگِ تخت» به «رنگِ زنده» می‌برد */}
-      <span
-        className={`pointer-events-none absolute -left-10 -top-12 h-36 w-36 rounded-full blur-3xl ${look.glow}`}
+        className={`h-1 w-full ${
+          isContradiction ? 'bg-danger' : 'bg-caution'
+        }`}
         aria-hidden="true"
       />
 
-      <div className="relative flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
         <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${look.icon} text-white shadow-sm ring-1 ring-white/40`}
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+            isContradiction ? 'bg-danger-soft text-danger' : 'bg-caution-soft text-caution'
+          }`}
         >
-          <Icon className="h-4 w-4" strokeWidth={2.4} />
+          <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
         </span>
-        <p className={`min-w-0 flex-1 text-sm font-black leading-6 ${look.title}`}>
+        <p className="min-w-0 flex-1 text-[12.5px] font-black leading-6 text-ink">
           {finding?.contradiction_title || finding?.title}
         </p>
         <span
-          className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black shadow-sm ${
-            resolved ? 'bg-white/85 text-emerald-700 ring-1 ring-emerald-200' : look.badge
+          className={`shrink-0 rounded-md px-2 py-0.5 text-[9.5px] font-black ${
+            resolved
+              ? 'bg-primary-soft text-primary-deep'
+              : isContradiction
+              ? 'bg-danger-soft text-danger'
+              : 'bg-caution-soft text-caution'
           }`}
         >
-          {resolved ? (
-            <>
-              <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
-              حل‌شده در بازپرسی
-            </>
-          ) : (
-            look.label
-          )}
+          {resolved ? 'حل‌شده در بازپرسی' : look.label}
         </span>
       </div>
 
-      {rawText(finding?.description) && (
-        <p className={`relative mt-2 text-justify text-right text-sm leading-relaxed ${look.text}`}>{finding.description}</p>
+      {/* ── مقایسهٔ دو پاسخ ── */}
+      {hasPair ? (
+        <div className="mx-4 mt-3 grid gap-2 sm:grid-cols-2">
+          {[
+            { tag: 'اینجا گفتی', text: quoteA },
+            { tag: 'و اینجا', text: quoteB },
+          ].map(({ tag, text }) => (
+            <blockquote
+              key={tag}
+              className="rounded-lg border-r-2 border-slate-300 bg-surface-muted px-3 py-2"
+            >
+              <span className="text-[9.5px] font-black text-ink-faint">{tag}</span>
+              <p className="mt-0.5 text-justify text-right text-[11.5px] leading-6 text-ink-soft">
+                «{text}»
+              </p>
+            </blockquote>
+          ))}
+        </div>
+      ) : (
+        rawText(finding?.description) && (
+          <p className="mx-4 mt-2 text-justify text-right text-[11.5px] leading-7 text-ink-soft">
+            {finding.description}
+          </p>
+        )
       )}
 
       {rawText(finding?.resolution) && (
-        <div className="relative mt-3 rounded-xl border border-white/70 bg-white/60 p-3 text-justify text-right text-xs leading-6 text-slate-700 shadow-sm backdrop-blur-sm">
-          <span className={`font-black ${look.title}`}>توضیحِ خودت: </span>
+        <p className="mx-4 mt-2 rounded-lg bg-surface-muted px-3 py-2 text-justify text-right text-[11px] leading-6 text-ink-soft">
+          <span className="font-black text-ink">توضیحِ خودت: </span>
           {finding.resolution}
-        </div>
+        </p>
       )}
 
       {isContradiction && (
-        <button
-          type="button"
-          onClick={() => onTeach?.(finding)}
-          disabled={busy}
-          className="relative mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-brand-700 to-emerald-600 px-4 py-2.5 text-xs font-black text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:from-brand-800 hover:to-emerald-700 hover:shadow-lg active:translate-y-0 disabled:opacity-60"
-        >
-          <Sparkles className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-          {busy ? 'معلم دارد تحلیل می‌کند...' : 'حل این تناقض با معلم (چرا تناقض داشتم؟)'}
-        </button>
+        <div className="mt-auto px-4 py-3">
+          <button
+            type="button"
+            onClick={() => onTeach?.(finding)}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 bg-danger-soft px-3 py-1.5 text-[10.5px] font-black text-danger transition hover:border-danger/60 hover:bg-danger/10 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+          >
+            <Sparkles className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
+            {busy ? 'معلم دارد تحلیل می‌کند...' : 'حل این تناقض با معلم (چرا تناقض داشتم؟)'}
+          </button>
+        </div>
       )}
-    </div>
+    </article>
   )
 }
 
@@ -508,7 +533,7 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
   // به کارت می‌چسبد نه به پنجره (این باگ دو بار رخ داده است).
   const modal = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 "
       role="dialog"
       aria-modal="true"
       aria-labelledby="tutor-title"
@@ -689,28 +714,156 @@ export function LiveTutorModal({ open, target, sessionId, onClose }) {
 }
 
 // ═════════════════ بخشِ «تحلیل تفصیلی» ═════════════════
+
+/**
+ * فهرستِ آکاردئونیِ ده سؤال — جایگزینِ گریدِ ۱۰ کارتِ هم‌شکل.
+ *
+ * چرا: ده کارتِ بزرگِ هماندازه، صفحه را به دو ستونِ بلند تبدیل می‌کرد که
+ * دانش‌آموز در آن گم می‌شد؛ وضعیت‌ها هم فقط داخلِ هر کارت دیده می‌شدند.
+ * این‌جا اول یک **نقشهٔ وضعیت** در یک ردیف می‌آید (ده سؤال در یک نگاه)، بعد
+ * هر سؤال با باز شدن، جزئیات و دکمهٔ معلم را نشان می‌دهد.
+ *
+ * فقط یک سؤال هم‌زمان باز است: تمرکز روی «همین یکی» می‌ماند.
+ */
+function QuestionRow({ q, index, open, onToggle, onOpenTutor }) {
+  const tone = toneOf(q?.status)
+  const ToneIcon = tone.Icon
+  const order = Number(q?.order) || index + 1
+  const hasOptions = Array.isArray(q?.options) && q.options.length > 0
+  const pickedIdx = Number.isInteger(Number(q?.selected_option_index))
+    ? Number(q.selected_option_index)
+    : null
+  const selectedText =
+    pickedIdx !== null ? rawText(q?.selected_option_text ?? q?.options?.[pickedIdx]) : ''
+  const answer = rawText(q?.response)
+  const insight = rawText(q?.diagnostic_insight)
+
+  return (
+    <li className="overflow-hidden rounded-xl border border-slate-200/80 bg-white transition-colors">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 px-3.5 py-3 text-right transition-colors hover:bg-slate-50/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-400"
+      >
+        {/* شماره */}
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[11px] font-black text-ink-soft">
+          {faNum(order)}
+        </span>
+
+        {/* وضعیت: آیکون + متن، نه فقط رنگ */}
+        <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-black ${tone.badge}`}>
+          <ToneIcon className="ml-1 inline h-3 w-3 align-[-2px]" aria-hidden="true" />
+          {tone.label}
+        </span>
+
+        {/* خلاصهٔ سؤال */}
+        <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-ink">
+          {rawText(q?.question_text) || 'متنِ سؤال ثبت نشده'}
+        </span>
+
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${
+            open ? 'rotate-180' : ''
+          }`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {open && (
+        <div className="border-t border-slate-100 bg-slate-50/40 px-3.5 py-3.5">
+          <p className="text-justify text-right text-[12px] font-bold leading-7 text-ink">
+            {rawText(q?.question_text)}
+          </p>
+
+          {/* پاسخِ دانش‌آموز */}
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+            <span className="text-[10px] font-black text-ink-faint">پاسخِ تو</span>
+            <p className="mt-1 text-justify text-right text-[12px] leading-7 text-ink-soft">
+              {selectedText || answer || '— پاسخی ثبت نشده بود —'}
+            </p>
+            {hasOptions && pickedIdx !== null && (
+              <p className="mt-1 text-[10px] text-ink-faint">
+                گزینهٔ {faNum(pickedIdx + 1)} از {faNum(q.options.length)}
+              </p>
+            )}
+          </div>
+
+          {insight && (
+            <div className="mt-2 rounded-lg border-r-2 border-emerald-400 bg-primary-soft/50 p-3">
+              <span className="text-[10px] font-black text-primary-deep">دیدگاهِ فهم‌یار</span>
+              <p className="mt-1 text-justify text-right text-[12px] leading-7 text-ink">
+                {insight}
+              </p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={onOpenTutor}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-black text-white transition hover:bg-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+            می‌خوای این گره رو باز کنیم؟ (آموزش زنده)
+          </button>
+        </div>
+      )}
+    </li>
+  )
+}
+
 export default function DetailedQuestions({ questions = [], sessionId }) {
   const [open, setOpen] = useState(false)
   const [target, setTarget] = useState(null)
+  const [expanded, setExpanded] = useState(null)
 
   const openFor = (q, order) => {
     setTarget({ type: 'question', q, order })
     setOpen(true)
   }
 
-  const cards = useMemo(
-    () => questions.map((q, i) => <QuestionCard key={q.question_id ?? i} q={q} index={i} onOpen={openFor} />),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [questions],
-  )
+  const statusOf = (q) => toneOf(q?.status)
 
   if (!questions.length) {
-    return <p className="text-[13px] text-slate-500">سؤالی ثبت نشده است.</p>
+    return <p className="text-[13px] text-ink-faint">سؤالی ثبت نشده است.</p>
   }
 
   return (
     <>
-      <div className="grid gap-3 md:grid-cols-2">{cards}</div>
+      {/* ── نقشهٔ وضعیت: ده سؤال در یک نگاه ── */}
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        {questions.map((q, i) => {
+          const tone = statusOf(q)
+          return (
+            <button
+              key={q.question_id ?? i}
+              type="button"
+              onClick={() => setExpanded(expanded === i ? null : i)}
+              title={`سؤال ${faNum(Number(q?.order) || i + 1)} — ${tone.label}`}
+              aria-label={`سؤال ${faNum(Number(q?.order) || i + 1)} — ${tone.label}`}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-black transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${tone.badge} ${
+                expanded === i ? 'ring-2 ring-slate-900/20' : ''
+              }`}
+            >
+              {faNum(Number(q?.order) || i + 1)}
+            </button>
+          )
+        })}
+      </div>
+
+      <ul className="space-y-1.5">
+        {questions.map((q, i) => (
+          <QuestionRow
+            key={q.question_id ?? i}
+            q={q}
+            index={i}
+            open={expanded === i}
+            onToggle={() => setExpanded(expanded === i ? null : i)}
+            onOpenTutor={() => openFor(q, Number(q?.order) || i + 1)}
+          />
+        ))}
+      </ul>
+
       <LiveTutorModal
         open={open}
         target={target}

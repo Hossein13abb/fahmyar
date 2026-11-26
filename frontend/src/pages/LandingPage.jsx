@@ -108,9 +108,6 @@ export default function LandingPage() {
     <div className="relative overflow-hidden">
       {/* ── پس‌زمینهٔ دکوراتیو ── */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -right-24 top-10 h-80 w-80 rounded-full bg-brand-200/40 blur-3xl" />
-        <div className="absolute -left-20 top-64 h-80 w-80 rounded-full bg-amber-200/40 blur-3xl" />
-        <div className="absolute right-1/4 top-[46rem] h-72 w-72 rounded-full bg-emerald-100/50 blur-3xl" />
         <svg className="absolute left-1/2 top-40 h-96 w-96 -translate-x-1/2 opacity-[0.05]" viewBox="0 0 200 200" fill="none">
           <circle cx="100" cy="100" r="96" stroke="currentColor" strokeWidth="2" strokeDasharray="4 6" className="text-brand-900" />
           <circle cx="100" cy="100" r="64" stroke="currentColor" strokeWidth="2" strokeDasharray="3 5" className="text-brand-900" />
@@ -161,10 +158,10 @@ export default function LandingPage() {
           <div className="relative mx-auto w-full max-w-md lg:max-w-none">
             <HeroArt />
             {/* دو نشان شناور — کاملاً درونِ کانتینر تصویر، با z-index بالاتر و بدون تداخل با لبه‌ها */}
-            <div className="pointer-events-none absolute right-1 top-3 z-10 select-none rounded-2xl border border-emerald-100 bg-white/90 px-3.5 py-2 text-[11px] font-black text-emerald-800 shadow-lift backdrop-blur sm:right-4 sm:top-6">
+            <div className="pointer-events-none absolute right-1 top-3 z-10 select-none rounded-2xl border border-emerald-100 bg-white px-3.5 py-2 text-[11px] font-black text-primary-deep shadow-rest sm:right-4 sm:top-6">
               <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> شواهد کیفی، نه نمره</span>
             </div>
-            <div className="pointer-events-none absolute bottom-6 left-1 z-10 select-none rounded-2xl border border-amber-100 bg-white/90 px-3.5 py-2 text-[11px] font-black text-amber-800 shadow-lift backdrop-blur sm:bottom-8 sm:left-4">
+            <div className="pointer-events-none absolute bottom-6 left-1 z-10 select-none rounded-2xl border border-amber-100 bg-white px-3.5 py-2 text-[11px] font-black text-caution shadow-rest sm:bottom-8 sm:left-4">
               <span className="flex items-center gap-1.5"><GitBranch className="h-4 w-4" /> ریشهٔ بین‌درسیِ خطا</span>
             </div>
           </div>
@@ -233,9 +230,8 @@ export default function LandingPage() {
               onClick={() => setPortal('staff')}
               className="group relative overflow-hidden rounded-3xl border border-brand-800/60 bg-gradient-to-bl from-brand-800 via-brand-900 to-brand-950 p-6 text-right text-brand-50 shadow-lift transition-transform duration-300 hover:-translate-y-1 sm:p-8"
             >
-              <div aria-hidden className="pointer-events-none absolute -left-10 -top-10 h-40 w-40 rounded-full bg-amber-400/15 blur-3xl transition group-hover:bg-amber-400/25" />
               <div className="relative">
-                <span className="inline-flex rounded-2xl bg-white/10 p-3.5 ring-1 ring-white/15 backdrop-blur">
+                <span className="inline-flex rounded-2xl bg-white/12 p-3.5 ring-1 ring-white/20">
                   <School className="h-9 w-9 text-amber-200" strokeWidth={1.6} />
                 </span>
                 <h3 className="mt-5 text-xl font-black text-white sm:text-2xl">ورود کادر مدرسه</h3>
@@ -257,7 +253,6 @@ export default function LandingPage() {
               onClick={() => setPortal('student')}
               className="group relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white p-6 text-right text-brand-950 shadow-lift transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_56px_rgba(13,39,31,0.22)] sm:p-8"
             >
-              <div aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-brand-100/60 blur-3xl transition group-hover:bg-brand-100" />
               <div className="relative">
                 <span className="inline-flex rounded-2xl bg-brand-50 p-3.5 ring-1 ring-brand-100">
                   <GraduationCap className="h-9 w-9 text-brand-700" strokeWidth={1.6} />

@@ -11,26 +11,29 @@
  * زمردی=خوب، کهربایی=هشدار، رز=آسیب، ایندیگو=پیش‌نیاز/تحلیلِ ریشه‌ای.
  */
 const ACCENTS = {
+  /* ── فاز ۲۷: آیکونِ آرام ──
+     نسخهٔ قبل گرادیانتِ دو‌رنگ + سایهٔ رنگیِ اشباع + ring-4 داشت؛ همین یک
+     عنصر، صفحه را «داشبوردِ SaaS» می‌کرد. حالا آیکون یک پلاکِ کم‌رنگ با
+     آیکونِ رنگ‌شده است: لهجه را می‌رساند، بدونِ اینکه چشم را بزند. */
   emerald: {
-    // توپر + هالهٔ رنگی زیرِ آیکون تا روی بومِ روشن «بدرخشد»
-    icon: 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-[0_8px_20px_-4px_rgba(16,185,129,0.55)] ring-emerald-500/20',
-    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    rail: 'from-emerald-500 via-teal-400 to-emerald-300',
+    icon: 'bg-primary-soft text-primary',
+    badge: 'bg-primary-soft text-primary-deep border-primary/20',
+    rail: 'from-primary via-primary/70 to-primary-soft',
   },
   indigo: {
-    icon: 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-[0_8px_20px_-4px_rgba(99,102,241,0.55)] ring-indigo-500/20',
-    badge: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    rail: 'from-indigo-500 via-violet-400 to-indigo-300',
+    icon: 'bg-analytic-soft text-analytic',
+    badge: 'bg-analytic-soft text-analytic border-analytic/20',
+    rail: 'from-analytic via-analytic/70 to-analytic-soft',
   },
   rose: {
-    icon: 'bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-[0_8px_20px_-4px_rgba(244,63,94,0.5)] ring-rose-500/20',
-    badge: 'bg-rose-50 text-rose-700 border-rose-200',
-    rail: 'from-rose-500 via-red-400 to-rose-300',
+    icon: 'bg-danger-soft text-danger',
+    badge: 'bg-danger-soft text-danger border-danger/20',
+    rail: 'from-danger via-danger/70 to-danger-soft',
   },
   amber: {
-    icon: 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-[0_8px_20px_-4px_rgba(245,158,11,0.5)] ring-amber-500/20',
-    badge: 'bg-amber-50 text-amber-700 border-amber-200',
-    rail: 'from-amber-500 via-orange-400 to-amber-300',
+    icon: 'bg-caution-soft text-caution',
+    badge: 'bg-caution-soft text-caution border-caution/20',
+    rail: 'from-caution via-caution/70 to-caution-soft',
   },
 }
 
@@ -43,22 +46,22 @@ export function UnifiedSectionHeader({
 }) {
   const tone = ACCENTS[accentColor] ?? ACCENTS.indigo
   return (
-    <div className="mb-5 flex items-start gap-3 border-b border-slate-100/80 pb-4">
+    <div className="mb-4 flex items-start gap-3 border-b border-slate-100 pb-3.5">
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <span className={`flex shrink-0 items-center justify-center rounded-2xl p-2.5 ring-4 ${tone.icon}`}>
-          {Icon ? <Icon className="h-5 w-5" strokeWidth={2.2} /> : null}
+        <span className={`flex shrink-0 items-center justify-center rounded-xl p-2 ${tone.icon}`}>
+          {Icon ? <Icon className="h-4 w-4" strokeWidth={2.2} /> : null}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[15px] font-black tracking-tight text-slate-900">{title}</h3>
+            <h3 className="text-[14px] font-black tracking-tight text-ink">{title}</h3>
             {badgeText && (
-              <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black ${tone.badge}`}>
+              <span className={`rounded-md border px-2 py-0.5 text-[9.5px] font-black ${tone.badge}`}>
                 {badgeText}
               </span>
             )}
           </div>
           {subtitle && (
-            <p className="mt-1 text-justify text-right text-[11px] leading-6 text-slate-500">
+            <p className="mt-1 text-justify text-right text-[10.5px] leading-5 text-ink-faint">
               {subtitle}
             </p>
           )}

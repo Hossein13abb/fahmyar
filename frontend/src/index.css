@@ -2,8 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── توکن‌های مرکزیِ طراحی ── */
+/* ⚠️ بلوکِ ``@theme`` این‌جا بود و حذف شد.
+   پروژه Tailwind v3.4 است و ``@theme`` سینتکسِ v4 است — کلاس‌های
+   ``bg-primary``/``text-ink``/``bg-canvas`` هرگز تولید نمی‌شدند.
+   توکن‌ها حالا در ``tailwind.config.js`` هستند. */
+
 :root {
   color-scheme: light;
+
+  /* ── رنگ‌های بوم و متن ──
+     همان مقادیرِ توکن‌های tailwind.config.js، این‌جا هم به‌صورت متغیر تا
+     CSSِ خام (مثل background خودِ body) به آن‌ها دسترسی داشته باشد.
+     ⚠️ نام‌ها باید با ``--color-*`` شروع شوند تا با قراردادِ v4 هم‌خوان
+     بمانند؛ ولی تعریف در ``:root`` است، نه ``@theme``. */
+  --color-canvas: #f2f5f2;
+  --color-canvas-deep: #e8ede9;
+  --color-ink: #0f2a22;
+  --color-surface-muted: #f7f9f7;
+  /* سایه‌های یکسان برای همهٔ سطوح */
+  --shadow-rest: 0 1px 2px rgba(15, 42, 34, 0.04), 0 8px 24px -12px rgba(15, 42, 34, 0.10);
+  --shadow-lift: 0 2px 4px rgba(15, 42, 34, 0.05), 0 18px 40px -18px rgba(15, 42, 34, 0.18);
 }
 
 html,
@@ -14,12 +33,12 @@ body,
 
 body {
   font-family: 'Vazirmatn', Tahoma, ui-sans-serif, system-ui, sans-serif;
-  /* ── بومِ سردِ آبیِ محسوس ──
-     قبل از این ``#f8fafc`` بود که روی نمایشگر عملاً سفید دیده می‌شد.
-     ``#eef2f9`` فاصلهٔ رنگیِ کافی با کارت‌های سفید دارد تا کارت‌ها «بلند
-     شوند» و صفحه حسِ فرمِ بیمارستانی نداشته باشد. */
-  background: #eef2f9;
-  color: #0f172a;
+  /* ── بومِ خاکستریِ گرم با تهِ سبز ──
+     فاز ۲۶ بوم را ``#eef2f9`` (آبیِ سرد) کرد؛ فاز ۲۷ خواستهٔ صریح «خاکستریِ
+     گرم با تهِ سبز» است. ``#f2f5f2`` همان است: نه سفید، نه آبی، با فاصلهٔ
+     کافی از کارت‌های سفید تا لبه‌شان دیده شود. */
+  background: var(--color-canvas);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -33,11 +52,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #b0e6cf;
+  background: #cdd9d2;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #7ed4b5;
+  background: #a9bdb2;
 }
 
 /* فوکوسِ قابل‌مشاهده ولی ملایم */

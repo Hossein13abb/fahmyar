@@ -410,53 +410,72 @@ export default function ExamRoom() {
 
   return (
     <div className="animate-fade-up mx-auto max-w-4xl space-y-4">
-      {/* ── نوار بالای آزمون ── */}
-      <div className="card flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold text-brand-600">آزمون جامع تشخیصی</p>
-          <h1 className="truncate text-lg font-black text-brand-950">{concept}</h1>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-2 text-center">
-            <p className="text-[10px] font-bold text-brand-700">پیشرفت</p>
-            <p className="text-[15px] font-black tabular-nums text-brand-900">{toFarsiNumber(answeredCount)} از {toFarsiNumber(total)}</p>
+      {/* ══════════ نوارِ بالای آزمون ══════════
+          قبلاً سه لایه بود: یک کارتِ عنوان + یک حلقهٔ conic-gradient با
+          «۰٪» + یک کارتِ جدا برای ۱۰ گام. حدودِ ۲۰۰px از بالای صفحه را
+          می‌گرفت و در حالتِ ۳۹۰px می‌شکست.
+
+          حالا یک نوار: عنوان در راست، گام‌ها در وسط، شمارش در چپ. */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-rest">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3 sm:px-5">
+          {/* عنوان */}
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold text-ink-faint">آزمون جامع تشخیصی</p>
+            <h1 className="truncate text-[15px] font-black text-ink">{concept}</h1>
           </div>
-          <div
-            className="h-11 w-11 shrink-0 rounded-full text-center text-[10px] font-black leading-[2.75rem] text-white"
-            style={{ background: `conic-gradient(#0f766e ${progress * 3.6}deg, #e2e8f0 0deg)` }}
-            aria-label={`${toFarsiNumber(progress)}٪ تکمیل شده`}
-          >
-            <span className="tabular-nums">{toFarsiNumber(progress)}٪</span>
+
+          {/* گام‌ها — کم‌جا، عددِ فارسی، وضعیت با آیکون */}
+          <nav aria-label="گام‌های آزمون" className="order-3 w-full sm:order-2 sm:w-auto">
+            <ol className="flex flex-wrap items-center gap-1">
+              {(questions ?? []).map((q, i) => {
+                const done = isAnswered(q)
+                const currentStep = i === index
+                return (
+                  <li key={q.id}>
+                    <button
+                      onClick={() => setIndex(i)}
+                      aria-current={currentStep ? 'step' : undefined}
+                      aria-label={`سؤال ${toFarsiNumber(i + 1)} از ${toFarsiNumber(total)} — ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}${done ? ' — پاسخ داده شده' : ''}`}
+                      title={`سؤال ${toFarsiNumber(i + 1)} — ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}`}
+                      className={[
+                        'relative flex h-7 w-7 items-center justify-center rounded-md text-[10.5px] font-black tabular-nums transition',
+                        currentStep
+                          ? 'bg-primary text-white ring-2 ring-primary/30'
+                          : done
+                            ? 'bg-primary-soft text-primary-deep'
+                            : 'bg-slate-100 text-ink-faint hover:bg-slate-200',
+                      ].join(' ')}
+                    >
+                      {toFarsiNumber(i + 1)}
+                      {/* نقطهٔ پاسخ‌داده‌شده — وضعیت فقط با رنگ نیست */}
+                      {done && !currentStep && (
+                        <span
+                          className="absolute -top-0.5 -left-0.5 h-1.5 w-1.5 rounded-full bg-primary ring-1 ring-white"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+            </ol>
+          </nav>
+
+          {/* شمارش — متن، نه حلقهٔ conic */}
+          <div className="order-2 shrink-0 sm:order-3">
+            <p className="text-[13px] font-black tabular-nums text-ink">
+              {toFarsiNumber(answeredCount)}
+              <span className="text-[11px] font-bold text-ink-faint"> / {toFarsiNumber(total)}</span>
+            </p>
+            <div className="mt-1 h-1 w-16 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+              <span
+                className="block h-full rounded-full bg-primary transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>
-
-      {/* ── نوار گام‌ها (Stepper) ── */}
-      <nav aria-label="گام‌های آزمون" className="flex flex-wrap items-center justify-center gap-2 rounded-3xl border border-brand-100/70 bg-white/70 px-4 py-3">
-        {(questions ?? []).map((q, i) => {
-          const done = isAnswered(q)
-          const currentStep = i === index
-          return (
-            <button
-              key={q.id}
-              onClick={() => setIndex(i)}
-              aria-current={currentStep ? 'step' : undefined}
-              aria-label={`سؤال ${toFarsiNumber(i + 1)} از ${toFarsiNumber(total)} — ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}${done ? ' — پاسخ داده شده' : ''}`}
-              title={`سؤال ${toFarsiNumber(i + 1)} — ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}`}
-              className={[
-                'flex h-10 w-10 items-center justify-center rounded-2xl text-[12px] font-black tabular-nums transition',
-                currentStep
-                  ? 'bg-brand-700 text-amber-200 ring-2 ring-brand-400 shadow-lift scale-110'
-                  : done
-                    ? 'bg-brand-100 text-brand-800 ring-1 ring-brand-300'
-                    : 'bg-slate-100 text-slate-400 ring-1 ring-slate-200 hover:bg-slate-200',
-              ].join(' ')}
-            >
-              {toFarsiNumber(i + 1)}
-            </button>
-          )
-        })}
-      </nav>
 
       {/* ── کارت سؤال ── */}
       <div className="card border-brand-100/80 p-6 sm:p-8">

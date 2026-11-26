@@ -54,18 +54,21 @@ function SectionCard({
   className = '',
 }) {
   const tones = {
-    brand: { accent: 'emerald', rail: 'from-emerald-500 via-teal-400 to-emerald-300' },
-    amber: { accent: 'amber', rail: 'from-amber-500 via-orange-400 to-amber-300' },
-    teal: { accent: 'indigo', rail: 'from-indigo-500 via-violet-400 to-indigo-300' },
+    // لهجهٔ هر بخش متفاوت است ولی هر سه از خانوادهٔ سبزِ زغالی تا نیلی.
+    brand: { accent: 'emerald', rail: 'from-primary via-primary/70 to-primary-soft' },
+    amber: { accent: 'amber', rail: 'from-caution via-caution/70 to-caution-soft' },
+    teal: { accent: 'indigo', rail: 'from-analytic via-analytic/70 to-analytic-soft' },
   }
   const st = tones[tone] ?? tones.brand
   return (
     <section
-      className={`group relative overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_rgba(15,23,42,0.10)] ${className}`}
+      /* سکشن‌های بزرگِ محتوایی بلند نمی‌شوند — hover-lift روی یک بلوکِ
+          هزارپیکسلی حسِ «کارتِ کلیک‌شدنی» می‌دهد که دروغ است. */
+      className={`group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-rest ${className}`}
     >
       {/* ریلِ رنگیِ بخش — ۳px به‌جای ۱px تا روی بومِ آبی دیده شود */}
       <span
-        className={`block h-[3px] w-full bg-gradient-to-l ${st.rail} opacity-90`}
+        className={`block h-[2px] w-full bg-gradient-to-l ${st.rail}`}
         aria-hidden="true"
       />
       <div className="p-5 md:p-6">
@@ -372,6 +375,29 @@ const MASTERY_LABEL = {
  * یک گرادیانتِ ملایمِ هم‌خانواده به آن اضافه شده تا «مستطیلِ تک‌رنگ»
  * نباشد؛ هرچند جنسِ رنگ همان رنگِ برند است، نه صورتیِ تهاجمی.
  */
+/**
+ * سه‌پلهٔ وضعیتِ هر بُعد — نه درصدِ ساختگی.
+ *
+ * داده فقط می‌گوید LIKELY_UNDERSTOOD / NEEDS_REVIEW / UNCLEAR است. ساختنِ
+ * «۷۲٪» از این داده دروغ است؛ سه پله صادقانه همان چیزی است که می‌دانیم.
+ */
+const DIMENSION_TONE = {
+  LIKELY_UNDERSTOOD: { label: 'رو به راه', steps: 3, text: 'text-primary', bar: 'bg-primary' },
+  NEEDS_REVIEW: { label: 'نیازمندِ بازبینی', steps: 2, text: 'text-caution', bar: 'bg-caution' },
+ UNCLEAR: { label: 'نامشخص', steps: 1, text: 'text-ink-faint', bar: 'bg-ink-faint' },
+  INSUFFICIENT_EVIDENCE: { label: 'شاهدِ کافی نبود', steps: 1, text: 'text-ink-faint', bar: 'bg-ink-faint' },
+}
+
+/** نامِ فارسیِ ابعاد — نگاشتِ صریح تا کلیدِ خام به چشم نرسد. */
+const DIMENSION_FA = {
+  'دانش مفهومی': 'دانشِ مفهومی',
+  'مقاومت در برابر دادهٔ انحرافی': 'مقاومت در برابر دادهٔ انحرافی',
+  'استدلال علّی': 'استدلالِ علّی',
+  'نقد استدلال': 'نقدِ استدلال',
+  'انتقال ساده': 'انتقالِ ساده',
+}
+const dimensionFa = (name) => DIMENSION_FA[String(name ?? '')] ?? (name || 'بُعد فهم')
+
 const MASTERY_STYLE = {
   MASTERED: {
     head: 'bg-gradient-to-l from-emerald-600 via-emerald-500 to-teal-500',
@@ -481,6 +507,17 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
   ).trim()
   const stageDims = Array.isArray(report.stage_dimensions) ? report.stage_dimensions : []
   const mastery = report.mastery_status ?? null
+  // رنگِ حکم — برای بجِ خلاصه. نگاشت به رنگ‌های معناییِ توکنی.
+  const verdict = {
+    chip:
+      mastery === 'MASTERED'
+        ? 'bg-primary-soft text-primary-deep'
+        : mastery === 'ILLUSION_OF_COMPETENCE'
+        ? 'bg-danger-soft text-danger'
+        : mastery === 'JARGON_DEPENDENT' || mastery === 'PARTIAL_FRAGMENTED'
+        ? 'bg-caution-soft text-caution'
+        : 'bg-slate-100 text-ink-soft',
+  }
   const personaTitle = report.persona_title ?? null
   const executiveSummary = report.executive_summary ?? null
   const mentorNote = report.mastery_note ?? null
@@ -490,143 +527,190 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
 
   return (
     <div className="relative isolate">
-      {/* ── هاله‌های محیطیِ کارنامه ──
-          فاز ۲۴ نسخهٔ محوِ این‌ها را با ۲۰٪ آلفا گذاشت و نتیجه روی نمایشگرِ
-          واقعی عملاً دیده نمی‌شد. این نسخه از ``fixed`` استفاده می‌کند (نه
-          absolute نسبت به کارتِ اول)، رنگِ سیر‌تر و شعاعِ بزرگ‌تر دارد، و
-          به‌جای ``-z-10`` که در بعضی استک‌ها زیرِ body می‌رود، با z-index
-          منفیِ محلی و ``isolate`` روی ریشه مهار شده است.
+      {/* ── موتیفِ «ادامهٔ مسیر» ──
+          سه هالهٔ blur-[130-140px] فاز ۲۶ این‌جا برداشته شد: فاز ۲۷ هاله و
+          گرادیان را به‌عنوان «جایگزینِ طراحی» ممنوع کرده. جای‌شان یک بافتِ
+          نقطه‌چینِ بسیار محو نشسته که همان حسِ «مسیرِ در جریان» را می‌دهد
+          بدونِ اینکه لکهٔ رنگی روی صفحه بیندازد.
 
-          ⚠️ overflow-hidden روی ریشه گذاشته نمی‌شود: sticky و اسکرول را
-          می‌شکند. هاله‌ها با ``pointer-events-none`` مهار می‌شوند. */}
+          با mask-image از بالا محو می‌شود تا به محتوای کارت‌ها نفوذ نکند. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed -right-40 -top-40 -z-10 h-[38rem] w-[38rem] rounded-full bg-emerald-400/20 blur-[130px]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed -left-48 top-1/3 -z-10 h-[34rem] w-[34rem] rounded-full bg-indigo-400/18 blur-[140px]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed -bottom-40 right-1/3 -z-10 h-[30rem] w-[30rem] rounded-full bg-amber-300/18 blur-[130px]"
+        className="pointer-events-none fixed inset-0 -z-10 opacity-[0.55] [mask-image:radial-gradient(ellipse_at_top,black,transparent_62%)]"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 1px 1px, rgb(31 106 85 / 0.16) 1px, transparent 0)',
+          backgroundSize: '22px 22px',
+        }}
       />
 
       <div className="animate-fade-up space-y-5">
-      {/* ── سربرگ گزارش ── */}
-      {/* ── سربرگِ فرمان‌دهی (command-center) ──
-          فاز ۲۴ هدرِ زمردی را — چون تأییدشده بود — دست نگذاشت. در فاز ۲۶
-          کاربر صریحاً لغوش کرد: گرادیانتِ عمیقِ slate→indigo با حلقهٔ
-          درخشانِ زمردی. زمردی حذف نشده؛ نقشش عوض شده: از «پس‌زمینه» به
-          «نورِ لهجه». هویتِ سبز می‌ماند، ولی سربرگ دیگر یک نوارِ تخت نیست. */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-[#0F172A] to-indigo-950 p-6 text-white shadow-[0_20px_50px_-12px_rgba(15,23,42,0.55)] md:p-8">
-        {/* هالهٔ زمردیِ پشتِ نشان — نورِ اصلیِ صحنه */}
+      {/* ── نوارِ بالای کارنامه ──
+          قبل از این، این بخش یک بلوکِ سرمه‌ایِ بزرگ با سه دکمهٔ عمودی بود
+          که نیمی از صفحهٔ اول را می‌گرفت و فقط اطلاعاتِ تکراری داشت.
+          حالا: یک نوارِ کوتاه — عنوان و شناسه در راست، عملیات در چپ.
+          «نگاهی به کارنامه» در نگاهِ اول، نه بعد از اسکرول. */}
+      <section className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-rest">
+        {/* نوارِ لهجهٔ بالای کارت — نه پس‌زمینهٔ تمام‌عرض */}
         <span
-          className="pointer-events-none absolute -left-24 -top-28 h-72 w-72 rounded-full bg-emerald-500/25 blur-[90px]"
+          className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-l from-emerald-500 via-teal-400 to-emerald-300"
           aria-hidden="true"
         />
-        <span
-          className="pointer-events-none absolute -bottom-32 -right-16 h-72 w-72 rounded-full bg-indigo-500/30 blur-[100px]"
-          aria-hidden="true"
-        />
-        <span
-          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-l from-transparent via-emerald-400/60 to-transparent"
-          aria-hidden="true"
-        />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="flex items-center gap-2 text-[11px] font-bold text-emerald-200">
-            <ClipboardList className="h-4 w-4" />
-            گزارش تشخیصی آزمون جامع · {generatedAt}
-          </p>
-          <h1 className="mt-1.5 text-2xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.18)] sm:text-3xl">{report.concept_name ?? 'مفهوم نامشخص'}</h1>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="chip bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30 backdrop-blur-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]" />
-              تکمیل‌شده
-            </span>
-            <span className="chip bg-white/10 text-white/90 ring-1 ring-white/20">{toFarsiNumber(report.questions_answered ?? perQuestion.length)} سؤال تحلیل شد</span>
-            {/* بجِ مدلِ ارزیاب — کاربر همیشه می‌داند کارنامه با چه مدلی ساخته شده */}
-            {modelName && (
-              <span
-                className="chip inline-flex items-center gap-1.5 bg-white/95 text-brand-900 shadow-sm"
-                dir="ltr"
-                title="مدل هوش مصنوعی که این آزمون را تولید و ارزیابی کرده است"
-              >
-                <Cpu className="h-3.5 w-3.5 text-brand-700" />
-                <span className="font-black">مدل ارزیاب:</span>
-                <code className="font-mono text-[11px] font-bold">{modelName}</code>
-              </span>
-            )}
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          {/* عنوان + شناسه */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-ink-faint">
+              <ClipboardList className="h-3.5 w-3.5" />
+              کارنامهٔ فهم‌سنجی
+              <span className="text-slate-300">·</span>
+              <span>{generatedAt}</span>
+            </div>
+            <h1 className="mt-0.5 truncate text-[22px] font-black tracking-tight text-ink md:text-2xl">
+              {report.concept_name ?? 'مفهوم نامشخص'}
+            </h1>
+          </div>
+
+          {/* عملیات: افقی، کم‌حجم، یک اقدام اصلی */}
+          <div className="no-print flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <DownloadPdfButton sessionId={report.session_id} />
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-ink-soft transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            >
+              <Printer className="h-4 w-4" />
+              چاپ
+            </button>
+            <button
+              onClick={handleBack}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-ink-soft transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            >
+              <ArrowRight className="h-4 w-4" />
+              {backLabel}
+            </button>
           </div>
         </div>
-        <div className="no-print flex shrink-0 flex-col gap-2">
-          <DownloadPdfButton sessionId={report.session_id} />
-          <button onClick={() => window.print()} className="flex items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-[13px] font-black text-white backdrop-blur-sm transition hover:bg-white/20">
-            <Printer className="h-5 w-5" />
-            چاپ / دانلود گزارش
-          </button>
-          <button
-            onClick={handleBack}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-[13px] font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
-          >
-            <ArrowRight className="h-5 w-5" />
-            {backLabel}
-          </button>
-        </div>
+
+        {/* متادیتا: چیزی که واقعاً هست، بدونِ بجِ تزئینی */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-slate-100 pt-2.5 text-[11px] text-ink-faint">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+            {toFarsiNumber(report.questions_answered ?? perQuestion.length)} سؤال تحلیل شد
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Badge status={report.status} />
+          </span>
+          {modelName && !/^fake$/i.test(modelName) && (
+            <span className="inline-flex items-center gap-1.5" dir="ltr" title="مدل هوش مصنوعیِ ارزیاب">
+              <Cpu className="h-3 w-3" />
+              <code className="font-mono text-[10px]">{modelName}</code>
+            </span>
+          )}
         </div>
       </section>
 
-      {/* ── کارنامهٔ اشعهٔ ایکس — حکمِ شناختی ── */}
-      {(mastery || personaTitle || crossCheck.length > 0 || executiveSummary) && (
-        <section className="card overflow-hidden p-0">
-          {(() => {
-            const st = MASTERY_STYLE[mastery] ?? MASTERY_STYLE.UNSTRUCTURED
-            return (
-              <div className={`relative overflow-hidden px-6 py-5 ${st.head}`}>
-                {/* هالهٔ گوشه — همان نوارِ رنگی، ولی با عمق */}
+      {/* ══════════════════ خلاصهٔ تشخیصی ══════════════════
+          این بخش جایگزینِ «کارنامهٔ اشعهٔ ایکس» است: قبلاً یک بلوکِ نارنجیِ
+          تمام‌عرض با پاراگرافِ طولانی بود که تنها پیامش در سه خطِ آخر
+          پیدا می‌شد.
+
+          چیدمانِ تازه نامتقارن است و هر ستون کارِ خودش را می‌کند:
+            ستونِ راست (۸/۱۲) → حکم + تیپ + جمع‌بندی
+            ستونِ چپ  (۴/۱۲) → پنجرهٔ «کجا ایستاده‌ای» با نوارِ ابعاد
+
+          نمودار فقط از ``dimensions`` واقعیِ همین آزمون ساخته می‌شود. اگر
+          داده نبود، بخشِ نمودار رندر نمی‌شود — درصدِ ساختگی ممنوع. */}
+      {(mastery || personaTitle || executiveSummary) && (
+        <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-rest">
+          <div className="grid lg:grid-cols-12">
+            {/* ── ستونِ راست: حکم و روایت ── */}
+            <div className="relative p-5 md:p-7 lg:col-span-7 xl:col-span-8">
+              <div className="flex flex-wrap items-center gap-2">
                 <span
-                  className={`pointer-events-none absolute -left-12 -top-16 h-44 w-44 rounded-full blur-3xl ${st.aurora}`}
-                  aria-hidden="true"
-                />
-                <div className="relative flex flex-wrap items-center gap-2">
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[10px] font-black ${st.chipGhost}`}
-                  >
-                    کارنامهٔ اشعهٔ ایکس
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black ${verdict.chip}`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" aria-hidden="true" />
+                  {MASTERY_LABEL[mastery] ?? 'وضعیتِ نامشخص'}
+                </span>
+                {crossCheck.length > 0 && (
+                  <span className="rounded-full bg-danger-soft px-2.5 py-1 text-[10px] font-black text-danger">
+                    {toFarsiNumber(crossCheck.length)} تناقض یافت شد
                   </span>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black shadow-sm ${st.chip}`}>
-                    {MASTERY_LABEL[mastery] ?? 'وضعیتِ نامشخص'}
-                  </span>
-                </div>
-                {personaTitle && (
-                  <h2 className="relative mt-2 text-xl font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.15)] sm:text-2xl">
-                    «{personaTitle}»
-                  </h2>
-                )}
-                {executiveSummary && (
-                  <p className="relative mt-2 max-w-3xl text-[13px] font-bold leading-8 text-white/95">
-                    {executiveSummary}
-                  </p>
                 )}
               </div>
-            )
-          })()}
 
-          {mentorNote && (
-            <div className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-[12px] font-bold leading-7 text-slate-700">
-              {mentorNote}
+              {personaTitle && (
+                <h2 className="mt-3 text-balance text-[22px] font-black leading-tight tracking-tight text-ink md:text-[26px]">
+                  «{personaTitle}»
+                </h2>
+              )}
+
+              {executiveSummary && (
+                <p className="mt-2.5 text-justify text-right text-[13px] leading-8 text-ink-soft">
+                  {executiveSummary}
+                </p>
+              )}
+
+              {mentorNote && (
+                <p className="mt-3 rounded-xl border-r-2 border-emerald-400 bg-primary-soft/60 px-3 py-2 text-justify text-right text-[12px] font-bold leading-7 text-ink">
+                  {mentorNote}
+                </p>
+              )}
             </div>
-          )}
 
-          <div className="p-6">
-            <h3 className="flex items-center gap-2 text-[13px] font-black text-brand-950">
-              <Search className="h-4 w-4 text-brand-600" />
-              شکارِ تناقض — مقایسهٔ پاسخ‌ها با هم
-            </h3>
-            {crossCheck.length === 0 ? (
-              <p className="mt-2 text-[12px] text-slate-500">تناقضِ روشنی میان پاسخ‌هایت پیدا نشد.</p>
-            ) : (
+            {/* ── ستونِ چپ: پنجرهٔ ابعاد ── */}
+            {dimensions.length > 0 && (
+              <aside className="border-t border-slate-100 bg-surface-muted p-5 md:p-7 lg:col-span-5 lg:border-r lg:border-t-0 xl:col-span-4">
+                <h3 className="flex items-center gap-1.5 text-[11px] font-black text-ink-faint">
+                  <Search className="h-3.5 w-3.5" />
+                  کجا ایستاده‌ای
+                </h3>
+                <ul className="mt-3 space-y-2.5">
+                  {dimensions.map((d, i) => {
+                    const tone = DIMENSION_TONE[d.status] ?? DIMENSION_TONE.NEEDS_REVIEW
+                    return (
+                      <li key={i}>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-[11px] font-bold text-ink">
+                            {dimensionFa(d.dimension)}
+                          </span>
+                          <span className={`shrink-0 text-[10px] font-black ${tone.text}`}>
+                            {tone.label}
+                          </span>
+                        </div>
+                        {/* نوارِ ابعاد — سه پله، نه درصدِ ساختگی */}
+                        <div className="mt-1 flex gap-1" aria-hidden="true">
+                          {[0, 1, 2].map((step) => (
+                            <span
+                              key={step}
+                              className={`h-1.5 flex-1 rounded-full ${
+                                step < tone.steps ? tone.bar : 'bg-slate-200'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        {d.finding && (
+                          <p className="mt-1 line-clamp-2 text-[10px] leading-5 text-ink-faint">
+                            {d.finding}
+                          </p>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+                <p className="mt-3 text-[10px] leading-5 text-ink-faint">
+                  هر نوار از وضعیتِ ثبت‌شدهٔ همان بُعد در این آزمون ساخته شده است.
+                </p>
+              </aside>
+            )}
+          </div>
+
+          {/* ── تناقض‌ها: مقایسه، نه دو کارتِ سؤال ── */}
+          {crossCheck.length > 0 && (
+            <div className="border-t border-slate-100 p-5 md:p-7">
+              <h3 className="flex items-center gap-2 text-[12px] font-black text-ink">
+                <Search className="h-4 w-4 text-danger" />
+                جایی که دو جوابت با هم نمی‌خوانند
+              </h3>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {crossCheck.map((f, i) => (
                   <ContradictionCard
@@ -639,57 +723,25 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
                   />
                 ))}
               </div>
-            )}
-
-          </div>
+            </div>
+          )}
         </section>
       )}
 
-      {/* ── (الف) ابعاد فهم ──
-          فقط زمانی رندر می‌شود که دادهٔ واقعیِ ۵ مرحله‌ای در per_question باشد.
-          پیش‌تر وقتی تحلیلی نبود، همین‌جا پنج کارتِ «نامشخص» ساخته می‌شد و
-          دانش‌آموز آن را «ابهام واقعی» می‌خواند؛ حالا معیار، وجودِ داده است. */}
       {/* ── (الف) حذف‌شده در فاز ۱۷ ──
           سکشنِ «ابعاد فهم — پنج مرحلهٔ زنجیره» (۱۰ باکسِ کوچک) عمداً حذف شد:
           هم نامِ متدولوژیِ داخلی را لو می‌داد، هم با «تحلیل کلی» که همان
           پنج بُعد را معنادارتر نشان می‌دهد هم‌پوشانی داشت. تنها منبعِ شواهدِ
           مرحله‌ای، سکشنِ «تحلیل کلی» است. */}
 
-      {/* ── ابعاد فهم — تحلیل کلی ──
-          پنج بُعدِ استاندارد با کلیدهای ثابت (conceptual_knowledge …). داده از
-          report.stage_dimensions می‌آید که بک‌اند آن را از شواهدِ خودِ پنج مرحله
-          می‌سازد؛ پس کلیدها هرگز با فرانت ناهمخوان نمی‌شوند و «نامشخص» فقط برای
-          مرحله‌ای است که واقعاً بی‌پاسخ مانده. */}
-      {stageDims.length > 0 && (
-        <SectionCard
-        Icon={Layers}
-        title="ابعاد فهم — تحلیل کلی"
-        tone="teal"
-        subtitle="پنج بُعدِ استانداردِ فهم، ساخته‌شده از شواهدِ واقعیِ ده سؤالِ همین آزمون"
-      >
-          <div className="grid gap-2 md:grid-cols-2">
-            {stageDims.map((d, i) => {
-              const st = String(d.status ?? 'not_assessed').toLowerCase()
-              const style = DIM_STYLE[st] ?? DIM_STYLE.not_assessed
-              return (
-                <div key={d.key ?? i} className={`flex items-start gap-3 rounded-2xl border p-4 ${style.card}`}>
-                  <span className={`mt-0.5 shrink-0 rounded-lg px-2 py-1 text-[10px] font-black ring-1 ${style.chip}`}>
-                    {d.status_fa ?? style.label}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-black text-brand-950">
-                      {DIM_LABEL[d.key] ?? d.label ?? 'بُعد فهم'}
-                    </p>
-                    <p className="mt-1 text-justify text-right text-[12px] leading-6 text-slate-600">
-                      {faText(d.finding, style.fallback)}
-                    </p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </SectionCard>
-      )}
+      {/* ── «ابعاد فهم — تحلیل کلی» حذف شد (فاز ۲۷) ──
+          این سکشن پنج کارتِ دیگر از **همان** ``stage_dimensions`` می‌ساخت که
+          خلاصهٔ تشخیصیِ بالای صفحه با نوارهای سه‌پله نشان می‌دهد. نتیجه، دو
+          روایتِ متفاوت از یک داده بود: بالا «رو به راه» (سبز) و این‌جا
+          «در حال رشد» (زرد) — همان بُعد، دو برچسبِ متناقض در یک صفحه.
+
+          یک داده، یک نمایش. متنِ شاهدِ هر بُعد داخلِ همان خلاصه (با tooltip
+          روی نوار) نگه داشته می‌شود، نه در کارتِ جداگانه. */}
 
       {/* ── (ب) تحلیل تفصیلی تک‌تک سوالات — کارت‌های ماژولار + معلمِ تعاملی ── */}
       <SectionCard
@@ -858,7 +910,7 @@ function LegacyReportNotice({ report, onBack, backLabel }) {
   const conceptName = report?.concept_name ?? report?.sections?.['موضوع بررسی']
   return (
     <div className="mx-auto max-w-2xl animate-fade-up">
-      <section className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/85 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] backdrop-blur-md">
+      <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-rest">
         <span className="block h-1 w-full bg-gradient-to-l from-amber-300 via-orange-300 to-calm-400" aria-hidden="true" />
         <div className="p-6 md:p-8">
           <div className="flex items-start gap-3">
