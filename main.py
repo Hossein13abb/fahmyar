@@ -76,12 +76,14 @@ from api.routes_ai_models import router as ai_models_router  # noqa: E402
 from api.routes_assessment import router as assessment_router  # noqa: E402
 from api.routes_exam import router as exam_router  # noqa: E402
 from api.routes_admin import router as admin_router  # noqa: E402
+from api.routes_tutor import router as tutor_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(ai_models_router)
 app.include_router(assessment_router)
 app.include_router(exam_router)
 app.include_router(admin_router)
+app.include_router(tutor_router)
 
 
 @app.get("/", tags=["meta"])

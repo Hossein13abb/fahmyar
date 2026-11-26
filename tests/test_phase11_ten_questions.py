@@ -584,11 +584,18 @@ def test_both_mcq_records_are_decided_by_key_not_by_model():
 # ═══════════════════════════════════════════════════════════════════════════
 # فاز ۱۲ — معلمِ هوشمند (tutor_teaching)
 # ═══════════════════════════════════════════════════════════════════════════
-def test_prompt_asks_for_tutor_teaching():
+def test_prompt_asks_for_a_slim_tutor_hint():
+    """فاز ۱۴: آموزشِ کامل از ارزیابی جدا شد؛ فقط یک اشارهٔ کوتاه می‌ماند.
+
+    تولیدِ متنِ تدریس حالا در ``POST /api/tutor/explain`` انجام می‌شود، پس
+    پرامپتِ ارزیابی نباید سه فیلدِ سنگینِ آموزشی بخواهد (هزینهٔ توکنی که
+    برای جلساتی که کسی دکمهٔ معلم را نمی‌زند هدر می‌رفت).
+    """
     import ai.cross_check as cc
 
-    for key in ("tutor_teaching", "misconception_root", "intuitive_explanation", "golden_tip"):
-        assert key in cc._EXAM_PROMPT, f"{key} در پرامپت نیست"
+    prompt = cc._EXAM_PROMPT
+    assert "tutor_hint" in prompt, "اشارهٔ کوتاهِ معلم در پرامپت نیست"
+    assert "tutor_teaching" not in prompt, "آموزشِ سنگین باید از پرامپت حذف شده باشد"
 
 
 def test_tutor_object_survives_normalization():
@@ -730,22 +737,26 @@ def test_diagnostic_insight_present_for_every_status():
 # ═══════════════════════════════════════════════════════════════════════════
 # فاز ۱۳ — لحنِ معلمِ خصوصی + معلمِ تناقض
 # ═══════════════════════════════════════════════════════════════════════════
-def test_prompt_forbids_third_person_reporting_tone():
-    import ai.cross_check as cc
+def test_tutor_prompts_forbid_third_person_reporting_tone():
+    """لحنِ دوم‌شخص حالا در پرامپتِ اندپوینتِ تدریس است، نه ارزیابی."""
+    from api import routes_tutor
 
-    prompt = cc._EXAM_PROMPT
-    assert "سومِ‌شخص" in prompt, "پرامپت باید لحنِ سوم‌شخص را صریحاً ممنوع کند"
-    assert "دانش‌آموز فکر" in prompt, "نمونهٔ ممنوعه باید در پرامپت باشد"
-    assert "معلم" in prompt
+    for system_prompt in (routes_tutor._QUESTION_SYSTEM, routes_tutor._CONTRADICTION_SYSTEM):
+        assert "سومِ‌شخص" in system_prompt
+        assert "دانش‌آموز فکر کرد" in system_prompt
+        assert "دومِ‌شخص" in system_prompt
 
 
-def test_prompt_demands_second_person_examples():
-    import ai.cross_check as cc
+def test_tutor_prompt_asks_for_concrete_teaching_material():
+    """هر پرامپتِ تدریس باید تمثیل و «کدِ ذهنی» بخواهد، نه گزارش."""
+    from api import routes_tutor
 
-    prompt = cc._EXAM_PROMPT
-    # نمونهٔ لحنِ دوم‌شخص که کاربر خواسته بود
-    assert "ببین دوست من" in prompt
-    assert "بیا یک بار برای همیشه" in prompt
+    q = routes_tutor._QUESTION_SYSTEM
+    assert "تمثیل" in q or "مثالِ شهودی" in q
+    assert "golden_tip" in q
+    c = routes_tutor._CONTRADICTION_SYSTEM
+    assert "exam_shield_tip" in c
+    assert "how_to_connect_bridge" in c
 
 
 def test_prompt_asks_for_contradiction_tutor():

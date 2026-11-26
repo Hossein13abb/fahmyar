@@ -1185,13 +1185,20 @@ _TASK_ROUTE_DEFAULT = {
     "generate_test_booklet": "gemini_free",
     "analyze_response": "gemini_free",
     "analyze_exam": "gemini_free",
+    "tutor_explain": "gemini_free",
     "build_graph": "gemini_free",
 }
 
 #: وظایفی که زنجیرهٔ فهم‌سنجی را می‌سازند. این‌ها همیشه روی
 #: OPENROUTER_ASSESSMENT_MODEL اجرا می‌شوند (بدونِ سوییچِ خاموش).
 ASSESSMENT_TASKS = frozenset(
-    {"generate_test_booklet", "analyze_exam", "analyze_response"}
+    {
+        "generate_test_booklet",
+        "analyze_exam",
+        "analyze_response",
+        # تدریسِ درلحظه از همان مدلِ داوری می‌آید تا لحن و کیفیت یکدست بماند.
+        "tutor_explain",
+    }
 )
 
 
@@ -1209,6 +1216,7 @@ _OPENROUTER_ROUTE = {
     "generate_test_booklet": "openrouter",
     "analyze_response": "openrouter",
     "analyze_exam": "openrouter",
+    "tutor_explain": "openrouter",
     "build_graph": "openrouter",
 }
 

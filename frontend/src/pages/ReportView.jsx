@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import DetailedQuestions, { ContradictionTutorModal } from '../components/cognitive/DetailedQuestions'
+import DetailedQuestions, { ContradictionCard, LiveTutorModal } from '../components/cognitive/DetailedQuestions'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   ScanSearch,
   GraduationCap,
+  Wrench,
   Search,
   FileText,
   Layers,
@@ -527,10 +528,33 @@ const rawStudentAnswer = (text) => {
   return s
 }
 
-function ExamReport({ report, mode, onBackToDashboard }) {
+function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
   // معلمِ تناقض: کدام یافته باز است و آیا مودال نمایان است.
   const [contradictionOpen, setContradictionOpen] = useState(false)
   const [tutorFinding, setTutorFinding] = useState(null)
+  // چک‌لیستِ گیمیفای‌شده: پیشرفت در localStorage می‌ماند (کلید به نشست گره دارد).
+  const checklistKey = `fahmyar_checklist_${report.session_id ?? 'x'}`
+  const [doneSuggestions, setDoneSuggestions] = useState(() => {
+    try {
+      const raw = localStorage.getItem(checklistKey)
+      return new Set(raw ? JSON.parse(raw) : [])
+    } catch {
+      return new Set()
+    }
+  })
+  const toggleSuggestion = (i) => {
+    setDoneSuggestions((prev) => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i)
+      else next.add(i)
+      try {
+        localStorage.setItem(checklistKey, JSON.stringify([...next]))
+      } catch {
+        /* حافظهٔ مرورگر پر — چک‌لیست فقط برای این نشست کار می‌کند */
+      }
+      return next
+    })
+  }
 
   const navigate = useNavigate()
   const handleBack = onBackToDashboard ?? (() => navigate(mode === 'teacher' ? '/staff' : '/dashboard'))
@@ -640,61 +664,43 @@ function ExamReport({ report, mode, onBackToDashboard }) {
             {crossCheck.length === 0 ? (
               <p className="mt-2 text-[12px] text-slate-500">تناقضِ روشنی میان پاسخ‌هایت پیدا نشد.</p>
             ) : (
-              <ul className="mt-3 space-y-2">
-                {crossCheck.map((f, i) => {
-                  const style = FINDING_STYLE[f.type] ?? FINDING_STYLE.SYNERGY
-                  const isContradiction = f.type === 'CONTRADICTION'
-                  const canTeach =
-                    isContradiction && Boolean(f.tutor_resolution && Object.keys(f.tutor_resolution).length)
-                  return (
-                    <li key={i} className={`rounded-2xl border-2 p-4 ${style.wrap}`}>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black ${style.chip}`}>
-                          {FINDING_LABEL[f.type] ?? f.type}
-                        </span>
-                        <p className="text-[13px] font-black text-slate-900">
-                          {f.contradiction_title || f.title}
-                        </p>
-                      </div>
-                      {f.description && (
-                        <p className="mt-1.5 text-[12px] font-medium leading-7 text-slate-700">{f.description}</p>
-                      )}
-                      {f.resolution && (
-                        <p className="mt-1.5 rounded-xl bg-white/70 p-2 text-[11px] font-bold leading-6 text-emerald-800">
-                          توضیحِ خودت: {f.resolution}
-                        </p>
-                      )}
-                      {canTeach && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTutorFinding(f)
-                            setContradictionOpen(true)
-                          }}
-                          className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-[12px] font-black text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-amber-700 hover:shadow-md active:translate-y-0"
-                        >
-                          <GraduationCap className="h-4 w-4" />
-                          حلِ این تناقض با معلم — چرا این دو حرفت با هم نمی‌خوند؟
-                        </button>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {crossCheck.map((f, i) => (
+                  <ContradictionCard
+                    key={i}
+                    finding={f}
+                    onTeach={() => {
+                      setTutorFinding({ type: 'contradiction', finding: f, findingIndex: i })
+                      setContradictionOpen(true)
+                    }}
+                  />
+                ))}
+              </div>
             )}
 
             {perQuestion.some((q) => q.missing_gear) && (
-              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <p className="text-[12px] font-black text-amber-900">چرخ‌دندهٔ گمشده</p>
-                <ul className="mt-1.5 space-y-1">
+              <div className="mt-4 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50/80 to-white p-4">
+                <p className="flex items-center gap-1.5 text-[12px] font-black text-amber-900">
+                  <Wrench className="h-3.5 w-3.5" /> چرخ‌دنده‌های گمشده
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
                   {perQuestion
                     .filter((q) => q.missing_gear)
                     .map((q, i) => (
-                      <li key={i} className="text-[11px] font-bold leading-6 text-amber-900">
-                        {q.stage_title || `مرحلهٔ ${toFarsiNumber(q.order ?? i + 1)}`}: {q.missing_gear}
-                      </li>
+                      <span
+                        key={i}
+                        title={faText(q.missing_gear, '')}
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-300/60 bg-white px-3 py-1.5 text-[11px] font-bold text-amber-900 shadow-sm transition hover:border-amber-400 hover:shadow"
+                      >
+                        <Wrench className="h-3 w-3 shrink-0 text-amber-500" />
+                        <span className="truncate">
+                          {q.stage_title || `مرحلهٔ ${toFarsiNumber(q.order ?? i + 1)}`}
+                        </span>
+                        <span className="text-amber-300">|</span>
+                        <span className="truncate font-black">{faText(q.missing_gear, '')}</span>
+                      </span>
                     ))}
-                </ul>
+                </div>
               </div>
             )}
           </div>
@@ -756,7 +762,7 @@ function ExamReport({ report, mode, onBackToDashboard }) {
 
       {/* ── (ب) تحلیل تفصیلی تک‌تک سوالات — کارت‌های ماژولار + معلمِ تعاملی ── */}
       <SectionCard Icon={FileText} title="تحلیل تفصیلی تک‌تک سوالات">
-        <DetailedQuestions questions={perQuestion} />
+        <DetailedQuestions questions={perQuestion} sessionId={Number(report.session_id ?? sessionIdProp)} />
       </SectionCard>
 
       {/* ── (ج) تحلیل ریشه‌ای بدفهمی‌ها — گراف وابستگی مفاهیم (DAG) ── */}
@@ -766,14 +772,51 @@ function ExamReport({ report, mode, onBackToDashboard }) {
 
       {/* ── (د) پیشنهادهای بهبود کیفی ── */}
       <SectionCard Icon={Lightbulb} title={mode === 'teacher' ? 'پیشنهادهای بهبود (برای برنامه‌ریزی معلم)' : 'پیشنهادهای بهبود — قدم‌به‌قدم'}>
-        <ol className="space-y-2">
-          {suggestions.map((sug, i) => (
-            <li key={i} className="flex items-start gap-2.5 rounded-2xl border border-brand-50 bg-brand-50/40 px-4 py-3 text-[13px] leading-7 text-brand-950">
-              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-700 text-[11px] font-black text-white">{toFarsiNumber(i + 1)}</span>
-              {faSuggestion(sug)}
-            </li>
-          ))}
-        </ol>
+        <ul className="space-y-2">
+          {suggestions.map((sug, i) => {
+            const done = doneSuggestions.has(i)
+            return (
+              <li key={i}>
+                <button
+                  type="button"
+                  onClick={() => toggleSuggestion(i)}
+                  aria-pressed={done}
+                  className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-right text-[13px] leading-7 transition-all duration-200 ${
+                    done
+                      ? 'border-emerald-200 bg-emerald-50/70 text-emerald-900'
+                      : 'border-brand-100 bg-white text-brand-950 hover:border-brand-300 hover:shadow-sm'
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition-colors ${
+                      done
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : 'border-slate-300 bg-white text-transparent'
+                    }`}
+                  >
+                    <CheckCircle2 className="h-4 w-4" strokeWidth={3} />
+                  </span>
+                  <span className={done ? 'line-through decoration-emerald-400/60' : ''}>
+                    {faSuggestion(sug)}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+        {suggestions.length > 0 && (
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-l from-emerald-400 to-teal-500 transition-all duration-500"
+                style={{ width: `${Math.round((doneSuggestions.size / suggestions.length) * 100)}%` }}
+              />
+            </div>
+            <span className="shrink-0 text-[10px] font-black tabular-nums text-slate-500">
+              {toFarsiNumber(doneSuggestions.size)} از {toFarsiNumber(suggestions.length)}
+            </span>
+          </div>
+        )}
       </SectionCard>
 
       {/* ── موارد هنوز روشن‌نشده ──
@@ -842,10 +885,11 @@ function ExamReport({ report, mode, onBackToDashboard }) {
         این گزارش فقط برای تو و معلمت قابل مشاهده است.
       </p>
 
-      {/* معلمِ تناقض — همان مودالِ وسط‌چین، با سه بخشِ حلِ تناقض */}
-      <ContradictionTutorModal
+      {/* معلمِ تناقض — درلحظه، از /api/tutor/explain */}
+      <LiveTutorModal
         open={contradictionOpen}
-        finding={tutorFinding}
+        target={tutorFinding}
+        sessionId={Number(report.session_id ?? sessionIdProp)}
         onClose={() => setContradictionOpen(false)}
       />
     </div>
@@ -892,7 +936,7 @@ export default function ReportView({ mode = 'student', onBackToDashboard }) {
   }
 
   if (report?.exam) {
-    return <ExamReport report={report} mode={mode} onBackToDashboard={onBackToDashboard} />
+    return <ExamReport report={report} mode={mode} onBackToDashboard={onBackToDashboard} sessionIdProp={sessionId} />
   }
 
   const s = report.sections ?? {}
