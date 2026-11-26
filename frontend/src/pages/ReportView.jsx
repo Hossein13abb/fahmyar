@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import DetailedQuestions from '../components/cognitive/DetailedQuestions'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -731,68 +732,9 @@ function ExamReport({ report, mode, onBackToDashboard }) {
         </SectionCard>
       )}
 
-      {/* ── (ب) تحلیل تفصیلی تک‌تک سوالات ── */}
+      {/* ── (ب) تحلیل تفصیلی تک‌تک سوالات — کارت‌های ماژولار + معلمِ تعاملی ── */}
       <SectionCard Icon={FileText} title="تحلیل تفصیلی تک‌تک سوالات">
-        <div className="space-y-3">
-          {perQuestion.map((q, i) => (
-            <article key={i} className="overflow-hidden rounded-2xl border border-brand-100/70 bg-white/80">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-50 bg-brand-50/40 px-4 py-2.5">
-                <p className="text-[12px] font-black text-brand-800">
-                  سؤال {toFarsiNumber(q.order ?? i + 1)} <span className="font-medium text-slate-400">· {faExamType(q.exam_type)}</span>
-                </p>
-                <Badge status={validBadgeStatus(q.status)} />
-              </div>
-              <div className="px-4 py-3">
-                {q.question_text && (
-                  <div className="math-content text-[12px] font-bold leading-7 text-slate-500">
-                    <MathText content={q.question_text || ''} />
-                  </div>
-                )}
-                {/* ── انتخابِ گزینه (MCQ): منبعِ واحد، اندیسِ صفرمبنا + ۱ ──
-                    قبلاً فقط متنِ پاسخ با گزینه‌ها مقایسه می‌شد و عددی در
-                    توضیحِ آزاد می‌توانست انتخاب را جابه‌جا نشان دهد. */}
-                {hasOptions(q) && (
-                  <div className="mt-2 rounded-2xl border border-brand-100 bg-brand-50/40 p-3">
-                    <p className="text-[11px] font-black text-brand-800">پاسخ شما</p>
-                    {pickedOptionIndex(q) === null ? (
-                      <p className="mt-1 text-[12px] font-bold text-slate-500">بدون پاسخ</p>
-                    ) : (
-                      <p className="mt-1 text-[12px] leading-7 text-slate-700">
-                        گزینهٔ {toFarsiNumber(pickedOptionIndex(q) + 1)}:{' '}
-                        <span className="math-inline font-black text-brand-950">
-                          <MathText content={String(selectedText(q) ?? '')} />
-                        </span>
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {!hasOptions(q) && (
-                  <details className="mt-2" open>
-                    <summary className="cursor-pointer text-[11px] font-bold text-slate-400">پاسخ شما</summary>
-                    <p className="mt-1 whitespace-pre-line rounded-2xl bg-slate-50 p-3 text-[12px] leading-7 text-slate-700">
-                      {rawStudentAnswer(q.response) || 'بدون پاسخ'}
-                    </p>
-                  </details>
-                )}
-
-                {/* توضیحِ اختیاریِ صاحبِ MCQ — جدا از انتخاب، و هرگز جایش نمی‌نشیند */}
-                {hasOptions(q) && String(q.response ?? '').trim() && (
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-[11px] font-bold text-slate-400">توضیحِ اختیاریِ تو</summary>
-                    <p className="mt-1 whitespace-pre-line rounded-2xl bg-slate-50 p-3 text-[12px] leading-7 text-slate-700">
-                      {rawStudentAnswer(q.response)}
-                    </p>
-                  </details>
-                )}
-                <div className="math-content mt-2 border-r-2 border-brand-200 pr-3 text-[13px] leading-8 text-brand-950">
-                  <MathText content={faText(q.qualitative_feedback, feedbackFallback(q.status)) || ''} />
-                </div>
-              </div>
-            </article>
-          ))}
-          {perQuestion.length === 0 && <p className="text-[13px] text-slate-500">سؤالی ثبت نشده است.</p>}
-        </div>
+        <DetailedQuestions questions={perQuestion} />
       </SectionCard>
 
       {/* ── (ج) تحلیل ریشه‌ای بدفهمی‌ها — گراف وابستگی مفاهیم (DAG) ── */}

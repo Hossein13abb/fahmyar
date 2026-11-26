@@ -579,3 +579,146 @@ def test_both_mcq_records_are_decided_by_key_not_by_model():
     by_order = {r["order"]: r for r in records}
     assert by_order[3]["status"] == "CORRECT"
     assert by_order[4]["status"] == "WRONG"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# فاز ۱۲ — معلمِ هوشمند (tutor_teaching)
+# ═══════════════════════════════════════════════════════════════════════════
+def test_prompt_asks_for_tutor_teaching():
+    import ai.cross_check as cc
+
+    for key in ("tutor_teaching", "misconception_root", "intuitive_explanation", "golden_tip"):
+        assert key in cc._EXAM_PROMPT, f"{key} در پرامپت نیست"
+
+
+def test_tutor_object_survives_normalization():
+    rows = _ten_rows()
+    data = {
+        "per_question": [
+            {
+                "order": o,
+                "status": "CORRECT",
+                "tutor_teaching": {
+                    "misconception_root": f"ریشهٔ {o}",
+                    "intuitive_explanation": f"توضیحِ {o}",
+                    "golden_tip": f"نکتهٔ {o}",
+                },
+            }
+            for o in range(1, 11)
+        ]
+    }
+    records = _normalize_per_question(data, rows, _answers_all(), {3: 1, 4: 1})
+    for record in records:
+        tutor = record["tutor_teaching"]
+        assert set(tutor) == {"misconception_root", "intuitive_explanation", "golden_tip"}
+        assert tutor["misconception_root"] == f"ریشهٔ {record['order']}"
+        assert all(v.strip() for v in tutor.values())
+
+
+def test_missing_tutor_is_filled_from_evidence_not_left_empty():
+    """دکمهٔ معلم هرگز نباید پنجرهٔ خالی باز کند."""
+    rows = _ten_rows()
+    data = {
+        "per_question": [
+            {"order": o, "status": "WRONG", "wrong_claim": "فرضِ غلط",
+             "cognitive_verdict": "استدلال ناقص"}
+            for o in range(1, 11)
+        ]
+    }
+    records = _normalize_per_question(data, rows, _answers_all(), {3: 1, 4: 1})
+    for record in records:
+        tutor = record["tutor_teaching"]
+        assert all(str(tutor[k]).strip() for k in tutor), record["order"]
+    # سؤال‌های ۳ و ۴ (MCQ) طبقِ کلید به CORRECT بازنویسی می‌شوند، پس متنشان
+    # تأییدی است؛ متنِ خطا فقط جایی می‌آید که وضعیت واقعاً WRONG مانده باشد.
+    for record in records:
+        if record["status"] == "WRONG":
+            assert "فرضِ غلط" in record["tutor_teaching"]["misconception_root"]
+    assert any(r["status"] == "WRONG" for r in records)
+
+
+def test_partial_tutor_fills_only_the_missing_keys():
+    rows = _ten_rows()
+    data = {
+        "per_question": [
+            {"order": o, "status": "CORRECT",
+             "tutor_teaching": {"misconception_root": "از مدل"}}
+            for o in range(1, 11)
+        ]
+    }
+    records = _normalize_per_question(data, rows, _answers_all(), {3: 1, 4: 1})
+    tutor = records[0]["tutor_teaching"]
+    assert tutor["misconception_root"] == "از مدل"
+    assert tutor["intuitive_explanation"].strip()
+    assert tutor["golden_tip"].strip()
+
+
+def test_tutor_for_unanswered_question_is_educational():
+    rows = _ten_rows()
+    answers = {o: "" for o in range(1, 11)}
+    data = {"per_question": [{"order": o, "status": "CORRECT"} for o in range(1, 11)]}
+    records = _normalize_per_question(data, rows, answers, {})
+    # پاسخ خالی ⇒ وضعیت به INSUFFICIENT تنزل می‌کند و متن آموزشی می‌شود
+    assert all(r["status"] == "INSUFFICIENT_EVIDENCE" for r in records)
+    assert "پاسخی نرسید" in records[0]["tutor_teaching"]["misconception_root"]
+
+
+def test_tutor_teaching_reaches_the_report_shape():
+    from reports.exam_report import _coerce_tutor_for_report
+
+    out = _coerce_tutor_for_report(
+        {
+            "status": "WRONG",
+            "wrong_claim": "مقاومت با ولتاژ زیاد می‌شود",
+            "tutor_teaching": {
+                "misconception_root": "ریشه",
+                "intuitive_explanation": "توضیح",
+                "golden_tip": "نکته",
+            },
+        }
+    )
+    assert out == {
+        "misconception_root": "ریشه",
+        "intuitive_explanation": "توضیح",
+        "golden_tip": "نکته",
+    }
+
+
+def test_report_tutor_never_leaks_raw_model_json():
+    from reports.exam_report import _coerce_tutor_for_report
+
+    out = _coerce_tutor_for_report(
+        {
+            "status": "WRONG",
+            "cognitive_verdict": "استدلال ناقص",
+            "tutor_teaching": {
+                "misconception_root": '{"per_question": [], "dimension_findings": []}',
+                "intuitive_explanation": "<<<STAGE 2>>>",
+                "golden_tip": "",
+            },
+        }
+    )
+    assert "per_question" not in out["misconception_root"]
+    assert "<<<" not in out["intuitive_explanation"]
+    assert all(v.strip() for v in out.values())
+
+
+def test_report_tutor_for_legacy_record_uses_existing_fields():
+    from reports.exam_report import _coerce_tutor_for_report
+
+    out = _coerce_tutor_for_report(
+        {"status": "HALF_CORRECT", "cognitive_verdict": "نیمه‌راه ماند",
+         "qualitative_feedback": "هستهٔ منطق کامل گفته نشد"}
+    )
+    assert out["misconception_root"] == "نیمه‌راه ماند"
+    assert out["intuitive_explanation"] == "هستهٔ منطق کامل گفته نشد"
+    assert out["golden_tip"].strip()
+
+
+def test_diagnostic_insight_present_for_every_status():
+    from reports.exam_report import _diagnostic_fallback
+
+    for status in ("CORRECT", "HALF_CORRECT", "WRONG", "INSUFFICIENT_EVIDENCE"):
+        text = _diagnostic_fallback({"status": status})
+        assert text.strip(), status
+        assert "نامشخص" not in text

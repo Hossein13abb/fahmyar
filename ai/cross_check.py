@@ -116,8 +116,15 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
     {"question_id": 1, "order": 1, "stage_title": "...",
      "status": "correct | partial | incorrect | insufficient",
      "evidence_quote": "بریدهٔ عیناً از متنِ دانش‌آموز",
+     "student_answer_summary": "خلاصهٔ یک‌خطیِ پاسخِ خودِ دانش‌آموز",
+     "diagnostic_insight": "تشخیصِ یک‌خطی: در ذهنِ او چه اتفاقی افتاد",
      "wrong_claim": "ادعای غلطِ مشخص یا null",
      "cognitive_verdict": "یک جمله: چه چیزی را فهمیده و چه چیزی را نه",
+     "tutor_teaching": {
+       "misconception_root": "ریشهٔ خطای فکری، دلسوزانه و کوتاه",
+       "intuitive_explanation": "آموزشِ گام‌به‌گامِ مفهوم، بدونِ اصطلاحِ پیچیده",
+       "golden_tip": "یک تمثیلِ روزمره یا کلیدواژهٔ طلایی برای تثبیت"
+     },
      "expected_logic_missed": "کدام بخشِ منطقِ موردانتظار غایب است (اگر کامل است، null)",
      "evidence_type": "strong_confirming | weak_confirming | contradicting | none",
      "missing_gear": "چرخ‌دندهٔ غایب در ذهن (یا null)",
@@ -134,6 +141,23 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
     ناقص است. **پاسخِ درست در نتیجه ولی با استدلالِ نادرست = partial.**
   - incorrect: پاسخ به نتیجهٔ نادرست می‌رسد یا بدفهمی را تأیید می‌کند.
   - insufficient: پاسخی نیست، یا پاسخ هیچ ادعای قابلِ‌سنجش ندارد.
+
+**معلمِ هوشمند (`tutor_teaching`) — برای هر ده سؤال اجباری است:**
+  هر سؤال یک آبجکتِ ``tutor_teaching`` با سه فیلد دارد که همان کتابِ درسیِ
+  کوچکِ دانش‌آموز است. این متن‌ها را **مستقیم به خودِ دانش‌آموز** می‌نویسی،
+  پس لحن صمیمی، محترمانه و بدونِ تحقیر است:
+    • ``misconception_root`` — «کجای ماجرا لغزیدی؟» چرا ذهنِ او به این پاسخِ
+      اشتباه رفت. به فرایندِ فکرِ او اشاره کن، نه به خودش. (۲ تا ۳ جمله)
+    • ``intuitive_explanation`` — «اصلِ داستان چیه؟» مفهوم را شهودی و
+      گام‌به‌گام توضیح بده، بدونِ فرمولِ اضافه و بدونِ اصطلاحِ نامفهوم. (۳ تا ۵ جمله)
+    • ``golden_tip`` — «نکتهٔ طلاییِ ساعت‌ساز»: یک تمثیلِ روزمره یا کلیدواژهٔ
+      کوتاه که در حافظه بماند. (۱ تا ۲ جمله)
+  برای سؤالِ correct هم این سه فیلد را پر کن، ولی با لحنِ تأییدی و تعمیقِ
+  فهم. برای سؤالِ بی‌پاسخ، آموزشی از صفر باشد.
+
+هم‌چنین برای هر سؤال این دو فیلد کوتاه را پر کن:
+  - ``student_answer_summary``: پاسخِ دانش‌آموز در یک خط.
+  - ``diagnostic_insight``: تشخیصِ تو در یک خط (چه اتفاقی در ذهنش افتاد).
 
 برای **مرحله‌های ۱، ۳ و ۴** علاوه بر status، این دو فیلد اجباری است:
   - "evidence_quote": یک بریدهٔ کوتاه و **عیناً از متنِ خودِ دانش‌آموز**
@@ -1160,6 +1184,68 @@ def _fallback_record(order: int, reason: str) -> dict[str, Any]:
     }
 
 
+_TUTOR_FIELDS = ("misconception_root", "intuitive_explanation", "golden_tip")
+
+
+def _coerce_tutor(raw: Any, record: dict[str, Any]) -> dict[str, str]:
+    """آبجکتِ ``tutor_teaching`` را سالم می‌کند.
+
+    مدل گاهی این آبجکت را نمی‌دهد (خروجیِ قدیمی، یا سؤالِ correct که از
+    نظرش «نیازی نیست»). در آن حالت محتوای آموزشی از شواهدِ خودِ رکورد ساخته
+    می‌شود تا دکمهٔ معلم هرگز به پنجرهٔ خالی نرسد — ولی **هیچ ادعای ساختگی
+    دربارهٔ دانش‌آموز** اضافه نمی‌شود.
+    """
+    out: dict[str, str] = {}
+    src = raw if isinstance(raw, dict) else {}
+    for field in _TUTOR_FIELDS:
+        value = str(src.get(field) or "").strip()
+        out[field] = value
+
+    status = canonical_stage_status(record.get("status"))
+    verdict = str(record.get("cognitive_verdict") or "").strip()
+    missed = str(record.get("expected_logic_missed") or "").strip()
+    wrong = str(record.get("wrong_claim") or "").strip()
+
+    if not out["misconception_root"]:
+        if status == STAGE_STATUS_CORRECT:
+            out["misconception_root"] = (
+                "لغزشی نداشتی؛ پاسخت همان هستهٔ درست را داشت."
+            )
+        elif status == STAGE_STATUS_INSUFFICIENT:
+            out["misconception_root"] = (
+                "اینجا پاسخی نرسید، پس نتوانستیم ببینیم ذهنت کجا ایستاده است."
+            )
+        elif wrong:
+            out["misconception_root"] = (
+                f"ذهن اینجا روی این فرض ایستاد: «{wrong}» — و همین فرض، بقیهٔ "
+                "استدلال را با خودش برد."
+            )
+        else:
+            out["misconception_root"] = (
+                verdict or "استدلال در میانهٔ راه ناقص ماند."
+            )
+
+    if not out["intuitive_explanation"]:
+        if status == STAGE_STATUS_CORRECT:
+            out["intuitive_explanation"] = (
+                "همان مسیری را که رفتی، یک بار دیگر و کمی عمیق‌تر مرور کن: "
+                "چرا این نتیجه ناگزیر از همان رابطه می‌آید؟"
+            )
+        else:
+            core = missed or "هستهٔ منطقِ این سؤال"
+            out["intuitive_explanation"] = (
+                f"قدم‌به‌قدم پیش برو: اول ببین صورتِ سؤال چه می‌خواهد، بعد "
+                f"همان رابطه را روی داده‌های مربوط به کار ببر — {core}."
+            )
+
+    if not out["golden_tip"]:
+        out["golden_tip"] = (
+            "قبل از هر محاسبه، یک بار با خودت بگو: «کدام کمیت واقعاً این‌جا "
+            "نقش دارد و کدام یکی فقط تماشاچی است؟»"
+        )
+    return out
+
+
 def _normalize_per_question(
     data: dict[str, Any],
     question_rows: list[dict[str, Any]],
@@ -1217,8 +1303,11 @@ def _normalize_per_question(
             "expected_logic_missed": (str(item.get("expected_logic_missed")).strip() or None)
             if item.get("expected_logic_missed")
             else None,
+            "student_answer_summary": str(item.get("student_answer_summary") or "").strip(),
+            "diagnostic_insight": str(item.get("diagnostic_insight") or "").strip(),
             "cognitive_verdict": str(item.get("cognitive_verdict") or "").strip()
             or "تحلیل‌گر برای این سؤال توضیحی نداد.",
+            "tutor_teaching_raw": item.get("tutor_teaching"),
             "missing_gear": (str(missing).strip() or None) if missing else None,
             "status": canonical_stage_status(item.get("status")),
             "error_type": str(item.get("error_type") or "none").strip(),
@@ -1292,6 +1381,14 @@ def _normalize_per_question(
             record["status"] = STAGE_STATUS_INSUFFICIENT
             record["evidence_type"] = "none"
             record["confidence"] = 0.0
+
+    # ── معلمِ هوشمند: بعد از نهایی‌شدنِ وضعیت، محتوای آموزشی سالم می‌شود ──
+    # ترتیب مهم است: ``_coerce_tutor`` به ``status`` تکیه دارد، پس باید بعد از
+    # همهٔ گاردها اجرا شود، نه داخلِ حلقهٔ ساخت.
+    for order, record in records.items():
+        record["tutor_teaching"] = _coerce_tutor(
+            record.pop("tutor_teaching_raw", None), record
+        )
     return [records[order] for order in sorted(records)]
 
 

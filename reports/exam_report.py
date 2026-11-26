@@ -127,6 +127,71 @@ def _coerce_selected(raw: Any) -> Optional[int]:
     return value if 0 <= value <= 3 else None
 
 
+_TUTOR_KEYS = ("misconception_root", "intuitive_explanation", "golden_tip")
+
+
+def _coerce_tutor_for_report(record: dict[str, Any]) -> dict[str, str]:
+    """``tutor_teaching`` را برای کارنامه آماده می‌کند.
+
+    سه ضمانت:
+      ۱. همیشه سه کلیدِ غیرخالی دارد (دکمهٔ معلم هرگز پنجرهٔ خالی باز نمی‌کند).
+      ۲. متنِ خامِ مدل/JSONِ نشت‌کرده نمایش داده نمی‌شود.
+      ۳. برای دادهٔ قدیمی (بدونِ فیلد) از متنِ تشخیصیِ موجود ساخته می‌شود.
+    """
+    raw = record.get("tutor_teaching")
+    src = raw if isinstance(raw, dict) else {}
+    out: dict[str, str] = {}
+    for key in _TUTOR_KEYS:
+        value = str(src.get(key) or "").strip()
+        if not value or _looks_like_model_output(value):
+            value = ""
+        out[key] = value
+
+    verdict = str(record.get("cognitive_verdict") or "").strip()
+    feedback = str(record.get("qualitative_feedback") or "").strip()
+    missed = str(record.get("expected_logic_missed") or "").strip()
+    wrong = str(record.get("wrong_claim") or "").strip()
+    status = str(record.get("status") or "").upper()
+
+    if not out["misconception_root"]:
+        if status == EvidenceStatus.CONFIRMED.value or status == "CORRECT":
+            out["misconception_root"] = "در این سؤال لغزشی نداشتی؛ استدلال کامل بود."
+        elif wrong:
+            out["misconception_root"] = (
+                f"ذهن اینجا روی این فرض ایستاد: «{wrong}» — و همین فرض، "
+                "بقیهٔ استدلال را با خودش برد."
+            )
+        else:
+            out["misconception_root"] = verdict or "استدلال در میانهٔ راه ناقص ماند."
+
+    if not out["intuitive_explanation"]:
+        out["intuitive_explanation"] = feedback or (
+            f"قدم‌به‌قدم پیش برو: {missed}"
+            if missed
+            else "این مفهوم را از پایه، بی‌آنکه فرمول حفظ کنی، یک بار با "
+            "مثالِ روزمره بازگو کن."
+        )
+
+    if not out["golden_tip"]:
+        out["golden_tip"] = (
+            "قبل از هر محاسبه یک بار بپرس: «کدام کمیت واقعاً این‌جا نقش دارد "
+            "و کدام یکی فقط تماشاچی است؟»"
+        )
+    return out
+
+
+def _diagnostic_fallback(record: dict[str, Any]) -> str:
+    """تشخیصِ یک‌خطی برای دادهٔ قدیمی که فیلدِ ``diagnostic_insight`` ندارد."""
+    status = str(record.get("status") or "").upper()
+    if status in ("CORRECT", EvidenceStatus.CONFIRMED.value):
+        return "استدلال در این بخش با منطقِ موردانتظار هم‌خوان بود."
+    if status == "HALF_CORRECT":
+        return "هستهٔ استدلال درست بود، اما حلقهٔ تعیین‌کنندهٔ آن کامل گفته نشد."
+    if status == "WRONG":
+        return "استدلال به نتیجه‌ای می‌رسد که با رفتارِ واقعیِ سیستم نمی‌خواند."
+    return "برای این سؤال شاهدِ کافی ثبت نشد؛ داوری ممکن نبود."
+
+
 def _selected_text_for_report(entry: dict[str, Any]) -> Optional[str]:
     """متنِ گزینهٔ انتخاب‌شده — ذخیره‌شده در evidence_log، با بازسازی از options.
 
@@ -198,6 +263,13 @@ def build_exam_report(db: Session, session: AssessmentSession) -> dict[str, Any]
             "stage_title": entry.get("stage_title") or record.get("stage_title"),
             "cognitive_verdict": record.get("cognitive_verdict"),
             "missing_gear": record.get("missing_gear"),
+            # ── معلمِ هوشمند (فاز ۱۲) ──
+            # این آبجکت در همان فراخوانیِ اولِ ارزیابی ساخته می‌شود؛ کارنامه
+            # فقط آن را منتقل می‌کند و هیچ کالِ اضافه‌ای به مدل نمی‌زند.
+            "student_answer_summary": record.get("student_answer_summary") or "",
+            "diagnostic_insight": record.get("diagnostic_insight")
+            or _diagnostic_fallback(record),
+            "tutor_teaching": _coerce_tutor_for_report(record),
         })
     per_question.sort(key=lambda q: (q.get("order") or 999))
 
