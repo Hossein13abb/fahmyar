@@ -363,7 +363,13 @@ def test_real_scenario_model_says_mastered_but_q4_is_half_correct(monkeypatch):
 
 
 def test_honest_scenario_with_true_core_critique_can_be_mastered(monkeypatch):
-    """استثنای حفظ‌شده: Q3 و Q4 واقعاً درست ⇒ ضعفِ بیانِ Q1/Q5 حکم را رد نمی‌کند."""
+    """Q3 و Q4 واقعاً درست ⇒ قواعدِ قطعی حکم را به MASTERED می‌رسانند.
+
+    توجه: در این تست فقط پنج رکوردِ قدیمی (مرحله‌محور) داده شده و سؤال ۵
+    هیچ رکوردی ندارد؛ پس مرحلهٔ ۵ «بی‌پاسخ» نیست بلکه اصلاً سنجیده نشده و
+    مانعِ تسلط نمی‌شود. کالیبراسیونِ Q3+Q4+Q5 در تست‌های فاز ۱۱ سنجیده
+    می‌شود که هر ده سؤال را می‌دهند.
+    """
     result = _run(monkeypatch, {
         "mastery_status": "MASTERED",
         "persona_title": "مهندسی که ساعت را بست",
@@ -379,6 +385,7 @@ def test_honest_scenario_with_true_core_critique_can_be_mastered(monkeypatch):
             {"order": 5, "status": "HALF_CORRECT", "cognitive_verdict": "بیانِ ساده ضعیف"},
         ],
     })
+    # در ورودیِ پنج‌رکوردیِ مرحله‌محور، مرحلهٔ ۵ رکوردی ندارد و مانع نمی‌شود.
     assert result["mastery_status"] == "MASTERED"
 
 

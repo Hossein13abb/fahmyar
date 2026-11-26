@@ -177,16 +177,26 @@ def test_long_wrong_answer_is_not_mastered():
     assert note
 
 
-def test_mastered_requires_both_q3_and_q4_correct():
+def test_mastered_requires_q3_q4_and_q5_correct():
+    """کالیبراسیونِ فاز ۱۱: مسلط = زنجیرهٔ علّی + عیب‌یابی + توضیحِ ساده."""
     ok = [
         {"order": 3, "status": "correct"},
         {"order": 4, "status": "correct"},
+        {"order": 5, "status": "correct"},
     ]
     assert derive_status("PARTIAL_FRAGMENTED", ok, {})[0] == "MASTERED"
+
+    missing_q5 = [
+        {"order": 3, "status": "correct"},
+        {"order": 4, "status": "correct"},
+        {"order": 5, "status": "partial"},
+    ]
+    assert derive_status("MASTERED", missing_q5, {})[0] != "MASTERED"
 
     only_q3 = [
         {"order": 3, "status": "correct"},
         {"order": 4, "status": "partial"},
+        {"order": 5, "status": "correct"},
     ]
     assert derive_status("MASTERED", only_q3, {})[0] != "MASTERED"
 
@@ -219,6 +229,7 @@ def test_short_correct_answer_is_still_correct():
     per_q = [
         {"order": 3, "status": "correct"},
         {"order": 4, "status": "correct"},
+        {"order": 5, "status": "correct"},
     ]
     assert derive_status("PARTIAL_FRAGMENTED", per_q, {})[0] == "MASTERED"
 
@@ -273,6 +284,7 @@ def test_verdict_title_and_summary_come_from_one_status():
     per_q = [
         {"order": 3, "status": "correct"},
         {"order": 4, "status": "correct"},
+        {"order": 5, "status": "correct"},
     ]
     status, note = derive_status("UNSTRUCTURED", per_q, {})
     assert status == "MASTERED"

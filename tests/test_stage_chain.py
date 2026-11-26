@@ -101,21 +101,29 @@ def test_normalize_orders_stages_and_one_based_index():
     assert len(feynman["forbidden_words"]) >= 3
 
 
-def test_normalize_drops_duplicate_stage_instead_of_mislabeling():
+def test_normalize_keeps_two_questions_per_stage_in_order():
+    """فاز ۱۱: هر مرحله دو اسلات دارد؛ سؤالِ سومِ یک مرحله دور ریخته می‌شود."""
     raw = [
         {"exam_type": "mask_mcq", "text": "اول", "options": ["a", "b", "c", "d"], "correct_option_index": 1},
         {"exam_type": "mask_mcq", "text": "دوم", "options": ["a", "b", "c", "d"], "correct_option_index": 2},
+        {"exam_type": "mask_mcq", "text": "سوم", "options": ["a", "b", "c", "d"], "correct_option_index": 3},
         {"exam_type": "philosophy", "text": "چرا؟"},
     ]
     items = normalize_stage_items(raw)
-    texts = {i["exam_type"]: i["text"] for i in items}
-    assert texts["mask_mcq"] == "اول"
-    assert "perturbation" not in texts
+    mcqs = [i for i in items if i["exam_type"] == "mask_mcq"]
+    assert [m["text"] for m in mcqs] == ["اول", "دوم"]   # سومی حذف شد
+    assert [m["order"] for m in mcqs] == [3, 4]          # اسلاتِ مرحلهٔ ۲
+    assert "perturbation" not in {i["exam_type"] for i in items}
 
 
-def test_fallback_has_all_five_complete_stages():
+def test_fallback_has_ten_complete_questions():
     stages = fallback_stages(FakeConcept())
-    assert [s["exam_type"] for s in stages] == list(STAGE_ORDER)
+    assert len(stages) == 10
+    # هر مرحله دقیقاً دو سؤال، به ترتیب
+    assert [s["exam_type"] for s in stages] == [
+        t for t in STAGE_ORDER for _ in range(2)
+    ]
+    assert [s["order"] for s in stages] == list(range(1, 11))
     mcq = next(s for s in stages if s["exam_type"] == "mask_mcq")
     assert len(mcq["options"]) == 4
     assert mcq["correct_option_index"] is not None
@@ -129,7 +137,7 @@ def test_fallback_has_all_five_complete_stages():
 def test_items_to_questions_puts_secrets_in_rubric_only():
     stages = fallback_stages(FakeConcept())
     rows = items_to_questions(FakeConcept(), stages, "test-model", 0.0)
-    assert len(rows) == 5
+    assert len(rows) == 10
     for row in rows:
         assert row.question_type in STAGE_ORDER
         assert row.rubric["stage_title"]
@@ -241,9 +249,16 @@ def test_debugging_supremacy_upgrades_harsh_model_verdict(monkeypatch):
     شاهدِ درستی نیست. اکنون مدل باید Q3 و Q4 را CORRECT علامت بزند.
     """
     clean_answers = dict(ANSWERS)
+    # پاسخِ Q5 باید از همهٔ کلماتِ ممنوعهٔ ممکن پاک باشد، وگرنه
+    # JARGON_DEPENDENT (شاهدِ سخت) هرگز به MASTERED نمی‌رسد.
     clean_answers[5] = (
         "وقتی می‌ری زیر آب، وزن آبِ روی سرت زیاد می‌شود و همین سنگینی است که "
         "تو را می‌فشارد؛ هرچه پایین‌تر، آبِ بیشتری روی سرت است."
+    )
+    # سؤالِ ۱۰ (مرحلهٔ ۵ دوم) هم پاسخِ تمیز بگیرد
+    clean_answers[10] = (
+        "هرچه عمیق‌تر بروی، ستونِ بلندتری از آب روی سرت می‌ماند و سنگین‌تر "
+        "حس می‌شود؛ برای همین گوشت درد می‌گیرد."
     )
     result = _analyze_with(monkeypatch, clean_answers, {
         "mastery_status": "UNSTRUCTURED",
@@ -252,6 +267,7 @@ def test_debugging_supremacy_upgrades_harsh_model_verdict(monkeypatch):
         "per_question": [
             {"order": 3, "status": "CORRECT", "cognitive_verdict": "زنجیرهٔ علّی درست"},
             {"order": 4, "status": "CORRECT", "cognitive_verdict": "هستهٔ نقد دقیق"},
+            {"order": 5, "status": "CORRECT", "cognitive_verdict": "توضیحِ سادهٔ بدونِ اصطلاح"},
         ],
         "improvement_suggestions": [],
     })
@@ -310,18 +326,18 @@ def test_clarification_blocks_mastered_verdict(monkeypatch):
 def test_model_crash_falls_back_to_deterministic_rules(monkeypatch):
     result = _analyze(monkeypatch, raises="boom")
     assert result["analyzer"] == "deterministic-fallback"
-    assert len(result["per_question"]) == 5
+    assert len(result["per_question"]) == 10
     assert result["cross_check_findings"], "قواعدِ قطعی باید حداقل یک یافته بدهند"
 
 
-def test_garbage_model_output_still_yields_five_records(monkeypatch):
+def test_garbage_model_output_still_yields_ten_records(monkeypatch):
     class _Router:
         async def generate(self, *a, **k):
             return _Resp("این JSON نیست، فقط یک جملهٔ معمولی است")
 
     monkeypatch.setattr(cross_check, "get_router", lambda: _Router())
     result = asyncio.run(cross_check.analyze_stage_chain("فشار", ROWS, ANSWERS))
-    assert [p["order"] for p in result["per_question"]] == [1, 2, 3, 4, 5]
+    assert [p["order"] for p in result["per_question"]] == list(range(1, 11))
     assert result["mastery_status"] in {
         "MASTERED", "ILLUSION_OF_COMPETENCE", "JARGON_DEPENDENT",
         "PARTIAL_FRAGMENTED", "UNSTRUCTURED",

@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
+from ai.booklet_cache import booklet_cache_key, get_cached_booklet, put_cached_booklet
 from ai.json_sanitize import extract_json_object
 from ai.model_abstraction import get_router
 from ai.prompt_safe import fill
@@ -28,12 +29,52 @@ STAGE_ORDER: tuple[str, ...] = (
     "feynman_synthesis",
 )
 
+#: فاز ۱۱ — هر مرحله **دو** سؤال دارد: ۵ مرحله × ۲ = ۱۰ سؤال.
+#: ``order`` در سراسرِ سامانه یکتا و پیوسته (۱..۱۰) است؛ ``stage`` شمارهٔ
+#: مرحله (۱..۵) و ``stage_slot`` جای سؤال داخلِ مرحله (۱ یا ۲) است.
+QUESTIONS_PER_STAGE = 2
+TOTAL_QUESTIONS = len(STAGE_ORDER) * QUESTIONS_PER_STAGE  # ۱۰
+
+#: order → شمارهٔ مرحله. سؤالِ ۱ و ۲ مرحلهٔ ۱ هستند، ۳ و ۴ مرحلهٔ ۲، …
+def stage_of_order(order: int) -> int:
+    """شمارهٔ مرحله (۱..۵) برای ترتیبِ سؤال (۱..۱۰)."""
+    try:
+        value = int(order)
+    except (TypeError, ValueError):
+        return 0
+    if value < 1 or value > TOTAL_QUESTIONS:
+        return 0
+    return (value - 1) // QUESTIONS_PER_STAGE + 1
+
+
+def orders_of_stage(stage: int) -> tuple[int, ...]:
+    """ترتیب‌های سؤالِ یک مرحله — مثلاً مرحلهٔ ۳ ⇒ (۵، ۶)."""
+    base = (int(stage) - 1) * QUESTIONS_PER_STAGE
+    return tuple(base + i + 1 for i in range(QUESTIONS_PER_STAGE))
+
+
+def stage_key(order: int) -> str:
+    """کلیدِ مرحله برای برچسب‌گذاری: exam_type همان مرحله."""
+    stage = stage_of_order(order)
+    if stage == 0:
+        return ""
+    return STAGE_ORDER[stage - 1]
+
+
 STAGE_TITLES: dict[str, str] = {
     "philosophy": "مرحله ۱: فلسفه و تصویر کلان",
     "mask_mcq": "مرحله ۲: تست لایه نقاب (با اطلاعات انحرافی)",
     "perturbation": "مرحله ۳: مونتاژ ذهنی و دستکاری سیستم",
     "debugging": "مرحله ۴: عیب‌یابی ساعت خراب (نقد استدلال)",
     "feynman_synthesis": "مرحله ۵: چالش فاینمن (توضیح با دستِ بسته!)",
+}
+
+STAGE_TITLES_FA: dict[int, str] = {
+    1: "فلسفه و تصویر کلان",
+    2: "تستِ لایهٔ نقاب",
+    3: "مونتاژ ذهنی و دستکاریِ سیستم",
+    4: "عیب‌یابیِ ساعتِ خراب",
+    5: "چالشِ فاینمن",
 }
 
 
@@ -56,14 +97,22 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
 
 ═══════════════════════════════════════════════════════════════
 شما «طراحِ ارشدِ آزمونِ فهم‌سنجی شناختی» هستید. برای مفهوم «{concept}»
-({subject} — پایه {grade}) **یک زنجیرهٔ ۵ مرحله‌ایِ به‌هم‌پیوسته** بسازید.
+({subject} — پایه {grade}) **یک زنجیرهٔ ۵ مرحله‌ای بسازید که هر مرحله‌اش دو
+سؤال دارد — در کل ۱۰ سؤال به‌هم‌پیوسته.**
 
-این آزمون ۹ سؤال مستقل نیست. **پنج مرحله است که هر کدام لایهٔ متفاوتی از
-ذهن را می‌سنجد** و مرحلهٔ بعد بدون مرحلهٔ قبل معنا ندارد.
+این آزمون ده سؤالِ مستقل نیست. **پنج مرحله است و هر مرحله دو سؤال دارد؛
+هر مرحله لایهٔ متفاوتی از ذهن را می‌سنجد** و مرحلهٔ بعد بدون مرحلهٔ قبل
+معنا ندارد. دو سؤالِ یک مرحله باید یک مهارت را از **دو زاویهٔ متفاوت**
+بسنجند — نه اینکه دومی تکرارِ اولی با عددِ دیگر باشد.
 ═══════════════════════════════════════════════════════════════
 
-🔹 مرحله ۱ — «فلسفه و تصویر کلان» (exam_type: "philosophy")
-   تشریحیِ کوتاه، **مطلقاً بدونِ هیچ فرمول و عدد**.
+🔹 مرحله ۱ — «فلسفه و تصویر کلان» (exam_type: "philosophy"، ترتیبِ ۱ و ۲)
+   **دو سؤالِ تشریحیِ کوتاه، مطلقاً بدونِ هیچ فرمول و عدد.**
+   • سؤال ۱: **چراییِ پیدایشِ مفهوم** — انسان پیش از این مفهوم به چه
+     بن‌بستِ علمی می‌خورد که مجبور شد آن را بسازد؟
+   • سؤال ۲: **تفاوتِ نگاهِ روزمره با نگاهِ تخصصی** — در زندگیِ روزمره این
+     پدیده را چطور می‌بینیم و نگاهِ فیزیک/ریاضی/شیمی چه چیزی را عوض می‌کند؟
+   دو سؤال نباید پاسخِ هم را لو بدهند و نباید هم‌پوشانیِ کامل داشته باشند.
    **قانونِ یک پرسش:** متنِ این مرحله باید فقط **یک** پرسش باشد، با **یک**
    هدفِ شناختیِ روشن. اگر دو پرسشِ مستقل را با «و» یا «همچنین» به هم بچسبانی،
    دانش‌آموز یکی را جواب می‌دهد و یکی را جا می‌گذارد و سنجش بی‌معنا می‌شود.
@@ -79,12 +128,15 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
    می‌کنند و سنجش را بی‌اثر؛ دانش‌آموز باید خودش به آن برسد.
    واژگانِ کتابِ درسی بمان: ویژگیِ «ذاتی» رسانا، نه «محدودکنندهٔ ثابت مسیر».
 
-🔹 مرحله ۲ — «تست لایهٔ نقاب» (exam_type: "mask_mcq")
-   **تستیِ ۴ گزینه‌ای.** فیلدهای لازم: "options" (آرایهٔ ۴ رشته) و
-   "correct_option_index" (عددِ ۰ تا ۳ — **یک‌پایه نیست**، از ۰ شروع می‌شود).
-   یک تستِ استانداردِ کتابی دربارهٔ قانونِ اصلی، همراه با **یک دادهٔ اضافیِ
-   کاملاً معقول** که در بافتِ مسئله طبیعی و از نظرِ فیزیکی ممکن است، ولی در
-   محاسبه به کار نمی‌آید.
+🔹 مرحله ۲ — «تست لایهٔ نقاب» (exam_type: "mask_mcq"، ترتیبِ ۳ و ۴)
+   **دو تستِ ۴ گزینه‌ای.** فیلدهای لازم برای هر کدام: "options" (آرایهٔ ۴
+   رشته) و "correct_option_index" (عددِ ۰ تا ۳ — **یک‌پایه نیست، از ۰ شروع
+   می‌شود**).
+   هر دو سؤال تستِ استانداردِ کتابی دربارهٔ قانونِ اصلی‌اند و هر دو باید
+   **«چرخ‌دندهٔ اضافه»** داشته باشند: یک دادهٔ اضافیِ کاملاً معقول که در
+   بافتِ مسئله طبیعی و از نظرِ علمی ممکن است، ولی در محاسبه به کار نمی‌آید.
+   دو تست باید **دو قانونِ متفاوت** را بسنجند یا یک قانون را در دو شرایطِ
+   متفاوت — نه یک محاسبهٔ تکراری.
    ✅ نمونهٔ درست: «در مداری با ولتاژ $۱۲$ ولت و مقاومتِ $۴$ اهم، جریان چند
       آمپر است؟ طولِ سیمِ رابط $۵۰$ سانتی‌متر است.»
    ❌ نمونهٔ غلط: «حجمِ منبع تغذیه $۲$ لیتر است» — دادهٔ پرت و نامعقول، تلهٔ
@@ -98,17 +150,22 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
    هدف: ثبتِ اینکه قانونِ رسمی را می‌داند یا نه، تا در مرحله ۵ با شهودش
    مقایسه شود.
 
-🔹 مرحله ۳ — «مونتاژ ذهنی و دستکاری سیستم» (exam_type: "perturbation")
-   تشریحیِ تحلیلی و **مطلقاً بدونِ عدد و فرمول**.
-   یک سناریوی پویا که در آن **یک** متغیرِ سیستم دستکاری می‌شود و دانش‌آموز
-   باید زنجیرهٔ علّی را بگوید: اول چه عوض می‌شود، بعدش چه، و سرانجام خروجی
-   چه تغییری می‌کند و **چرا**.
+🔹 مرحله ۳ — «مونتاژ ذهنی و دستکاری سیستم» (exam_type: "perturbation"، ترتیبِ ۵ و ۶)
+   **دو سؤالِ تشریحیِ تحلیلی و مطلقاً بدونِ عدد و فرمول.**
+   در هر سؤال یک سناریوی پویا هست که در آن تغییر **در ابتدای زنجیرهٔ علّی**
+   اعمال می‌شود و دانش‌آموز باید اتفاقِ نهاییِ سیستم را پیش‌بینی کند: اول چه
+   عوض می‌شود، بعدش چه، و سرانجام خروجی چه تغییری می‌کند و **چرا**.
+   دو سؤال باید دو نقطهٔ متفاوتِ زنجیره را دستکاری کنند (مثلاً یکی ورودی و
+   یکی شرایطِ محیط) تا مونتاژِ ذهنی از دو جهت سنجیده شود.
    در صورتِ سؤال شرط‌ها را صریح بگذار («با ثابت ماندنِ ولتاژِ منبع»، «با
    نادیده گرفتنِ تغییرِ دما») تا فقط یک پاسخِ درست وجود داشته باشد.
 
-🔹 مرحله ۴ — «عیب‌یابی ساعت خراب» (exam_type: "debugging")
-   **شاه‌کلیدِ تشخیص.** یک دانش‌آموزِ فرضی (امیر یا سارا) استدلالی مطرح
-   می‌کند که ظاهرش بسیار منطقی و علمی است اما نتیجه‌اش غلط. این استدلال
+🔹 مرحله ۴ — «عیب‌یابی ساعت خراب» (exam_type: "debugging"، ترتیبِ ۷ و ۸)
+   **شاه‌کلیدِ تشخیص — دو سؤالِ نقدِ استدلال.**
+   در هر سؤال یک دانش‌آموزِ فرضی (امیر یا سارا - برای هر سؤال نامِ متفاوت)
+   استدلالی مطرح می‌کند که ظاهرش بسیار منطقی و علمی است اما نتیجه‌اش غلط.
+   دو سؤال باید **دو بدفهمیِ متفاوت** را هدف بگیرند (از فهرستِ بدفهمی‌های
+   همین مفهوم)، تا نقدِ دانش‌آموز از دو زاویه سنجیده شود. این استدلال
    باید بر پایهٔ این بدفهمیِ رایج ساخته شود: «{misconception}»
    از دانش‌آموز بپرس: «استدلالِ او دقیقاً در کدام نقطه می‌شکند و سوتیِ
    منطقی‌اش کجاست؟» نامِ دانش‌آموزِ فرضی و یک نقلِ‌قولِ مستقیم از او در متن بیاور.
@@ -119,11 +176,14 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
    نه قانونِ طبیعت؛ استدلالِ غلط باید به همین پیش‌فرض تکیه کند، نه اینکه
    خودِ سؤال آن را قانونِ مطلق جا بزند.
 
-🔹 مرحله ۵ — «چالش فاینمن» (exam_type: "feynman_synthesis")
-   از دانش‌آموز بخواه یک پدیدهٔ واقعی و ملموس مرتبط با همین مفهوم (مرتبط با
-   منطقِ سؤال مرحله ۲) را برای یک **بچهٔ ۱۰ ساله** توضیح دهد.
-   **قانونِ حیاتی:** فیلد "forbidden_words" باید آرایه‌ای از **۴ تا ۶** کلمهٔ
-   تخصصی و فرمولیِ همین مبحث باشد که دانش‌آموز حق ندارد در پاسخش به کار ببرد.
+🔹 مرحله ۵ — «چالش فاینمن» (exam_type: "feynman_synthesis"، ترتیبِ ۹ و ۱۰)
+   **دو سؤال.** از دانش‌آموز بخواه **دو جنبهٔ اصلیِ متفاوتِ مفهوم** را برای
+   یک **بچهٔ ۱۰ ساله** توضیح دهد (مرتبط با منطقِ مرحلهٔ ۲).
+   **قانونِ حیاتی:** فیلد "forbidden_words" باید برای **هر سؤال جداگانه**
+   آرایه‌ای از **۴ تا ۶** کلمهٔ تخصصی و فرمولیِ همان جنبه باشد که دانش‌آموز
+   حق ندارد در پاسخش به کار ببرد. دو فهرستِ ممنوعه باید با هم **متفاوت**
+   باشند و هر کدام به همان جنبهٔ سؤالِ خودش مربوط باشد — نه یک فهرستِ
+   تکراری برای هر دو.
    این کلمات باید **دقیقاً همان واژه‌هایی** باشند که در متنِ سؤال و در
    توضیحِ کتابیِ مبحث می‌آیند (نه واژه‌های عمومی مثل «علم» یا «چیز»)، وگرنه
    مقایسهٔ مرحله ۲ با مرحله ۵ بی‌معنا می‌شود.
@@ -140,43 +200,75 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
 ۲.۱. **واژگانِ کتابِ درسی الزامی است.** «مدارِ الکتریکی» را «مدار» بنویس، نه
    «دایره». واژهٔ «دایره» فقط برای شکلِ هندسی به کار می‌رود. در فیزیک:
    «مدار»، «جریان»، «مقاومت»، «رسانا» — همان‌طور که در کتابِ درسی آمده است.
-۳. سؤال‌های ۱ و ۳ و ۴ و ۵ هیچ‌کدام نباید "options" داشته باشند (مقدار null).
+۳. فقط سؤال‌های ۳ و ۴ (مرحلهٔ ۲) "options" دارند. سؤال‌های ۱، ۲، ۵، ۶، ۷،
+   ۸، ۹ و ۱۰ باید "options": null داشته باشند.
 ۴. برای هر سؤال فیلد "expected_logic" را پر کنید: هستهٔ استدلالی که پاسخِ
    درست باید به آن اشاره کند. این فیلد فقط برای ارزیاب استفاده می‌شود و به
    دانش‌آموز نشان داده نمی‌شود.
-۵. شماره‌گذاری order از ۱ تا ۵ و exam_type دقیقاً مطابقِ بالا.
+۵. **دقیقاً ۱۰ سؤال** با شماره‌گذاریِ پیوستهٔ order از ۱ تا ۱۰ و exam_type
+   دقیقاً مطابقِ این نگاشت:
+   ۱،۲ → philosophy | ۳،۴ → mask_mcq | ۵،۶ → perturbation |
+   ۷،۸ → debugging | ۹،۱۰ → feynman_synthesis
+۶. هر دو سؤالِ یک مرحله باید **مستقل** باشند: پاسخِ یکی نباید پاسخِ دیگری
+   را لو بدهد و نباید عیناً تکرار شود.
 
-ساختارِ خروجی:
+ساختارِ خروجی (دقیقاً ۱۰ سؤال، به همین ترتیب):
 {
   "concept_blueprint": {
     "core_mechanism": "منطقِ اصلیِ مبحث در دو خط",
-    "target_misconceptions": ["بدفهمی ۱", "بدفهمی ۲"]
+    "target_misconceptions": ["بدفهمی ۱", "بدفهمی ۲", "بدفهمی ۳"]
   },
   "questions": [
     {"order": 1, "exam_type": "philosophy", "stage_title": "مرحله ۱: فلسفه و تصویر کلان",
-     "text": "...", "difficulty": "medium", "cognitive_type": "conceptual",
+     "text": "چراییِ پیدایشِ مفهوم...", "difficulty": "medium", "cognitive_type": "conceptual",
      "options": null, "correct_option_index": null, "forbidden_words": [],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 2, "exam_type": "mask_mcq", "stage_title": "مرحله ۲: تست لایه نقاب (با اطلاعات انحرافی)",
-     "text": "...", "difficulty": "medium", "cognitive_type": "conceptual",
+    {"order": 2, "exam_type": "philosophy", "stage_title": "مرحله ۱: فلسفه و تصویر کلان",
+     "text": "تفاوتِ نگاهِ روزمره با نگاهِ علمی...", "difficulty": "medium", "cognitive_type": "conceptual",
+     "options": null, "correct_option_index": null, "forbidden_words": [],
+     "expected_logic": "...", "mapped_propositions": []},
+
+    {"order": 3, "exam_type": "mask_mcq", "stage_title": "مرحله ۲: تست لایه نقاب (با اطلاعات انحرافی)",
+     "text": "...", "difficulty": "medium", "cognitive_type": "computational",
      "options": ["گزینه ۱", "گزینه ۲", "گزینه ۳", "گزینه ۴"], "correct_option_index": 1,
      "forbidden_words": [], "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 3, "exam_type": "perturbation", "stage_title": "مرحله ۳: مونتاژ ذهنی و دستکاری سیستم",
+    {"order": 4, "exam_type": "mask_mcq", "stage_title": "مرحله ۲: تست لایه نقاب (با اطلاعات انحرافی)",
+     "text": "...", "difficulty": "medium", "cognitive_type": "computational",
+     "options": ["گزینه ۱", "گزینه ۲", "گزینه ۳", "گزینه ۴"], "correct_option_index": 2,
+     "forbidden_words": [], "expected_logic": "...", "mapped_propositions": []},
+
+    {"order": 5, "exam_type": "perturbation", "stage_title": "مرحله ۳: مونتاژ ذهنی و دستکاری سیستم",
      "text": "...", "difficulty": "hard", "cognitive_type": "conceptual",
      "options": null, "correct_option_index": null, "forbidden_words": [],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 4, "exam_type": "debugging", "stage_title": "مرحله ۴: عیب‌یابی ساعت خراب (نقد استدلال)",
+    {"order": 6, "exam_type": "perturbation", "stage_title": "مرحله ۳: مونتاژ ذهنی و دستکاری سیستم",
      "text": "...", "difficulty": "hard", "cognitive_type": "conceptual",
      "options": null, "correct_option_index": null, "forbidden_words": [],
      "expected_logic": "...", "mapped_propositions": []},
 
-    {"order": 5, "exam_type": "feynman_synthesis", "stage_title": "مرحله ۵: چالش فاینمن (توضیح با دستِ بسته!)",
-     "text": "...", "difficulty": "hard", "cognitive_type": "combined",
+    {"order": 7, "exam_type": "debugging", "stage_title": "مرحله ۴: عیب‌یابی ساعت خراب (نقد استدلال)",
+     "text": "امیر می‌گوید: «...» — سوتیِ او کجاست؟", "difficulty": "hard", "cognitive_type": "conceptual",
+     "options": null, "correct_option_index": null, "forbidden_words": [],
+     "expected_logic": "...", "mapped_propositions": []},
+
+    {"order": 8, "exam_type": "debugging", "stage_title": "مرحله ۴: عیب‌یابی ساعت خراب (نقد استدلال)",
+     "text": "سارا می‌گوید: «...» — سوتیِ او کجاست؟", "difficulty": "hard", "cognitive_type": "conceptual",
+     "options": null, "correct_option_index": null, "forbidden_words": [],
+     "expected_logic": "...", "mapped_propositions": []},
+
+    {"order": 9, "exam_type": "feynman_synthesis", "stage_title": "مرحله ۵: چالش فاینمن (توضیح با دستِ بسته!)",
+     "text": "جنبهٔ اول را برای بچهٔ ۱۰ ساله توضیح بده...", "difficulty": "hard", "cognitive_type": "combined",
      "options": null, "correct_option_index": null,
      "forbidden_words": ["کلمه ۱", "کلمه ۲", "کلمه ۳", "کلمه ۴"],
+     "expected_logic": "...", "mapped_propositions": []},
+
+    {"order": 10, "exam_type": "feynman_synthesis", "stage_title": "مرحله ۵: چالش فاینمن (توضیح با دستِ بسته!)",
+     "text": "جنبهٔ دوم را برای بچهٔ ۱۰ ساله توضیح بده...", "difficulty": "hard", "cognitive_type": "combined",
+     "options": null, "correct_option_index": null,
+     "forbidden_words": ["کلمه ۵", "کلمه ۶", "کلمه ۷", "کلمه ۸"],
      "expected_logic": "...", "mapped_propositions": []}
   ]
 }
@@ -190,20 +282,34 @@ FORBIDDEN: integrals in حسابان ۲, general equations of ellipse/hyperbola,
 #: پنج سؤالِ اضطراری — اگر مدل در سه تلاش نتوانست بسازد.
 #: عمداً برای هر مرحله یک متنِ کامل وجود دارد تا آزمونِ ناقص به دانش‌آموز نرسد.
 _FALLBACK_STAGES: tuple[dict[str, Any], ...] = (
+    # ── مرحله ۱: فلسفه و تصویر کلان (order ۱ و ۲) ──
     {
         "order": 1,
         "exam_type": "philosophy",
         "text": (
-            "بدونِ هیچ فرمول و عددی توضیح بده: چرا برای توصیفِ «{concept}» "
-            "به یک مفهومِ تازه نیاز پیدا کردیم؟ انسان‌ها پیش از این مفهوم "
-            "به چه بن‌بستی می‌خوردند؟ اگر بخواهی در یک جملهٔ ساده بگویی این "
-            "مفهوم چه کارِ واقعی‌ای در دنیا انجام می‌دهد، چه می‌گویی؟"
+            "بدونِ هیچ فرمول و عددی: پیش از آن‌که «{concept}» ساخته شود، انسان "
+            "در توصیفِ این پدیده به چه بن‌بستی می‌خورد؟ این مفهوم دقیقاً چه "
+            "مشکلی را حل کرد که پیش از آن حل‌شدنی نبود؟"
         ),
         "difficulty": "medium",
         "cognitive_type": "conceptual",
+        "expected_logic": "بیانِ بن‌بستِ پیشین و کارکردِ واقعیِ مفهوم",
     },
     {
         "order": 2,
+        "exam_type": "philosophy",
+        "text": (
+            "در زندگیِ روزمره، همهٔ ما با پدیدهٔ «{concept}» سروکار داریم و "
+            "شهودی درباره‌اش حرف می‌زنیم. نگاهِ علمی به همین پدیده چه چیزی را "
+            "عوض می‌کند که نگاهِ روزمره نمی‌بیند؟"
+        ),
+        "difficulty": "medium",
+        "cognitive_type": "conceptual",
+        "expected_logic": "تمایزِ شهودِ روزمره از نگاهِ کمّی/علّی",
+    },
+    # ── مرحله ۲: تستِ لایهٔ نقاب (order ۳ و ۴) ──
+    {
+        "order": 3,
         "exam_type": "mask_mcq",
         "text": (
             "دربارهٔ «{concept}» و رابطه‌ای که در کلاس خوانده‌ای، کدام گزاره از "
@@ -219,22 +325,56 @@ _FALLBACK_STAGES: tuple[dict[str, Any], ...] = (
             "نمی‌توان گفت؛ چون کمیت‌های صورتِ مسئله با هم در تضادند.",
         ],
         "correct_option_index": 0,
-    },
-    {
-        "order": 3,
-        "exam_type": "perturbation",
-        "text": (
-            "بدونِ هیچ عددی: فرض کن سیستمِ «{concept}» را از محیطِ همیشگی‌اش "
-            "برمی‌داریم و در محیطی با شرایط متفاوت (مثلاً گرانشِ ضعیف‌تر یا "
-            "دمای بالاتر) قرار می‌دهیم. زنجیرهٔ تغییرات را پیش‌بینی کن: اول چه "
-            "چیزی عوض می‌شود؟ بعدش چه اتفاقی می‌افتد؟ و در نهایت خروجیِ نهایی "
-            "چه تغییری می‌کند و چرا؟"
-        ),
-        "difficulty": "hard",
-        "cognitive_type": "conceptual",
+        "expected_logic": "شناساییِ متغیرِ مؤثر و کنارگذاشتنِ دادهٔ نامرتبط",
     },
     {
         "order": 4,
+        "exam_type": "mask_mcq",
+        "text": (
+            "برای سنجشِ دقتِ محاسبه در «{concept}»: اگر کمیتِ اصلیِ رابطه "
+            "دوبرابر شود، نتیجه‌اش — بر اساسِ همان رابطه‌ای که در کتاب آمده — "
+            "چه تغییری می‌کند؟"
+        ),
+        "difficulty": "medium",
+        "cognitive_type": "computational",
+        "options": [
+            "دوبرابر می‌شود.",
+            "نصف می‌شود.",
+            "تغییری نمی‌کند.",
+            "چهار برابر می‌شود.",
+        ],
+        "correct_option_index": 0,
+        "expected_logic": "کاربردِ مستقیمِ رابطه در یک تغییرِ ساده",
+    },
+    # ── مرحله ۳: مونتاژ ذهنی و دستکاریِ سیستم (order ۵ و ۶) ──
+    {
+        "order": 5,
+        "exam_type": "perturbation",
+        "text": (
+            "بدونِ هیچ عددی: فرض کن سیستمِ «{concept}» را از محیطِ همیشگی‌اش "
+            "برمی‌داریم و در محیطی با شرایط متفاوت قرار می‌دهیم. زنجیرهٔ "
+            "تغییرات را پیش‌بینی کن: اول چه چیزی عوض می‌شود؟ بعدش چه اتفاقی "
+            "می‌افتد؟ و در نهایت خروجیِ نهایی چه تغییری می‌کند و چرا؟"
+        ),
+        "difficulty": "hard",
+        "cognitive_type": "conceptual",
+        "expected_logic": "زنجیرهٔ علّیِ کامل از تغییرِ ورودی تا خروجی",
+    },
+    {
+        "order": 6,
+        "exam_type": "perturbation",
+        "text": (
+            "باز هم بدونِ عدد: اگر همان متغیرِ ورودی در «{concept}» به‌جای "
+            "بزرگ‌شدن، کوچک شود، کدام حلقهٔ میانیِ زنجیره اول واکنش نشان "
+            "می‌دهد و نتیجهٔ نهایی چه می‌شود؟ جهتِ تغییر را با دلیل بگو."
+        ),
+        "difficulty": "hard",
+        "cognitive_type": "conceptual",
+        "expected_logic": "زنجیرهٔ علّی معکوس با جهتِ درستِ تغییرات",
+    },
+    # ── مرحله ۴: عیب‌یابیِ ساعتِ خراب (order ۷ و ۸) ──
+    {
+        "order": 7,
         "exam_type": "debugging",
         "text": (
             "امیر می‌گوید: «طبقِ آنچه در کلاس خواندیم، دربارهٔ «{concept}» "
@@ -245,18 +385,47 @@ _FALLBACK_STAGES: tuple[dict[str, Any], ...] = (
         ),
         "difficulty": "hard",
         "cognitive_type": "conceptual",
+        "expected_logic": "پیدا کردنِ فرضِ نادرست در استدلالِ ظاهراً درست",
     },
     {
-        "order": 5,
+        "order": 8,
+        "exam_type": "debugging",
+        "text": (
+            "سارا برای حلِ یک مسئلهٔ «{concept}» راه‌حلی می‌نویسد که جوابِ "
+            "نهایی‌اش درست از آب درمی‌آید، اما یکی از فرض‌های میانی‌اش غلط است. "
+            "چطور می‌شود که استدلال غلط باشد ولی جواب درست شود؟ کدام فرضِ "
+            "سارا می‌لنگد و اگر شرایط عوض می‌شد، کجا جوابش می‌شکست؟"
+        ),
+        "difficulty": "hard",
+        "cognitive_type": "conceptual",
+        "expected_logic": "تفکیکِ درستیِ نتیجه از درستیِ استدلال",
+    },
+    # ── مرحله ۵: چالشِ فاینمن (order ۹ و ۱۰) ──
+    {
+        "order": 9,
         "exam_type": "feynman_synthesis",
         "text": (
-            "این پدیده را برای یک بچهٔ ۱۰ ساله توضیح بده: «{concept}» در زندگیِ "
-            "روزمره چطور اثر می‌گذارد و چرا؟ توضیحت باید طوری باشد که بچه خودش "
-            "بتواند آن را برای دوستش تعریف کند — بدونِ اینکه چیزی را حفظ کرده باشد."
+            "جنبهٔ اولِ «{concept}» را برای یک بچهٔ ۱۰ ساله توضیح بده: این "
+            "پدیده در زندگیِ روزمره چطور اثر می‌گذارد و چرا؟ توضیحت باید طوری "
+            "باشد که بچه خودش بتواند آن را برای دوستش تعریف کند."
         ),
         "difficulty": "hard",
         "cognitive_type": "combined",
         "forbidden_words": ["فرمول", "قانون", "تعریف", "اصطلاح"],
+        "expected_logic": "تمثیلِ روزمره با نگاشتِ درست به سازوکار",
+    },
+    {
+        "order": 10,
+        "exam_type": "feynman_synthesis",
+        "text": (
+            "جنبهٔ دومِ «{concept}» را — این بار از زاویهٔ «چه چیزی این پدیده "
+            "را تغییر می‌دهد» — برای همان بچهٔ ۱۰ ساله توضیح بده و بگو اگر "
+            "شرایط عوض شود چه اتفاقی می‌افتد."
+        ),
+        "difficulty": "hard",
+        "cognitive_type": "combined",
+        "forbidden_words": ["متغیر", "رابطه", "معادله", "محاسبه"],
+        "expected_logic": "توضیحِ جهتِ تغییر بدونِ واژگانِ تخصصی",
     },
 )
 
@@ -617,58 +786,79 @@ def verify_mcq_key(
 
 
 def normalize_stage_items(items: Any) -> list[dict[str, Any]]:
-    """خروجیِ خامِ مدل را به پنج مرحلهٔ قطعی تبدیل می‌کند.
+    """خروجیِ خامِ مدل را به **۱۰ سؤالِ قطعی** (دو سؤال در هر مرحله) تبدیل می‌کند.
 
     مقاوم در برابرِ انحراف‌های رایج: بی‌ترتیبی، type اشتباه، گزینهٔ کم،
-    ایندکسِ یک‌پایه، forbidden_words غایب.
+    ایندکسِ یک‌پایه، forbidden_words غایب، و — مهم‌تر از همه — مدلی که فقط
+    ۵ سؤال می‌دهد (یک سؤال در هر مرحله). در آن حالت هر سؤال در اسلاتِ اولِ
+    مرحلهٔ خودش می‌نشیند و اسلاتِ دوم با ``None`` می‌ماند تا لایهٔ بالاتر
+    جای خالی را از قالبِ اضطراری پر کند.
     """
     if isinstance(items, dict):
         items = list(items.values())
     if not isinstance(items, list):
         return []
 
-    slots: list[Optional[dict]] = [None] * len(STAGE_ORDER)
+    #: اسلات‌ها به ترتیبِ order (۰..۹). هر مرحله ``QUESTIONS_PER_STAGE`` اسلات دارد.
+    slots: list[Optional[dict]] = [None] * TOTAL_QUESTIONS
+    #: آیتم‌های بی‌نوع/بی‌ترتیب که بعداً در اسلات‌های خالی می‌نشینند.
     spare: list[dict] = []
+    #: شمارندهٔ پرشدنِ هر مرحله — برای وقتی مدل order درست نداده باشد.
+    stage_fill: dict[str, int] = {t: 0 for t in STAGE_ORDER}
 
     for position, raw in enumerate(items):
         if not isinstance(raw, dict):
             continue
         exam_type = _stringify(raw.get("exam_type") or raw.get("type")).lower()
+        if exam_type not in STAGE_ORDER:
+            # آیتمِ بی‌نوع: فقط وقتی به کار می‌آید که اسلاتِ خالی بماند.
+            spare.append(raw)
+            continue
+
         order = raw.get("order")
         try:
-            order_num = int(order) if order is not None else position + 1
+            order_num = int(order) if order is not None else 0
         except (TypeError, ValueError):
-            order_num = position + 1
+            order_num = 0
 
         slot: Optional[int] = None
-        if exam_type in STAGE_ORDER:
-            slot = STAGE_ORDER.index(exam_type)
-        elif 1 <= order_num <= len(STAGE_ORDER):
-            slot = order_num - 1
+        # ۱) اگر order صریح و در محدودهٔ همین مرحله است، همان اسلات.
+        if 1 <= order_num <= TOTAL_QUESTIONS and stage_key(order_num) == exam_type:
+            if slots[order_num - 1] is None:
+                slot = order_num - 1
+        # ۲) وگرنه اولین اسلاتِ خالیِ همین مرحله (ترتیبِ ورود حفظ می‌شود).
+        if slot is None:
+            base = STAGE_ORDER.index(exam_type) * QUESTIONS_PER_STAGE
+            for candidate in range(base, base + QUESTIONS_PER_STAGE):
+                if slots[candidate] is None:
+                    slot = candidate
+                    break
 
-        if slot is not None and slots[slot] is None:
+        if slot is not None:
             slots[slot] = raw
-        elif exam_type not in STAGE_ORDER:
-            # آیتمِ بی‌نوع یا با ترتیبِ نامعتبر: تنها جایی که می‌تواند بنشیند
-            spare.append(raw)
-        # تکرارِ یک مرحلهٔ موجود (مثلاً دو MCQ) دور ریخته می‌شود؛ نباید
-        # جای مرحلهٔ دیگری را بگیرد و برچسبِ اشتباه بخورد.
+            stage_fill[exam_type] += 1
+        # سؤالِ سومِ یک مرحله (مدل بیشتر از دو تا داده) دور ریخته می‌شود؛
+        # نباید جای مرحلهٔ دیگری را بگیرد و برچسبِ اشتباه بخورد.
 
     for slot, value in enumerate(slots):
         if value is None and spare:
             slots[slot] = spare.pop(0)
 
     normalized: list[dict[str, Any]] = []
-    for index, exam_type in enumerate(STAGE_ORDER):
-        raw = slots[index]
+    for index, raw in enumerate(slots):
         if not isinstance(raw, dict):
             continue
+        order = index + 1
+        exam_type = stage_key(order)
+        stage = stage_of_order(order)
         text = _stringify(raw.get("text") or raw.get("question_text"))
         if not text:
             continue
 
         item: dict[str, Any] = {
-            "order": index + 1,
+            "order": order,
+            "stage": stage,
+            "stage_slot": (order - 1) % QUESTIONS_PER_STAGE + 1,
             "exam_type": exam_type,
             "stage_title": _stringify(raw.get("stage_title")) or STAGE_TITLES[exam_type],
             "text": text,
@@ -707,12 +897,14 @@ def normalize_stage_items(items: Any) -> list[dict[str, Any]]:
 
 
 def fallback_stages(concept) -> list[dict[str, Any]]:
-    """پنج مرحلهٔ اضطراریِ کامل — هرگز آزمونِ ناقص به دانش‌آموز نمی‌رسد."""
+    """ده سؤالِ اضطراریِ کامل — هرگز آزمونِ ناقص به دانش‌آموز نمی‌رسد."""
     out: list[dict[str, Any]] = []
     for template in _FALLBACK_STAGES:
         item = dict(template)
         item["text"] = fill(item["text"], concept=concept.name)
         item["stage_title"] = STAGE_TITLES[item["exam_type"]]
+        item["stage"] = stage_of_order(int(item.get("order") or 0))
+        item["stage_slot"] = (int(item.get("order") or 1) - 1) % QUESTIONS_PER_STAGE + 1
         item.setdefault("options", None)
         item.setdefault("correct_option_index", None)
         item.setdefault("forbidden_words", [])
@@ -720,6 +912,24 @@ def fallback_stages(concept) -> list[dict[str, Any]]:
         item.setdefault("mapped_propositions", [])
         out.append(item)
     return out
+
+
+def fallback_item_for_order(concept, order: int) -> Optional[dict[str, Any]]:
+    """قالبِ اضطراریِ همان ترتیب — برای پر کردنِ یک اسلاتِ خالی."""
+    for template in _FALLBACK_STAGES:
+        if int(template.get("order") or 0) == int(order):
+            item = dict(template)
+            item["text"] = fill(item["text"], concept=concept.name)
+            item["stage_title"] = STAGE_TITLES[item["exam_type"]]
+            item["stage"] = stage_of_order(order)
+            item["stage_slot"] = (order - 1) % QUESTIONS_PER_STAGE + 1
+            item.setdefault("options", None)
+            item.setdefault("correct_option_index", None)
+            item.setdefault("forbidden_words", [])
+            item.setdefault("expected_logic", "")
+            item.setdefault("mapped_propositions", [])
+            return item
+    return None
 
 
 def items_to_questions(concept, items: list[dict[str, Any]], model_name: str, cost: float) -> list:
@@ -744,6 +954,10 @@ def items_to_questions(concept, items: list[dict[str, Any]], model_name: str, co
 
         rubric = {
             "exam_type": exam_type,
+            # مرحله و اسلاتِ داخلِ مرحله — برای جمع‌بندیِ دو سؤالی
+            "stage": item.get("stage") or stage_of_order(int(item.get("order") or 0)),
+            "stage_slot": item.get("stage_slot")
+            or ((int(item.get("order") or 1) - 1) % QUESTIONS_PER_STAGE + 1),
             "stage_title": item.get("stage_title") or STAGE_TITLES[exam_type],
             "options": item.get("options") if exam_type == "mask_mcq" else None,
             "correct_option_index": item.get("correct_option_index") if exam_type == "mask_mcq" else None,
@@ -773,15 +987,35 @@ def items_to_questions(concept, items: list[dict[str, Any]], model_name: str, co
 async def generate_stage_chain(
     concept, wrong_answer: dict | None = None
 ) -> tuple[list[Any], str, float]:
-    """زنجیرهٔ ۵ مرحله‌ای را تولید می‌کند.
+    """زنجیرهٔ ۱۰ سؤالی (۵ مرحله × ۲) را در **یک درخواست** تولید می‌کند.
 
-    سه تلاش با مدل‌های متفاوت؛ اگر هیچ‌کدام پنج مرحلهٔ کامل نداد،
-    زنجیرهٔ اضطراریِ قطعی برمی‌گردد. آزمونِ ناقص هرگز تحویل نمی‌شود.
+    اصولِ فاز ۱۱:
+      • **یک Request واحد** — شناسنامهٔ مفهوم و هر ده سؤال با هم خواسته
+        می‌شوند تا هزینهٔ توکن و تأخیر کم شود.
+      • **کش** بر اساسِ کلیدِ مفهومی (نام/درس/پایه + بدفهمی) — مبحثِ تکراری
+        دوباره از مدل پرسیده نمی‌شود.
+      • اگر هیچ تلاشی ده سؤالِ سالم نداد، آزمونِ **ناقص** تحویل نمی‌شود:
+        اسلات‌های خالی با قالبِ قطعیِ همان ترتیب پر می‌شوند.
     """
     propositions = [_stringify(p) for p in (getattr(concept, "core_propositions", None) or [])]
     propositions = [p for p in propositions if p]
     misconceptions = [_stringify(m) for m in (getattr(concept, "common_misconceptions", None) or [])]
     misconceptions = [m for m in misconceptions if m]
+
+    # ── کش: مبحثِ تکراری دوباره تولید نمی‌شود ──
+    cache_key = booklet_cache_key(concept, wrong_answer)
+    cached = get_cached_booklet(cache_key)
+    if cached is not None:
+        items, cached_model, cached_cost = cached
+        print(
+            f"[StageChain] cache hit for {cache_key[:12]}… "
+            f"({len(items)} questions, model={cached_model})"
+        )
+        return (
+            items_to_questions(concept, items, cached_model, 0.0),
+            cached_model,
+            0.0,  # هزینهٔ این آزمون صفر است؛ تولید قبلاً هزینه شده
+        )
 
     prompt = build_booklet_prompt(concept, propositions, misconceptions, wrong_answer)
     router = get_router()
@@ -794,52 +1028,83 @@ async def generate_stage_chain(
             resp = await router.generate(prompt, "generate_test_booklet", temperature=0.7)
             model_name, cost = resp.model_name, resp.total_cost_usd
             data = extract_json_object(resp.text)
-            items = normalize_stage_items((data or {}).get("questions") if isinstance(data, dict) else None)
-            # مرحله‌ای که ایرادِ کشنده دارد (مثلاً MCQ با سه گزینه) حذف می‌شود تا
-            # جای خالی‌اش با قالبِ قطعی پر شود؛ سؤالِ بی‌کیفیت تحویل نمی‌شود.
+            items = normalize_stage_items(
+                (data or {}).get("questions") if isinstance(data, dict) else None
+            )
+            # سؤالی که ایرادِ کشنده دارد (مثلاً MCQ با سه گزینه) حذف می‌شود تا
+            # جایش با قالبِ قطعیِ همان ترتیب پر شود؛ سؤالِ بی‌کیفیت تحویل نمی‌شود.
             kept: list[dict[str, Any]] = []
             for candidate in items:
                 issues = question_quality_issues(candidate, concept.name)
                 fatal = [i for i in issues if i in FATAL_QUALITY_ISSUES]
                 if fatal:
                     print(
-                        f"[StageChain] stage {candidate.get('order')} rejected: {fatal}"
+                        f"[StageChain] Q{candidate.get('order')} rejected: {fatal}"
                     )
                     continue
                 if issues:
-                    # ایرادهای غیرِکشنده (مثلِ چندپرسشی بودنِ مرحله ۱) ثبت می‌شود
-                    # ولی سؤال حذف نمی‌شود — تولیدِ مجدد ممکن است بدتر باشد.
                     print(
-                        f"[StageChain] stage {candidate.get('order')} quality notes: {issues}"
+                        f"[StageChain] Q{candidate.get('order')} quality notes: {issues}"
                     )
                 kept.append(candidate)
             items = kept
-            if len(items) >= 4 and any(i["exam_type"] == "mask_mcq" and i["options"] for i in items):
+            # معیارِ پذیرش: هر پنج مرحله دست‌کم یک سؤالِ سالم داشته باشند و
+            # هر دو MCQ موجود باشند. ده سؤالِ کامل بهتر است ولی هفت/هشت سؤالِ
+            # سالم هم بهتر از دور ریختنِ کلِ خروجی و برگشت به قالب است.
+            covered = {stage_of_order(int(i.get("order") or 0)) for i in items}
+            mcq_count = sum(
+                1 for i in items if i["exam_type"] == "mask_mcq" and i["options"]
+            )
+            if len(covered) >= len(STAGE_ORDER) and mcq_count >= 1:
                 if len(items) > len(best_items):
                     best_items = items
-                if len(items) == 5:
+                if len(items) == TOTAL_QUESTIONS:
                     break
             print(
-                f"[StageChain] attempt {attempt + 1}/3 gave {len(items)} usable stages "
+                f"[StageChain] attempt {attempt + 1}/3 gave {len(items)} usable "
+                f"questions across {len(covered)}/{len(STAGE_ORDER)} stages "
                 f"(model={resp.model_name})"
             )
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             print(f"[StageChain] attempt {attempt + 1}/3 failed: {message[:200]}")
-            # ۴۲۹ یعنی سرویس‌دهنده سیر است. تلاشِ بعدی فقط کاربر را معطل می‌کند
-            # و هیچ‌وقت به سؤال نمی‌رسد. همان جا قطع کن و زنجیره را بده.
+            # ۴۲۹ یعنی سرویس‌دهنده سیر است. تلاشِ بعدی فقط کاربر را معطل می‌کند.
             # توجه: این «بازگشت به قالبِ قطعی» است، نه سوییچ به مدلِ دیگر.
             if "429" in message or "rate-limited" in message:
                 print("[StageChain] upstream rate limit — deterministic chain instead of retrying")
                 break
 
-    if len(best_items) < 5:
-        # هر مرحلهٔ موجود را نگه دار، جای خالی را با قالبِ اضطراری پر کن
-        fallback = fallback_stages(concept)
-        by_type = {i["exam_type"]: i for i in best_items}
-        merged = [by_type.get(t) or fallback[STAGE_ORDER.index(t)] for t in STAGE_ORDER]
-        print("[StageChain] completed missing stages from the deterministic template bank")
-        best_items = merged
+    # ── پر کردنِ اسلات‌های خالی با قالبِ قطعیِ همان ترتیب ──
+    by_order = {int(i.get("order") or 0): i for i in best_items}
+    merged: list[dict[str, Any]] = []
+    filled = 0
+    for order in range(1, TOTAL_QUESTIONS + 1):
+        existing = by_order.get(order)
+        if existing is not None:
+            merged.append(existing)
+            continue
+        template = fallback_item_for_order(concept, order)
+        if template is not None:
+            merged.append(template)
+            filled += 1
+    if filled:
+        print(
+            f"[StageChain] {filled} question(s) filled from the deterministic "
+            "template bank (no partial exam is delivered)"
+        )
         model_name = model_name or "template-fallback"
 
-    return items_to_questions(concept, best_items, model_name or "mixed", cost), model_name or "mixed", cost
+    best_items = merged
+    if not model_name:
+        model_name = "template-fallback"
+
+    # کش فقط برای خروجیِ قابلِ‌اتکا (نه وقتی همه‌چیز از قالب آمده) تا قالبِ
+    # اضطراری به‌عنوان «تولیدِ موفق» برای آزمون‌های بعدی تکرار نشود.
+    if any(int(i.get("order") or 0) and i.get("expected_logic") for i in best_items):
+        put_cached_booklet(cache_key, best_items, model_name, cost)
+
+    return (
+        items_to_questions(concept, best_items, model_name, cost),
+        model_name,
+        cost,
+    )

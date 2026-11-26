@@ -106,17 +106,55 @@ def dimension_status(stage_status: Any) -> str:
     return _STATUS_MAP.get(str(stage_status or "").upper().strip(), "not_assessed")
 
 
+def _aggregate_statuses(statuses: list[str]) -> str:
+    """تجمیعِ وضعیتِ دو سؤالِ یک مرحله — بدترین حالتِ غیرِتهی.
+
+    منطقِ کامل در ``ai.cross_check.aggregate_stage_status`` است؛ این نسخهٔ
+    سبک برای گزارش است تا ماژولِ گزارش به موتورِ داوری وابسته نشود.
+    """
+    clean = [str(s or "").upper().strip() for s in statuses if s]
+    if not clean:
+        return "INSUFFICIENT_EVIDENCE"
+    if len(set(clean)) == 1:
+        return clean[0]
+    present = set(clean)
+    if "CORRECT" in present:
+        return "HALF_CORRECT"
+    if "WRONG" in present:
+        return "HALF_CORRECT" if "INSUFFICIENT_EVIDENCE" in present else "WRONG"
+    if "HALF_CORRECT" in present:
+        return "HALF_CORRECT"
+    return "INSUFFICIENT_EVIDENCE"
+
+
 def build_stage_dimensions(per_question: list[dict[str, Any]]) -> list[dict[str, str]]:
     """پنج بُعدِ استاندارد را از شواهدِ پنج مرحله می‌سازد.
 
-    خروجی همیشه دقیقاً پنج عضو دارد و کلیدهایش ثابت‌اند؛ فرانت‌اند با همین
-    قرارداد رندر می‌کند و هیچ‌گاه به «نامشخص»ِ بی‌داده نمی‌رسد.
+    با ساختارِ ده‌سؤالی (فاز ۱۱) دو سؤالِ هر مرحله **تجمیع** می‌شوند تا هر
+    بُعد همچنان یک وضعیتِ واحد داشته باشد. خروجی همیشه دقیقاً پنج عضو دارد و
+    کلیدهایش ثابت‌اند؛ فرانت‌اند با همین قرارداد رندر می‌کند و هیچ‌گاه به
+    «نامشخص»ِ بی‌داده نمی‌رسد.
     """
-    by_order = {int(r.get("order") or 0): r for r in per_question or []}
+    # گروه‌بندی بر اساسِ شمارهٔ مرحله (نه ترتیبِ سؤال)
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for record in per_question or []:
+        order = int(record.get("order") or 0)
+        stage = int(record.get("stage") or 0) or (
+            (order - 1) // 2 + 1 if order >= 1 else 0
+        )
+        if stage <= 0:
+            continue
+        grouped.setdefault(stage, []).append(record)
+
     out: list[dict[str, str]] = []
     for order, key, label in STAGE_DIMENSIONS:
-        record = by_order.get(order) or {}
-        status = dimension_status(record.get("status"))
+        records = grouped.get(order) or []
+        record = records[0] if records else {}
+        if len(records) > 1:
+            merged = _aggregate_statuses([str(r.get("status") or "") for r in records])
+        else:
+            merged = str(record.get("status") or "")
+        status = dimension_status(merged)
         out.append(
             {
                 "key": key,
@@ -127,6 +165,7 @@ def build_stage_dimensions(per_question: list[dict[str, Any]]) -> list[dict[str,
                 "status_fa": DIMENSION_STATUS_FA[status],
                 "finding": _FINDINGS[(key, status)],
                 "has_evidence": status != "not_assessed",
+                "question_count": len(records),
             }
         )
     return out

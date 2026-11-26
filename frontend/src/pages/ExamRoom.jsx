@@ -139,6 +139,22 @@ const renderQuestionText = (text) => {
 }
 
 // کلیدِ جداگانه برای انتخابِ گزینه — تا با متنِ پاسخ قاطی نشود
+// پنج مرحله — هر مرحله دو سؤال دارد (۱۰ سؤال در کل)
+const STAGE_NAMES = [
+  'فلسفه و تصویر کلان',
+  'تستِ لایهٔ نقاب',
+  'مونتاژ ذهنی و دستکاری',
+  'عیب‌یابیِ ساعتِ خراب',
+  'چالشِ فاینمن',
+]
+
+// شمارهٔ مرحله از روی ترتیبِ سؤال: ۱،۲→۱ … ۹،۱۰→۵
+const stageOfQuestion = (q, index) => {
+  const explicit = Number(q?.stage)
+  if (Number.isInteger(explicit) && explicit >= 1 && explicit <= 5) return explicit
+  return Math.min(5, Math.floor(index / 2) + 1)
+}
+
 const selectionsKey = (sid) => `fahmyar_selections_${sid}`
 
 export default function ExamRoom() {
@@ -313,6 +329,17 @@ export default function ExamRoom() {
       )
       localStorage.removeItem(answersKey(sessionId))
       localStorage.removeItem(selectionsKey(sessionId))
+      const interrogation = data?.interrogation ?? data?.clarification
+      if (data?.needs_interrogation || data?.needs_clarification) {
+        if (interrogation?.mirror_prompt) {
+          setClarification({
+            ...interrogation,
+            question: interrogation?.question ?? 'کدام یکی را واقعاً باور داری؟',
+          })
+          setSubmitting(false)
+          return
+        }
+      }
       if (data?.needs_clarification && data?.clarification?.mirror_prompt) {
         // موتور تشخیص داد دو پاسخ در تضادند: پیش از هر حکمی، آینه را نشان بده.
         setClarification(data.clarification)
@@ -413,7 +440,8 @@ export default function ExamRoom() {
               key={q.id}
               onClick={() => setIndex(i)}
               aria-current={currentStep ? 'step' : undefined}
-              aria-label={`سؤال ${toFarsiNumber(i + 1)}${done ? ' — پاسخ داده شده' : ''}`}
+              aria-label={`سؤال ${toFarsiNumber(i + 1)} از ${toFarsiNumber(total)} — مرحلهٔ ${toFarsiNumber(stageOfQuestion(q, i))}: ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}${done ? ' — پاسخ داده شده' : ''}`}
+              title={`مرحلهٔ ${toFarsiNumber(stageOfQuestion(q, i))}: ${STAGE_NAMES[stageOfQuestion(q, i) - 1]}`}
               className={[
                 'flex h-10 w-10 items-center justify-center rounded-2xl text-[12px] font-black tabular-nums transition',
                 currentStep
@@ -432,7 +460,13 @@ export default function ExamRoom() {
       {/* ── کارت سؤال ── */}
       <div className="card border-brand-100/80 p-6 sm:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-100/70 pb-4">
-          <p className="text-[13px] font-black text-brand-700">سؤال {toFarsiNumber(index + 1)} از {toFarsiNumber(total)}</p>
+          <p className="text-[13px] font-black text-brand-700">
+            سؤال {toFarsiNumber(index + 1)} از {toFarsiNumber(total)}
+            <span className="mr-2 text-[11px] font-bold text-slate-500">
+              · مرحلهٔ {toFarsiNumber(stageOfQuestion(current, index))}:{' '}
+              {STAGE_NAMES[stageOfQuestion(current, index) - 1]}
+            </span>
+          </p>
           {current.stage_title && (
             <span className="rounded-full bg-brand-50 px-3 py-1 text-[11px] font-black text-brand-800 ring-1 ring-brand-200">
               {current.stage_title}
@@ -622,8 +656,11 @@ export default function ExamRoom() {
               </span>
             </div>
             <h2 className="mt-3 text-[16px] font-black text-brand-950">
-              یک لحظه — دو حرفت با هم نمی‌خوانند
+              یک سؤال تکمیلی برای رفع ابهام
             </h2>
+            <p className="mt-1 text-[11px] font-bold text-slate-500">
+              این سؤالِ اختیاری (سؤال ۱۱) فقط برای روشن‌شدن تناقضِ میان گفته‌هایت است.
+            </p>
             <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] font-bold leading-8 text-amber-950">
               {clarification.mirror_prompt}
             </div>
@@ -634,7 +671,7 @@ export default function ExamRoom() {
                 </p>
               )}
             <label htmlFor="clarify" className="label mt-4">
-              خودت روشن کن — کدام یکی را واقعاً باور داری؟
+              {clarification.question || 'خودت روشن کن — کدام یکی را واقعاً باور داری؟'}
             </label>
             <textarea
               id="clarify"

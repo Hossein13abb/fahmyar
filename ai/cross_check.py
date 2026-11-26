@@ -25,6 +25,13 @@ from typing import Any, Optional
 
 from ai.json_sanitize import extract_json_object
 from ai.model_abstraction import get_router
+from ai.stage_chain import (
+    QUESTIONS_PER_STAGE,
+    STAGE_TITLES_FA,
+    TOTAL_QUESTIONS,
+    stage_key,
+    stage_of_order,
+)
 from ai.prompt_safe import fill
 
 # ---------------------------------------------------------------------------
@@ -34,12 +41,17 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
 وظیفهٔ شما تصحیحِ تک‌به‌تکِ سؤالات مثل یک معلمِ سنتی نیست.
 وظیفهٔ شما **مقایسهٔ پاسخ‌های دانش‌آموز با یکدیگر (Cross-Checking)** و کشفِ تناقض‌های پنهان در ذهنِ اوست.
 
-این آزمون یک «زنجیرهٔ ۵ مرحله‌ای» است، نه پنج سؤالِ مستقل:
-  مرحله ۱ (philosophy):       فلسفه و مکانیزمِ ریشه‌ای، بدونِ فرمول
-  مرحله ۲ (mask_mcq):         تستِ استاندارد — «لایهٔ نقاب»
-  مرحله ۳ (perturbation):     دستکاریِ سیستم، بدونِ عدد
-  مرحله ۴ (debugging):        نقدِ یک استدلالِ غلطِ ظاهراً علمی — شاه‌کلید
-  مرحله ۵ (feynman_synthesis): توضیح برای بچهٔ ۱۰ ساله، با کلماتِ ممنوعه
+این آزمون یک «زنجیرهٔ ۵ مرحله‌ای با **۱۰ سؤال**» است — هر مرحله دو سؤال
+دارد و سؤال‌ها مستقل نیستند:
+  مرحله ۱ (philosophy، سؤال ۱ و ۲):       فلسفهٔ وجودی و تصویرِ کلان
+  مرحله ۲ (mask_mcq، سؤال ۳ و ۴):         دو تستِ استاندارد با دادهٔ انحرافی
+  مرحله ۳ (perturbation، سؤال ۵ و ۶):     مونتاژِ ذهنی و دستکاریِ سیستم
+  مرحله ۴ (debugging، سؤال ۷ و ۸):        نقدِ دو استدلالِ غلط — شاه‌کلید
+  مرحله ۵ (feynman_synthesis، سؤال ۹ و ۱۰): توضیحِ ساده با کلماتِ ممنوعهٔ جدا
+
+⚠️ **داوری در سطحِ سؤال، جمع‌بندی در سطحِ مرحله.** برای **هر ده سؤال** جداگانه
+در ``per_question`` رکورد بده (order از ۱ تا ۱۰). کد خودش دو سؤالِ هر مرحله را
+تلفیق می‌کند؛ تو فقط صادقانه وضعیتِ هر سؤال را بگو.
 
 ══════ قواعدِ قضاوت ══════
 
@@ -307,75 +319,89 @@ def collect_signals(
     concept_name: str = "",
     selected_indices: dict[int, int] | None = None,
 ) -> dict[str, Any]:
-    """سیگنال‌های ساختاری که بدونِ مدل هم قابلِ محاسبه‌اند."""
+    """سیگنال‌های ساختاری که بدونِ مدل هم قابلِ محاسبه‌اند — نسخهٔ ۱۰ سؤالی."""
     by_order = {int(q.get("order") or 0): q for q in question_rows}
-    q2 = by_order.get(2) or {}
-    options = q2.get("options") or []
+    chosen_map = selected_indices or {}
+
+    # ── مرحلهٔ ۲ (سؤال‌های تستی): هر کدام جداگانه و سپس تجمیع ──
+    mcq_orders = sorted(o for o, r in by_order.items() if (r.get("options") or []))
+    mcq_results: dict[int, Optional[bool]] = {}
+    for order in mcq_orders:
+        row = by_order[order]
+        options = row.get("options") or []
+        picked = _chosen_option(answers.get(order, ""), options, chosen_map.get(order))
+        correct = row.get("correct_option_index")
+        mcq_results[order] = (
+            None if (picked is None or correct is None)
+            else int(picked) == int(correct)
+        )
+    mcq_answered = {o: v for o, v in mcq_results.items() if v is not None}
+    # «mcq_correct» = هر دو تست درست (شرطِ لازمِ قانونِ توهمِ دانایی)
+    mcq_correct = bool(mcq_answered) and all(mcq_answered.values())
+    mcq_any_correct = any(v for v in mcq_answered.values())
+
+    first_mcq = mcq_orders[0] if mcq_orders else 0
+    q2_row = by_order.get(first_mcq) or {}
     chosen = _chosen_option(
-        answers.get(2, ""), options, (selected_indices or {}).get(2)
-    )
-    correct = q2.get("correct_option_index")
-    mcq_correct = (
-        chosen is not None and correct is not None and int(chosen) == int(correct)
+        answers.get(first_mcq, ""), q2_row.get("options") or [], chosen_map.get(first_mcq)
     )
 
-    q5 = by_order.get(5) or {}
-    forbidden = list(q5.get("forbidden_words") or [])
-    hits = find_forbidden_hits(answers.get(5, ""), forbidden)
+    # ── کلماتِ ممنوعه: فقط در پاسخِ **همان سؤالی** که آن کلمه را ممنوع کرده ──
+    # قاعدهٔ قبلی همهٔ واژه‌ها را در همهٔ پاسخ‌ها می‌گشت؛ با ۱۰ سؤال این یعنی
+    # کلمه‌هایی که در سؤالِ ۲ آمده و ممنوع نیست، در پاسخِ سؤالِ ۹ «تخلف»
+    # شمرده می‌شد. حالا هر فهرست به سؤالِ خودش گره خورده است.
+    forbidden: list[str] = []
+    hits: list[str] = []
+    for order, row in sorted(by_order.items()):
+        words = [w for w in (row.get("forbidden_words") or []) if w]
+        if not words:
+            continue
+        for word in words:
+            if word not in forbidden:
+                forbidden.append(word)
+        for hit in find_forbidden_hits(answers.get(order, "") or "", words):
+            if hit not in hits:
+                hits.append(hit)
 
-    # توجه: «طولِ پاسخ» هیچ‌جا شاهدِ درستی نیست و در این ماژول هیچ سیگنالی
-    # از تعدادِ کلمات ساخته نمی‌شود. `substantive`، `any_substantive` و
-    # `debugging_strong` کاملاً حذف شده‌اند؛ تسلط فقط از برچسبِ ساختاریافتهٔ
-    # مرحله‌ها می‌آید (``compute_debugging_strength``).
-
-    # سیگنالِ «بی‌ربط»: پاسخِ مفصل که هیچ واژهٔ کلیدیِ مفهوم را در خود ندارد.
-    # مدل‌ها در پاسخِ off-topic استدلالِ قویِ بی‌ربط می‌بینند و «SYNERGY» می‌دهند؛
-    # این سیگنال جلوی حکمِ «مسلط» را می‌گیرد.
+    # ── سیگنالِ «بی‌ربط»: پاسخِ مفصل که هیچ واژهٔ کلیدیِ مفهوم را ندارد ──
     key_terms: list[str] = []
-    concept_tokens = [
-        t for t in _normalize(concept_name).split() if len(t) > 3
-    ]
-    key_terms.extend(concept_tokens)
+    key_terms.extend(t for t in _normalize(concept_name).split() if len(t) > 3)
     for row in question_rows:
         for proposition in row.get("mapped_propositions") or []:
             key_terms.extend(t for t in _normalize(str(proposition)).split() if len(t) > 4)
         expected = _normalize(str(row.get("expected_logic") or ""))
         key_terms.extend(t for t in expected.split() if len(t) > 4)
-    unique_terms = list(dict.fromkeys(key_terms))[:40]
+    unique_terms = list(dict.fromkeys(key_terms))[:60]
 
+    discursive = sorted(o for o in by_order if not (by_order[o].get("options") or []))
     off_topic_orders: list[int] = []
-    for order in (1, 3, 4, 5):
+    for order in discursive:
         text = _normalize(answers.get(order, ""))
-        if _word_count(text) < 15:
+        if _word_count(text) < 12:
             continue
         if unique_terms and not any(term in text for term in unique_terms):
             off_topic_orders.append(order)
-    detailed = [o for o in (1, 3, 4, 5) if _word_count(answers.get(o, "")) >= 15]
-    mostly_off_topic = bool(detailed) and len(off_topic_orders) >= max(1, len(detailed) - 1)
+    detailed = [o for o in discursive if _word_count(answers.get(o, "")) >= 12]
+    mostly_off_topic = bool(detailed) and len(off_topic_orders) >= max(
+        1, (len(detailed) * 2 + 2) // 3
+    )
+
+    answered_orders = {o for o in answers if _normalize(answers.get(o, ""))} | set(mcq_answered)
 
     return {
         "chosen_option": chosen,
-        "correct_option": correct,
+        "correct_option": q2_row.get("correct_option_index"),
         "mcq_correct": mcq_correct,
+        "mcq_any_correct": mcq_any_correct,
+        "mcq_results": {str(k): v for k, v in sorted(mcq_results.items())},
         "forbidden_words": forbidden,
         "forbidden_hits": hits,
         "jargon_violated": bool(hits),
-        # پاسخِ مرتبط و غیرِبی‌ربط برای مرحله‌های ۳ و ۴ — لازم ولی ناکافی.
-        # این فقط «شرطِ لازم» است؛ درستیِ محتوایی جداگانه سنجیده می‌شود.
-        "relevant_semantic_answers": (
-            3 not in off_topic_orders and 4 not in off_topic_orders
-        ),
+        "relevant_semantic_answers": bool(discursive) and len(off_topic_orders) < len(discursive),
         "off_topic_orders": off_topic_orders,
         "mostly_off_topic": mostly_off_topic,
-        # «پاسخ داده شده» یعنی متن یا انتخابِ گزینه — نه فقط متن. MCQ پاسخش
-        # در selected_option_index است و متن ندارد؛ نسخهٔ قبلی آن را نادیده
-        # می‌گرفت و مرحلهٔ ۲ را «بی‌پاسخ» می‌دید.
-        "answered_orders": sorted(
-            {
-                o for o in answers if _normalize(answers.get(o, ""))
-            }
-            | ({2} if chosen is not None else set())
-        ),
+        "answered_orders": sorted(answered_orders),
+        "total_questions": len(by_order),
     }
 
 
@@ -537,13 +563,104 @@ def compute_debugging_strength(
     بی‌ربط، یا پاسخی که فقط دلالتِ حاصل‌ضرب را تکرار می‌کند و «چرا» را
     توضیح نمی‌دهد، از این دروازه رد نمی‌شود.
     """
-    by_order = {int(r.get("order") or 0): r for r in per_question}
+    stages = (
+        collapse_to_stages(per_question)
+        if len(per_question or []) > 5
+        else list(per_question or [])
+    )
+    by_order = {int(r.get("order") or 0): r for r in stages}
     q3 = canonical_stage_status(by_order.get(3, {}).get("status"))
     q4 = canonical_stage_status(by_order.get(4, {}).get("status"))
     # مرحلهٔ ۴ باید «درست» باشد، نه فقط نیمه‌درست: نیمه‌درست یعنی دقیقاً
     # هستهٔ نقد را نگفته است — و همان هسته، دلیلِ وجودِ مرحله ۴ است.
     sem_ok = q3 == STAGE_STATUS_CORRECT and q4 == STAGE_STATUS_CORRECT
     return bool(sem_ok and signals.get("relevant_semantic_answers", True))
+
+
+def aggregate_stage_status(statuses: list[str]) -> str:
+    """برچسبِ یک **مرحله** از دو سؤالِ آن.
+
+    قاعده: بدترین حالت حاکم است، با یک استثنا — اگر یکی از دو سؤال بی‌پاسخ
+    باشد و دیگری درست، مرحله «نیمه‌درست» است نه «بی‌پاسخ»؛ نصفِ شاهد داشتن
+    یعنی «نیمه‌راه»، نه «هیچ شاهد». و اگر یک سؤال درست و یکی غلط باشد، مرحله
+    قابلِ‌اعتماد نیست و «نیمه‌درست» می‌شود.
+    """
+    clean = [canonical_stage_status(x) for x in statuses if x]
+    if not clean:
+        return STAGE_STATUS_INSUFFICIENT
+    if len(set(clean)) == 1:
+        return clean[0]
+    present = set(clean)
+    if STAGE_STATUS_CORRECT in present:
+        # هر ترکیبی با یک سؤالِ درست: حداکثر نیمه‌درست
+        return STAGE_STATUS_HALF
+    if STAGE_STATUS_WRONG in present:
+        # غلط + بی‌پاسخ ⇒ نیمه‌درست؛ غلط + نیمه‌درست ⇒ غلط
+        return (
+            STAGE_STATUS_HALF
+            if STAGE_STATUS_INSUFFICIENT in present
+            else STAGE_STATUS_WRONG
+        )
+    if STAGE_STATUS_HALF in present:
+        return STAGE_STATUS_HALF
+    return STAGE_STATUS_INSUFFICIENT
+
+
+def collapse_to_stages(
+    per_question: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """ده رکوردِ سؤال را به پنج رکوردِ **مرحله** جمع می‌کند.
+
+    منطقِ حکم همیشه مرحله‌محور بوده؛ این تابع همان ورودی را از ساختارِ
+    ده‌سؤالی می‌سازد. هر رکوردِ مرحله بهترین شاهد و بدترین ادعای سؤال‌های
+    خودش را نگه می‌دارد و ``order`` آن شمارهٔ مرحله است (۱..۵).
+    """
+    by_stage: dict[int, list[dict[str, Any]]] = {}
+    for record in per_question or []:
+        order = int(record.get("order") or 0)
+        stage = int(record.get("stage") or stage_of_order(order))
+        if stage <= 0:
+            continue
+        by_stage.setdefault(stage, []).append(record)
+
+    collapsed: list[dict[str, Any]] = []
+    for stage in sorted(by_stage):
+        records = sorted(by_stage[stage], key=lambda r: int(r.get("order") or 0))
+        status = aggregate_stage_status([str(r.get("status") or "") for r in records])
+        verdicts = [
+            str(r.get("cognitive_verdict")).strip()
+            for r in records
+            if str(r.get("cognitive_verdict") or "").strip()
+        ]
+        collapsed.append(
+            {
+                "order": stage,
+                "stage": stage,
+                "orders": [int(r.get("order") or 0) for r in records],
+                "stage_title": STAGE_TITLES_FA.get(stage)
+                or (records[0].get("stage_title") or ""),
+                "status": status,
+                "evidence_quote": next(
+                    (str(r.get("evidence_quote")).strip()
+                     for r in records if r.get("evidence_quote")), None
+                ),
+                "wrong_claim": next(
+                    (str(r.get("wrong_claim")).strip()
+                     for r in records if r.get("wrong_claim")), None
+                ),
+                "expected_logic_missed": next(
+                    (str(r.get("expected_logic_missed")).strip()
+                     for r in records if r.get("expected_logic_missed")), None
+                ),
+                "cognitive_verdict": " / ".join(verdicts),
+                "qualitative_feedback": " / ".join(verdicts),
+                "missing_gear": next(
+                    (r.get("missing_gear") for r in records if r.get("missing_gear")), None
+                ),
+                "question_count": len(records),
+            }
+        )
+    return collapsed
 
 
 def derive_status(
@@ -558,11 +675,15 @@ def derive_status(
     برمی‌گرداند ``(status, note)``؛ ``note`` فقط وقتی پر می‌شود که حکمِ مدل
     با شواهد نخوانده باشد.
     """
-    by_order = {int(r.get("order") or 0): r for r in per_question}
+    # ورودی ممکن است ۱۰ رکوردِ سؤال باشد (فاز ۱۱) یا ۵ رکوردِ مرحله
+    # (آزمون‌های قدیمی). در حالتِ اول، دو سؤالِ هر مرحله تجمیع می‌شوند.
+    stages = collapse_to_stages(per_question) if len(per_question or []) > 5 else list(per_question or [])
+    by_order = {int(r.get("order") or 0): r for r in stages}
+    q1 = canonical_stage_status(by_order.get(1, {}).get("status"))
+    q2 = canonical_stage_status(by_order.get(2, {}).get("status"))
     q3 = canonical_stage_status(by_order.get(3, {}).get("status"))
     q4 = canonical_stage_status(by_order.get(4, {}).get("status"))
     q5 = canonical_stage_status(by_order.get(5, {}).get("status"))
-    q1 = canonical_stage_status(by_order.get(1, {}).get("status"))
 
     jargon = bool(signals.get("jargon_violated"))
     off_topic = bool(signals.get("mostly_off_topic"))
@@ -580,20 +701,41 @@ def derive_status(
             "واژه‌ها هم بتوانی بگویی."
         )
 
-    core_ok = q3 == STAGE_STATUS_CORRECT and q4 == STAGE_STATUS_CORRECT
+    # کالیبراسیونِ فاز ۱۱: «مسلط / فهمِ عمیق» = مرحلهٔ ۳ (زنجیرهٔ علّی) و
+    # مرحلهٔ ۴ (عیب‌یابی) و مرحلهٔ ۵ (توضیحِ ساده) هر سه درست باشند.
+    core_ok = (
+        q3 == STAGE_STATUS_CORRECT
+        and q4 == STAGE_STATUS_CORRECT
+        and q5 == STAGE_STATUS_CORRECT
+    )
 
-    # ۲) هستهٔ زنجیره درست است ⇒ مسلط. ضعفِ Q1/Q5 مانع نمی‌شود.
+    # ۲) هستهٔ زنجیره درست است ⇒ مسلط. ضعفِ Q1/Q2 مانع نمی‌شود (مرحلهٔ ۲
+    #    تست است و خطای محاسباتی، فهمِ عمیق را باطل نمی‌کند).
     if core_ok:
         return "MASTERED", None
 
     # ۳) «توهمِ دانایی» یعنی: تست را **درست** زده، اما در مرحلهٔ شهودی/تحلیلی
     #    (۳ یا ۴ یا ۵) لغزیده. اگر خودِ تست غلط باشد، مهارتِ فرمولی هم نیست؛
     #    آن‌جا حکمِ PARTIAL_FRAGMENTED صادق‌تر است.
-    intuitive = [q3, q4, q5]
-    intuition_flawed = any(
-        st in (STAGE_STATUS_HALF, STAGE_STATUS_WRONG) for st in intuitive
-    )
-    if signals.get("mcq_correct") and intuition_flawed:
+    # «فرمول‌محور ولی فهمیده»: اگر فقط مرحلهٔ ۵ (بیان) لنگ زده و مرحلهٔ ۳
+    # درست است، این توهمِ دانایی نیست — PARTIAL_FRAGMENTED با لحنِ محترمانه.
+    if (
+        q3 == STAGE_STATUS_CORRECT
+        and q4 in (STAGE_STATUS_CORRECT, STAGE_STATUS_HALF)
+        and q5 in (STAGE_STATUS_HALF, STAGE_STATUS_WRONG)
+    ):
+        return "PARTIAL_FRAGMENTED", (
+            "مفهوم را می‌دانی و زنجیرهٔ علّی را درست چیدی؛ چیزی که کم است، "
+            "بیرون آمدن از پشتِ فرمول و توضیحِ ساده با زبانِ خودت است."
+        )
+
+    # «توهمِ دانایی» سخت‌گیرانه: تست‌ها را درست زده، اما در مرحلهٔ ۳ یا ۴
+    # استدلالِ غلط/ضدعلمی داده. ضعفِ صرفِ بیان (مرحلهٔ ۵) کافی نیست.
+    if (
+        signals.get("mcq_correct")
+        and q3 in (STAGE_STATUS_HALF, STAGE_STATUS_WRONG)
+        and q4 in (STAGE_STATUS_HALF, STAGE_STATUS_WRONG)
+    ):
         if q4 in (STAGE_STATUS_HALF, STAGE_STATUS_WRONG):
             note = (
                 "رابطه را در تست درست به کار بردی، اما در نقدِ استدلال به همان "
@@ -666,7 +808,13 @@ def _summary_from_stages(
     همان چند مرحله را نام می‌برد. نسخهٔ قبلی این جمله را بی‌قید می‌نوشت و
     کارنامه‌ای می‌ساخت که با کارت‌هایش نمی‌خواند.
     """
-    by_order = {int(r.get("order") or 0): r for r in per_question}
+    # ورودی می‌تواند ۱۰ رکوردِ سؤال باشد؛ برای خلاصه فقط پنج مرحله لازم است.
+    stages = (
+        collapse_to_stages(per_question)
+        if len(per_question or []) > 5
+        else list(per_question or [])
+    )
+    by_order = {int(r.get("order") or 0): r for r in stages}
     states = {
         order: canonical_stage_status(by_order.get(order, {}).get("status"))
         for order in range(1, 6)
@@ -741,14 +889,19 @@ def _verdict_culprit(per_question: list[dict[str, Any]]) -> Optional[dict[str, A
     Q4 (عیب‌یابی) مهم‌ترین است، بعد Q3 (زنجیرهٔ علّی)، بعد Q1. اگر هیچ‌کدام
     مشکل نداشتند، رفتارِ قبلی (ضعیف‌ترین مرحله) حفظ می‌شود.
     """
-    by_order = {int(r.get("order") or 0): r for r in per_question}
-    for order in (4, 3, 1, 5):
+    stages = (
+        collapse_to_stages(per_question)
+        if len(per_question or []) > 5
+        else list(per_question or [])
+    )
+    by_order = {int(r.get("order") or 0): r for r in stages}
+    for order in (4, 3, 5, 1):
         record = by_order.get(order)
         if not record:
             continue
         if canonical_stage_status(record.get("status")) != STAGE_STATUS_CORRECT:
             return record
-    return _weakest_link(per_question)
+    return _weakest_link(stages)
 
 
 def _weakest_link(per_question: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -863,11 +1016,17 @@ def _ensure_jargon_finding(findings: list[dict[str, str]], hits: list[str]) -> l
 
 _STATUS_PERSONA = {
     "MASTERED": "مهندسی که ساعت را بست",
-    "ILLUSION_OF_COMPETENCE": "شکارشده در تلهٔ فرمول و شهود",
-    "JARGON_DEPENDENT": "زندانیِ اصطلاحاتِ کتاب",
+    # عنوانِ «تلهٔ فرمول و شهود» فقط وقتی مجاز است که تناقضی واقعاً ثبت شده
+    # باشد. اگر باکسِ «شکارِ تناقض» بگوید «تناقضی یافت نشد»، این عنوان
+    # دروغ است و کارنامه با خودش نمی‌خواند (بندِ ۳).
+    "ILLUSION_OF_COMPETENCE": "پاسخ‌های متناقض — جای بازبینی",
+    "JARGON_DEPENDENT": "فهمیده، ولی زندانیِ اصطلاحات",
     "PARTIAL_FRAGMENTED": "تفکرِ جزیره‌ای",
     "UNSTRUCTURED": "بی‌ساختار — پاسخ‌ها بیرون از موضوع",
 }
+
+#: عنوانِ جایگزین برای وقتی شواهدِ واقعی تناقض را نشان می‌دهند.
+_ILLUSION_TITLE_WITH_CONTRADICTION = "شکارشده در تلهٔ فرمول و شهود"
 
 
 def _apply_supremacy(status: str, findings: list[dict[str, str]], strong: bool) -> tuple[str, list[dict[str, str]], Optional[str]]:
@@ -922,26 +1081,33 @@ def _answers_block(
     answers: dict[int, str],
     selected_indices: dict[int, int] | None = None,
 ) -> str:
-    """بلوکِ پاسخ‌ها برای مدل.
+    """بلوکِ پاسخ‌های ده‌گانه برای مدل.
 
-    قاعدهٔ سخت (فاز ۱۰): پاسخِ مرحلهٔ ۲ هرگز «بدون پاسخ» نمی‌رود. انتخابِ
-    چهارگزینه‌ای در ``response_text`` نیست — در ``selected_option_index``
-    است. نسخهٔ قبلی فقط متن را می‌خواند، پس دانش‌آموزی که گزینه را زده بود
-    به مدل «بدون پاسخ» معرفی می‌شد و کارتِ «میدانِ خالیِ نقاب» می‌ساخت.
+    قاعدهٔ سخت (فاز ۱۰، حفظ‌شده در فاز ۱۱): پاسخِ تستی هرگز «بدون پاسخ»
+    نمی‌رود. انتخابِ چهارگزینه‌ای در ``response_text`` نیست — در
+    ``selected_option_index`` است.
     """
     chosen_map = selected_indices or {}
     chunks: list[str] = []
+    seen_stages: set[int] = set()
     for row in sorted(question_rows, key=lambda r: int(r.get("order") or 0)):
         order = int(row.get("order") or 0)
+        stage = int(row.get("stage") or stage_of_order(order))
+        stage_slot = row.get("stage_slot") or ((order - 1) % QUESTIONS_PER_STAGE + 1)
         text_answer = (answers.get(order, "") or "").strip()
-        stage = row.get("stage_title") or _NAMES.get(order, f"مرحله {order}")
         options = row.get("options") or []
         chosen = _chosen_option(text_answer, options, chosen_map.get(order))
         correct = row.get("correct_option_index")
-        lines = [
-            f"<<<STAGE {order}>>>  {stage}  |  exam_type={row.get('exam_type')}",
-            f"سؤال: {row.get('text') or ''}",
+
+        lines: list[str] = [
+            f"<<<STAGE {order}>>>  سؤال {order} "
+            f"(مرحله {stage}، سؤال {stage_slot})  |  exam_type={row.get('exam_type')}"
         ]
+        if stage not in seen_stages:
+            seen_stages.add(stage)
+            lines.append(f"— مرحلهٔ {stage}: {STAGE_TITLES_FA.get(stage, '')} —")
+        lines.append(f"سؤال: {row.get('text') or ''}")
+
         if options:
             lines.append("گزینه‌ها: " + " | ".join(f"{i + 1}) {o}" for i, o in enumerate(options)))
             if correct is not None and 0 <= int(correct) < len(options):
@@ -953,23 +1119,18 @@ def _answers_block(
         if expected:
             lines.append(f"منطقِ موردانتظار: {expected}")
 
-        # ── پاسخِ مرحله: انتخاب یا متن، هر کدام که هست ──
         if options:
             if chosen is None:
-                # گزینه‌ای انتخاب نشده؛ متنِ توضیح اگر بود، همان است.
                 lines.append(f"پاسخِ دانش‌آموز: {text_answer or '(بدون پاسخ)'}")
             else:
-                verdict = (
-                    "درست" if correct is not None and int(correct) == chosen
-                    else "نادرست"
-                )
+                matched = correct is not None and int(correct) == chosen
                 label = (
                     f"مرحله ۲ (تست): دانش‌آموز گزینه [{chosen + 1}] با متن "
                     f"[{options[chosen]}] را انتخاب کرد."
                 )
                 if correct is not None and 0 <= int(correct) < len(options):
                     label += f" گزینه صحیح [{int(correct) + 1}] بود."
-                    label += f" ⇒ انتخابِ او {verdict} است."
+                    label += f" ⇒ انتخابِ او {'درست' if matched else 'نادرست'} است."
                 lines.append(label)
                 if text_answer:
                     lines.append(f"توضیحِ اختیاریِ دانش‌آموز (بر انتخاب اثر ندارد): {text_answer}")
@@ -980,10 +1141,13 @@ def _answers_block(
 
 
 def _fallback_record(order: int, reason: str) -> dict[str, Any]:
+    stage = stage_of_order(order)
     return {
         "question_id": None,
         "order": order,
-        "stage_title": _NAMES.get(order, f"مرحله {order}"),
+        "stage": stage,
+        "stage_slot": (order - 1) % QUESTIONS_PER_STAGE + 1,
+        "stage_title": STAGE_TITLES_FA.get(stage, ""),
         "cognitive_verdict": reason,
         "missing_gear": None,
         "status": "INSUFFICIENT_EVIDENCE",
@@ -1002,17 +1166,18 @@ def _normalize_per_question(
     answers: dict[int, str] | None = None,
     selected_indices: dict[int, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """رکوردهای per_question را کامل و مرتب می‌کند — هر پنج مرحله باید رکورد داشته باشند."""
+    """رکوردهای per_question را کامل و مرتب می‌کند — هر **ده سؤال** رکورد می‌گیرد."""
     by_order = {int(q.get("order") or 0): q for q in question_rows}
     answered_orders = {
         int(o) for o, value in (answers or {}).items() if str(value or "").strip()
     }
-    # انتخابِ گزینه هم «پاسخ» است؛ حتی اگر متنِ توضیح خالی باشد.
     chosen_map = selected_indices or {}
+    # انتخابِ گزینه هم «پاسخ» است؛ حتی اگر متنِ توضیح خالی باشد.
     for order, index in chosen_map.items():
         options = (by_order.get(int(order)) or {}).get("options") or []
         if index is not None and 0 <= int(index) < max(1, len(options)):
             answered_orders.add(int(order))
+
     records: dict[int, dict[str, Any]] = {}
 
     for item in data.get("per_question") or []:
@@ -1020,8 +1185,7 @@ def _normalize_per_question(
             continue
         raw_order = item.get("order")
         raw_qid = item.get("question_id")
-        # ترتیب اولویت: order صریح، بعد نگاشتِ question_id به order
-        order = None
+        order: Optional[int] = None
         try:
             if raw_order is not None:
                 order = int(raw_order)
@@ -1032,16 +1196,18 @@ def _normalize_per_question(
                 if str(row.get("question_id")) == str(raw_qid):
                     order = candidate_order
                     break
-        if order is None or order not in range(1, 6):
+        if order is None or order not in by_order:
             continue
 
         row = by_order.get(order) or {}
+        stage = int(row.get("stage") or stage_of_order(order))
         missing = item.get("missing_gear")
-        record = {
+        records[order] = {
             "question_id": row.get("question_id"),
             "order": order,
-            "stage_title": row.get("stage_title") or _NAMES.get(order, f"مرحله {order}"),
-            # شاهدِ مستقیم از متنِ خودِ دانش‌آموز و ادعای غلطِ مشخص
+            "stage": stage,
+            "stage_slot": row.get("stage_slot") or ((order - 1) % QUESTIONS_PER_STAGE + 1),
+            "stage_title": row.get("stage_title") or STAGE_TITLES_FA.get(stage, ""),
             "evidence_quote": (str(item.get("evidence_quote")).strip() or None)
             if item.get("evidence_quote")
             else None,
@@ -1052,10 +1218,8 @@ def _normalize_per_question(
             if item.get("expected_logic_missed")
             else None,
             "cognitive_verdict": str(item.get("cognitive_verdict") or "").strip()
-            or "تحلیل‌گری برای این مرحله توضیحی نداد.",
+            or "تحلیل‌گر برای این سؤال توضیحی نداد.",
             "missing_gear": (str(missing).strip() or None) if missing else None,
-            # وضعیت به چهار حالتِ استاندارد نگاشت می‌شود تا جمع‌بندیِ کد
-            # به برچسبِ دلخواهِ مدل وابسته نباشد.
             "status": canonical_stage_status(item.get("status")),
             "error_type": str(item.get("error_type") or "none").strip(),
             "evidence_type": str(item.get("evidence_type") or "weak_confirming").strip(),
@@ -1066,57 +1230,61 @@ def _normalize_per_question(
                 item.get("qualitative_feedback") or item.get("cognitive_verdict") or ""
             ).strip(),
         }
-        records[order] = record
 
-    for order in range(1, 6):
+    # هر سؤالی که مدل تحلیلش نکرد، رکوردِ خالی می‌گیرد (نه سؤالِ گم‌شده).
+    for order in sorted(by_order):
         if order not in records:
             records[order] = _fallback_record(
-                order, "این مرحله تحلیل نشد یا پاسخی برایش ثبت نشده بود."
+                order, "این سؤال تحلیل نشد یا پاسخی برایش ثبت نشده بود."
             )
-    # مرحلهٔ ۲ (MCQ) با کلید سنجیده می‌شود، نه با حرفِ مدل. انتخابِ صریح
-    # فقط دو حالت دارد: درست یا نادرست — هرگز «بی‌پاسخ» یا «شواهد ناکافی».
-    q2_row = by_order.get(2) or {}
-    q2_options = q2_row.get("options") or []
-    q2_index = chosen_map.get(2)
-    q2_correct = q2_row.get("correct_option_index")
-    if (
-        q2_index is not None
-        and 0 <= int(q2_index) < max(1, len(q2_options))
-        and q2_correct is not None
-    ):
-        record = records[2]
-        matched = int(q2_index) == int(q2_correct)
+            records[order]["stage"] = int(by_order[order].get("stage") or stage_of_order(order))
+            records[order]["stage_slot"] = by_order[order].get("stage_slot") or (
+                (order - 1) % QUESTIONS_PER_STAGE + 1
+            )
+            records[order]["stage_title"] = by_order[order].get("stage_title") or ""
+
+    # ── سؤال‌های تستی: وضعیت فقط از تطابقِ اندیس با کلید ──
+    # انتخابِ صریح فقط دو حالت دارد: درست یا نادرست — هرگز «بی‌پاسخ».
+    for order, row in by_order.items():
+        options = row.get("options") or []
+        if not options:
+            continue
+        index = chosen_map.get(order)
+        correct = row.get("correct_option_index")
+        if index is None or correct is None:
+            continue
+        if not (0 <= int(index) < max(1, len(options))):
+            continue
+        record = records[order]
+        matched = int(index) == int(correct)
         record["status"] = STAGE_STATUS_CORRECT if matched else STAGE_STATUS_WRONG
         record["evidence_type"] = "direct" if matched else "contradicting"
         record["confidence"] = 1.0
-        chosen_text = q2_options[int(q2_index)] if q2_options else ""
+        chosen_text = options[int(index)]
         correct_text = (
-            q2_options[int(q2_correct)]
-            if q2_options and 0 <= int(q2_correct) < len(q2_options)
-            else ""
+            options[int(correct)] if 0 <= int(correct) < len(options) else ""
         )
         record["evidence_quote"] = (
-            f"انتخابِ گزینهٔ {_fa_num(int(q2_index) + 1)}: {chosen_text}"
+            f"انتخابِ گزینهٔ {_fa_num(int(index) + 1)}: {chosen_text}"
         )
-        if not matched:
+        if matched:
+            record["cognitive_verdict"] = (
+                f"رابطه را درست به کار برد و گزینهٔ {_fa_num(int(index) + 1)} "
+                f"(«{chosen_text}») را انتخاب کرد."
+            )
+            record["qualitative_feedback"] = record["cognitive_verdict"]
+            record["wrong_claim"] = None
+        else:
             record["wrong_claim"] = (
-                f"گزینهٔ {_fa_num(int(q2_index) + 1)} («{chosen_text}») را انتخاب کرد، "
-                f"در حالی که پاسخِ درست گزینهٔ {_fa_num(int(q2_correct) + 1)} "
+                f"گزینهٔ {_fa_num(int(index) + 1)} («{chosen_text}») را انتخاب کرد، "
+                f"در حالی که پاسخِ درست گزینهٔ {_fa_num(int(correct) + 1)} "
                 f"(«{correct_text}») بود."
             )
-            # برداشتِ مدل اگر با کلید می‌خواند بماند؛ وگرنه بازنویسی می‌شود.
             record["cognitive_verdict"] = (
                 f"محاسبه را اشتباه انجام داد: {chosen_text} را انتخاب کرد، "
                 f"اما رابطه به {correct_text} می‌رسد."
             )
             record["qualitative_feedback"] = record["cognitive_verdict"]
-        else:
-            record["cognitive_verdict"] = (
-                f"رابطه را درست به کار برد و گزینهٔ {_fa_num(int(q2_index) + 1)} "
-                f"(«{chosen_text}») را انتخاب کرد."
-            )
-            record["qualitative_feedback"] = record["cognitive_verdict"]
-            record["wrong_claim"] = None
 
     # پاسخی که دانش‌آموز نداده (نه متن و نه گزینه) هرگز «درست» نیست.
     for order, record in records.items():
@@ -1206,6 +1374,8 @@ def _hard_fallback(
     status, findings, note = _apply_supremacy(status, findings, False)
 
     return {
+        "needs_interrogation": False,
+        "interrogation": None,
         "needs_clarification": False,
         "clarification_data": None,
         "mastery_status": status,
@@ -1217,7 +1387,7 @@ def _hard_fallback(
             "معلم مرور کن."
         ),
         "cross_check_findings": _dedupe(findings),
-        "per_question": [_fallback_record(o, reason) for o in range(1, 6)],
+        "per_question": [_fallback_record(o, reason) for o in range(1, TOTAL_QUESTIONS + 1)],
         "dimension_findings": [
             {"dimension": "تحلیلِ مقایسه‌ای", "status": "UNCLEAR", "finding": reason}
         ],
@@ -1343,6 +1513,14 @@ async def analyze_stage_chain(
     findings = _dedupe(findings)
     findings = _filter_false_synergy(findings, per_question)
 
+    # ── هماهنگیِ تیتر با باکسِ «شکارِ تناقض» (بندِ ۳) ──
+    # اگر هیچ یافتهٔ CONTRADICTION ثبت نشده، تیتر نباید ادعای تله/تناقض کند.
+    has_contradiction = any(f.get("type") == "CONTRADICTION" for f in findings)
+    contradiction_noted = any(
+        "تناقض" in str(f.get("title") or "") or "تله" in str(f.get("title") or "")
+        for f in findings
+    )
+
     raw_persona = str(data.get("persona_title") or "").strip()
     # عنوان، خلاصه، یافته‌ها و نشان باید یک داستان بگویند. هر بار که کد حکم را
     # بازنویسی کرده باشد (سازگارسازی، حاکمیت، بی‌ربطی)، عنوانِ خودِ مدل کنار
@@ -1355,6 +1533,12 @@ async def analyze_stage_chain(
     )
     if signals["mostly_off_topic"]:
         persona_title = _STATUS_PERSONA["UNSTRUCTURED"]
+
+    # اگر عنوان ادعای «تله/تناقض» دارد ولی هیچ تناقضی در شواهد نیست، دروغ است.
+    if (has_contradiction or contradiction_noted) and status == "ILLUSION_OF_COMPETENCE":
+        persona_title = _ILLUSION_TITLE_WITH_CONTRADICTION
+    elif status == "ILLUSION_OF_COMPETENCE" and not (has_contradiction or contradiction_noted):
+        persona_title = _STATUS_PERSONA["ILLUSION_OF_COMPETENCE"]
 
     # خلاصهٔ مدل ممکن است با حکمِ اصلاح‌شده در تضاد باشد («مسلط» + «اما در
     # نقد استدلال لنگ زدی»). در آن حالت خلاصهٔ سازگار با شواهد نوشته می‌شود.
@@ -1374,26 +1558,33 @@ async def analyze_stage_chain(
     if signals["mostly_off_topic"]:
         persona_title = _STATUS_PERSONA["UNSTRUCTURED"]
 
-    needs = bool(data.get("needs_clarification"))
-    clar_raw = data.get("clarification_data") or {}
-    clarification: Optional[dict[str, Any]] = None
-    if isinstance(clar_raw, dict):
-        mirror = str(clar_raw.get("mirror_prompt") or "").strip()
+    # ── فاز ۱۱: «بازپرس / رفعِ ابهام» (سؤالِ اختیاریِ ۱۱ام) ──
+    # کلیدهای تازه (needs_interrogation / interrogation) پذیرفته می‌شوند و
+    # کلیدهای قدیمی (needs_clarification / clarification_data) هم برایِ
+    # سازگاری خوانده می‌شوند. خروجی هر دو نام را دارد.
+    needs = bool(data.get("needs_interrogation") or data.get("needs_clarification"))
+    raw_interro = data.get("interrogation") or data.get("clarification_data") or {}
+    interrogation: Optional[dict[str, Any]] = None
+    if isinstance(raw_interro, dict):
+        mirror = str(raw_interro.get("mirror_prompt") or "").strip()
+        question = str(raw_interro.get("question") or "").strip()
         contradicting = []
-        for value in clar_raw.get("contradicting_questions") or []:
+        for value in raw_interro.get("contradicting_questions") or []:
             try:
                 number = int(value)
             except (TypeError, ValueError):
                 continue
-            if 1 <= number <= 5:
+            # شمارهٔ سؤال (۱..۱۰) یا شمارهٔ مرحله (۱..۵) — هر دو پذیرفته‌اند.
+            if 1 <= number <= TOTAL_QUESTIONS:
                 contradicting.append(number)
-        if mirror:
-            clarification = {
-                "contradicting_questions": contradicting[:3],
-                "mirror_prompt": mirror,
+        if mirror or question:
+            interrogation = {
+                "contradicting_questions": contradicting[:4],
+                "mirror_prompt": mirror or question,
+                "question": question or "کدام یکی را واقعاً باور داری؟",
             }
     # بازپرسی بدونِ متنِ آینه‌ای، دانش‌آموز را در بن‌بست می‌گذارد.
-    if needs and clarification is None:
+    if needs and interrogation is None:
         needs = False
     # یافتهٔ CONTRADICTION یا به بازپرسی می‌رسد یا وجود ندارد. تناقضی که از
     # دانش‌آموز پرسیده نشود، در کارنامه حکمِ صادرشده می‌ماند و بی‌انصافی است.
@@ -1410,8 +1601,11 @@ async def analyze_stage_chain(
         ]
 
     return {
+        "needs_interrogation": needs,
+        "interrogation": interrogation,
+        # سازگاریِ عقب‌رو با مصرف‌کننده‌های قدیمی
         "needs_clarification": needs,
-        "clarification_data": clarification,
+        "clarification_data": interrogation,
         "mastery_status": status,
         "persona_title": persona_title,
         "executive_summary": executive_summary,

@@ -20,6 +20,7 @@ from engine.session_manager import SessionManager, SessionError, question_to_stu
 from graph.knowledge_graph import load_graph
 from models.concept import Concept
 from models.database import get_db
+from ai.stage_chain import QUESTIONS_PER_STAGE, TOTAL_QUESTIONS, stage_of_order
 from models.question import QUESTION_TYPES, AssessmentSession, Question
 from models.user import User
 from reports.exam_report import build_exam_report
@@ -355,10 +356,13 @@ def _rows_for(questions: list[Question]) -> list[dict[str, Any]]:
     rows = []
     for i, q in enumerate(questions):
         rubric = q.rubric or {}
+        stage = int(rubric.get("stage") or stage_of_order(i + 1))
         rows.append(
             {
                 "question_id": q.id,
                 "order": i + 1,
+                "stage": stage,
+                "stage_slot": rubric.get("stage_slot") or ((i) % QUESTIONS_PER_STAGE + 1),
                 "exam_type": rubric.get("exam_type") or q.question_type,
                 "stage_title": rubric.get("stage_title"),
                 "text": q.text,
@@ -527,7 +531,9 @@ async def submit_test(
         selected_indices=selected_indices,
     )
 
-    needs_clarification = bool(result.get("needs_clarification"))
+    needs_clarification = bool(
+        result.get("needs_interrogation") or result.get("needs_clarification")
+    )
     _persist_analysis(
         session, result, questions, answers,
         "awaiting_clarification" if needs_clarification else "completed",
@@ -537,10 +543,18 @@ async def submit_test(
     db.refresh(session)
 
     if needs_clarification:
-        clar = result.get("clarification_data") or {}
+        clar = result.get("interrogation") or result.get("clarification_data") or {}
         return {
             "session_id": session.id,
             "status": session.status,
+            # فاز ۱۱ — قراردادِ «سؤالِ تکمیلی برای رفعِ ابهام»
+            "needs_interrogation": True,
+            "interrogation": {
+                "contradicting_questions": clar.get("contradicting_questions") or [],
+                "mirror_prompt": clar.get("mirror_prompt") or "",
+                "question": clar.get("question") or "کدام یکی را واقعاً باور داری؟",
+            },
+            # سازگاریِ عقب‌رو
             "needs_clarification": True,
             "clarification": {
                 "contradicting_questions": clar.get("contradicting_questions") or [],

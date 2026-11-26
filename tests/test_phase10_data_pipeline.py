@@ -213,6 +213,9 @@ def test_dimension_keys_match_contract():
 def test_dimension_statuses_are_in_valid_schema():
     """وضعیت‌ها فقط mastered|developing|needs_work|not_assessed هستند."""
     per_question = _normalize_per_question(_model_json(), _rows(), _answers(), {2: 1})
+    # مرحله هر رکورد را صریح می‌کنیم (ساختار ۱۰ سؤالی)
+    for r in per_question:
+        r.setdefault("stage", (int(r["order"]) - 1) // 2 + 1)
     for dim in build_stage_dimensions(per_question):
         assert dim["status"] in DIMENSION_STATUSES
 
@@ -227,13 +230,21 @@ def test_every_dimension_has_a_semantic_finding():
 
 
 def test_dimension_reflects_its_own_stage():
-    """هر بعد باید از همان مرحلهٔ خودش ساخته شود، نه از میانگین."""
+    """هر بعد باید از همان مرحلهٔ خودش ساخته شود، نه از میانگین.
+
+    با ساختارِ ۱۰ سؤالی، هر مرحله دو سؤال دارد که تجمیع می‌شوند.
+    """
     per_question = [
-        {"order": 1, "status": "CORRECT"},
-        {"order": 2, "status": "WRONG"},
-        {"order": 3, "status": "HALF_CORRECT"},
-        {"order": 4, "status": "INSUFFICIENT_EVIDENCE"},
-        {"order": 5, "status": "CORRECT"},
+        {"order": 1, "stage": 1, "status": "CORRECT"},
+        {"order": 2, "stage": 1, "status": "CORRECT"},
+        {"order": 3, "stage": 2, "status": "WRONG"},
+        {"order": 4, "stage": 2, "status": "WRONG"},
+        {"order": 5, "stage": 3, "status": "HALF_CORRECT"},
+        {"order": 6, "stage": 3, "status": "HALF_CORRECT"},
+        {"order": 7, "stage": 4, "status": "INSUFFICIENT_EVIDENCE"},
+        {"order": 8, "stage": 4, "status": "INSUFFICIENT_EVIDENCE"},
+        {"order": 9, "stage": 5, "status": "CORRECT"},
+        {"order": 10, "stage": 5, "status": "CORRECT"},
     ]
     dims = {d["key"]: d for d in build_stage_dimensions(per_question)}
     assert dims["conceptual_knowledge"]["status"] == "mastered"
@@ -246,9 +257,20 @@ def test_dimension_reflects_its_own_stage():
 def test_only_truly_blank_stage_stays_unassessed():
     """بندِ ۲-ج: «نامشخص» فقط وقتی که مرحله واقعاً خالی مانده باشد."""
     per_question = _normalize_per_question(_model_json(), _rows(), _answers(), {2: 1})
+    for r in per_question:
+        r.setdefault("stage", (int(r["order"]) - 1) // 2 + 1)
     unassessed = [d for d in build_stage_dimensions(per_question) if d["status"] == "not_assessed"]
-    blank_stages = [r["order"] for r in per_question if r["status"] == "INSUFFICIENT_EVIDENCE"]
-    assert len(unassessed) == len(blank_stages)
+    # مرحله‌ای «بدون پاسخ» است که **هیچ سؤالی** از آن سنجیده نشده باشد —
+    # یعنی همهٔ سؤال‌های موجودش بی‌پاسخ‌اند یا اصلاً رکوردی ندارد.
+    by_stage: dict[int, list[str]] = {}
+    for r in per_question:
+        by_stage.setdefault(int(r["stage"]), []).append(str(r["status"]))
+    unanswered_stages = [
+        stage for stage in range(1, 6)
+        if not by_stage.get(stage)
+        or all(x == "INSUFFICIENT_EVIDENCE" for x in by_stage[stage])
+    ]
+    assert len(unassessed) == len(unanswered_stages)
 
 
 @pytest.mark.parametrize(
