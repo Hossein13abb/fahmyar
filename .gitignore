@@ -28,3 +28,14 @@ test_fahmyar.db
 # Frontend
 frontend/node_modules/
 frontend/dist/
+
+# ── فاز ۱۸: جلوگیری از جمع‌شدنِ دوبارهٔ تصاویر ──
+# فقط اسکرین‌شات‌های جاریِ مستندات می‌مانند؛ هر تصویرِ پراکندهٔ تازه
+# در ریشه یا پوشه‌های موقت نباید خودکار commit شود.
+/*.png
+/*.jpg
+/*.jpeg
+/uploads/
+/samples/
+/tmp/
+*.log

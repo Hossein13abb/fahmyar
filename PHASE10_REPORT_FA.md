@@ -113,7 +113,7 @@ Q2 verdict: رابطه را درست به کار برد و گزینهٔ ۲ («۳
 
 **تأییدِ UI (Playwright، کارنامهٔ واقعی):** بجِ مدل ✓ · «نامشخص» روی صفحه: **۰** · «ابعاد فهم — تحلیل کلی» ✓ · pageerror: **۰**
 
-تصویر: `docs/screenshots/phase10-report.png`
+تصویر: _(اسکرین‌شات‌های فازهای قدیمی در فاز ۱۸ برای خلوت‌شدنِ ورک‌اسپیس حذف شدند؛ تاریخچهٔ گیت داردشان.)_
 
 ## ۵. تست‌ها
 
@@ -155,7 +155,6 @@ OPENROUTER_MAX_TOKENS=16000
  reports/exam_report.py               | model_name + stage_dimensions + نگاشتِ وضعیت
  reports/dimensions.py                | جدید — اسکیمای پنج بُعد
  tests/test_phase10_data_pipeline.py  | جدید — ۳۳ تست
- docs/screenshots/phase10-report.png  | جدید — شاهدِ تصویری
 ```
 
 ## ۸. دو نکتهٔ باقی‌مانده
