@@ -1027,17 +1027,18 @@ class MockProvider(AIProvider):
         gave_debug = _words(4) >= 12
 
         status = "JARGON_DEPENDENT" if forbidden_hit else ("MASTERED" if gave_debug else "PARTIAL_FRAGMENTED")
+        # فاز ۳۰: عنوان‌های دوم‌شخص و هم‌راستا با _STATUS_PERSONA در cross_check.
         persona = {
-            "JARGON_DEPENDENT": "زندانیِ اصطلاحاتِ کتاب",
-            "MASTERED": "مسلط بر مفهوم — پیوندها را می‌بینی",
-            "PARTIAL_FRAGMENTED": "تفکرِ جزیره‌ای",
+            "JARGON_DEPENDENT": "زبانِ کتاب را داری، تصویرِ ذهنی‌اش را نه",
+            "MASTERED": "مفهوم را داری — پیوندها را می‌بینی",
+            "PARTIAL_FRAGMENTED": "قطعه‌قطعه فهمیدی — زنجیره هنوز بسته نشده",
         }[status]
 
         per_question = []
         for order in range(1, 6):
             words = _words(order)
             verdict = (
-                "پاسخی ثبت نشد؛ شواهدی برای داوری در این مرحله وجود ندارد." if words == 0
+                "پاسخی ثبت نشد؛ برای داوریِ این بخش شاهدی در دست نیست." if words == 0
                 else "توضیح کوتاه است ولی جهتِ کلیِ استدلال قابلِ داوری است." if words < 12
                 else "استدلال پیوسته و در جهتِ منطقِ موردانتظار است."
             )
@@ -1075,8 +1076,10 @@ class MockProvider(AIProvider):
                 "mastery_status": status,
                 "persona_title": persona,
                 "executive_summary": (
-                    "پاسخ‌ها با هم مقایسه شد: زنجیرهٔ استدلال در مرحله‌های میانی منسجم است و "
-                    "نقطهٔ ضعف اصلی در انتقالِ سادهٔ مفهوم دیده می‌شود."
+                    "استدلالت بین ایده و نتیجه پیوسته است — یعنی مسیرِ رسیدن به جواب را "
+                    "می‌دانی. آنچه لنگ می‌زند، بیرون آمدن از پشتِ اصطلاح و گفتنِ همین "
+                    "مفهوم با زبانِ خودت است: وقتی ناچار می‌شوی بدونِ واژه‌های کتاب "
+                    "توضیح بدهی، معلوم می‌شود تصویرِ ذهنی هنوز کامل نشده."
                 ),
                 "cross_check_findings": findings,
                 "per_question": per_question,
@@ -1084,7 +1087,7 @@ class MockProvider(AIProvider):
                     {"dimension": "درک مفهومی و علّی", "status": per_question[0]["status"],
                      "finding": per_question[0]["cognitive_verdict"]},
                     {"dimension": "مقاومت در برابرِ اصطلاح", "status": "NEEDS_REVIEW" if forbidden_hit else "CONFIRMED",
-                     "finding": "از قانونِ کلماتِ ممنوعه در مرحلهٔ پنجم."},
+                     "finding": "در توضیحِ ساده، به‌جای زبانِ خودت به اصطلاحِ تخصصی تکیه کردی."},
                 ],
                 "root_cause_hypotheses": [],
                 "improvement_suggestions": [

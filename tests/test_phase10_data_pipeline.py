@@ -375,10 +375,13 @@ def test_summary_mentions_actual_failing_stages():
         {"order": 5, "status": "CORRECT"},
     ]
     summary = _summary_from_stages(per_question, "PARTIAL_FRAGMENTED")
-    # فاز ۱۷: خلاصه دیگر نامِ متدولوژیِ داخلی نمی‌آورد؛ برچسبِ عمومی.
-    assert "پیش‌بینی رفتار پدیده" in summary
+    # فاز ۳۰: خلاصه با **نامِ مهارت** حرف می‌زند — نه نامِ متدولوژی و نه
+    # شمارهٔ مرحله. مهارتِ سوم «پیش‌بینی علت‌ومعلولی رفتار پدیده» است.
+    assert "پیش‌بینی علت‌ومعلولی رفتار پدیده" in summary
     assert "دستکاریِ سیستم" not in summary
     assert "نادرست" in summary
+    # زبانِ ساختاریِ آزمون هرگز به دانش‌آموز نشان داده نمی‌شود.
+    assert "مرحله" not in summary
 
 
 def test_summary_uses_persian_digits():
@@ -399,8 +402,10 @@ def test_summary_uses_persian_digits():
 def test_summary_says_chain_complete_when_all_correct():
     per_question = [{"order": i, "status": "CORRECT"} for i in range(1, 6)]
     summary = _summary_from_stages(per_question, "MASTERED")
-    assert "هر پنج مرحله" in summary
+    # فاز ۳۰: «هر پنج مرحله» جای خود را به زبانِ مهارت داد.
+    assert "استدلالت" in summary
     assert "لغزیدی" not in summary
+    assert "مرحله" not in summary
 
 
 def test_summary_mentions_unanswered_stage_honestly():
@@ -412,8 +417,10 @@ def test_summary_mentions_unanswered_stage_honestly():
         {"order": 5, "status": "CORRECT"},
     ]
     summary = _summary_from_stages(per_question, "PARTIAL_FRAGMENTED")
-    assert "بدون پاسخ" in summary
+    # فاز ۳۰: «بی‌پاسخ گذاشتی» لحنِ دوم‌شخصِ همان وضعیت است.
+    assert "بی‌پاسخ" in summary
     assert "بقیهٔ مرحله‌ها خوب پیش رفتند" not in summary
+    assert "مرحله" not in summary
 
 
 # ─────────────────────────────────────────────────────────────────────────

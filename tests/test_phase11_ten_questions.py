@@ -511,7 +511,9 @@ def test_summary_counts_stages_not_questions():
         per_q[o - 1]["status"] = "WRONG"
     summary = _summary_from_stages(per_q, "PARTIAL_FRAGMENTED")
     assert "سؤال" not in summary
-    assert "مرحله" in summary
+    # فاز ۳۰: خلاصه نه از «سؤال» حرف می‌زند و نه از «مرحله» — از **مهارت**.
+    assert "مرحله" not in summary
+    assert "مهارت" in summary
 
 
 def test_all_ten_questions_answered_means_no_blanks():

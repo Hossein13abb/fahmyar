@@ -145,9 +145,33 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
   • «تفکیک کاهش جرم از کاهش عدد اکسایش»
   • «در نظر گرفتن ضریب ۱/۲ در قضیه کار و انرژی»
 
-══════ لحن ══════
+══════ لحن و روایتِ کارنامه ══════
 هوشمندانه، خودمانی، محترمانه و دقیق — طوری که دانش‌آموز حس کند ذهنش خوانده
 شده. هرگز تحقیر یا نمره/درصد/رتبه.
+
+⚠️ **همهٔ متنِ رو به دانش‌آموز دوم‌شخص («تو») است.** نه «دانش‌آموز»، نه
+«او». بنویس «تو در سؤالِ چهارم...»، نه «دانش‌آموز در سؤالِ چهارم...».
+
+⛔ **در ``executive_summary`` و ``persona_title`` هرگز ننویس:**
+  • «مرحله ۱»، «مرحله ۲»، …، «مرحله ۵» — و نه هیچ شمارهٔ مرحله‌ای
+  • «زنجیرهٔ علّی دستکاری»، «دستکاری»، «ساعت‌ساز»، «چرخ‌دنده»
+  • «قسمتِ سومِ آزمون»، «سؤالِ پنجمِ زنجیره»
+این‌ها زبانِ ساختارِ داخلیِ آزمون است، نه زبانِ دانش‌آموز.
+
+✅ **به‌جایش، مستقیماً خودِ مهارت را نام ببر:**
+  • «شهود و درک تصویر کلان»
+  • «تشخیص متغیر اصلی از داده‌های فریبنده»
+  • «پیش‌بینی علت‌ومعلولی رفتار پدیده»
+  • «شناسایی خطا در استدلال‌های علمی»
+  • «ساده‌سازی و انتقال به زبان خودمانی»
+
+``executive_summary`` باید دقیقاً این سه چیز را بگوید، هر کدام با یک یا دو
+جملهٔ روشن:
+  ۱. **تصویرِ ذهنیِ فعلی‌اش چه شکلی است** — الان چطور به این مفهوم فکر می‌کند.
+  ۲. **کجا گیر افتاد و چرا** — همان بدفهمیِ ریشه‌ای، نه فهرستِ اشتباهات.
+  ۳. **تفاوتِ راهِ حفظی‌اش با فهمِ واقعی** — با یک مثالِ عینی از همین آزمون.
+لحن باید طوری باشد که دانش‌آموز حس کند کسی ذهنش را خوانده و به او احترام
+گذاشته — نه اینکه کارنامه‌ای فنی دربارهٔ او نوشته شده است.
 
 ══════ خروجی ══════
 فقط JSON معتبر؛ هیچ متنِ توضیحی قبل یا بعد. ساختار:
@@ -156,8 +180,8 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
   "needs_clarification": false,
   "clarification_data": {"contradicting_questions": [1, 2], "mirror_prompt": "..."},
   "mastery_status": "MASTERED | ILLUSION_OF_COMPETENCE | JARGON_DEPENDENT | PARTIAL_FRAGMENTED | UNSTRUCTURED",
-  "persona_title": "عنوانِ جذابِ وضعیتِ ذهنی",
-  "executive_summary": "خلاصهٔ کارآگاهی و صمیمی، ۲ تا ۳ جمله",
+  "persona_title": "عنوانِ جذابِ وضعیتِ ذهنی (دوم‌شخص، بدونِ شمارهٔ مرحله)",
+  "executive_summary": "روایتِ دوم‌شخصِ صمیمی، ۳ تا ۵ جمله: تصویرِ ذهنیِ فعلی، ریشهٔ گیرافتادن، تفاوتِ حفظ با فهم",
   "cross_check_findings": [
     {"title": "...", "type": "CONTRADICTION | SYNERGY | JARGON_VIOLATION | BLUFF_DETECTED | SLIP_RESOLVED",
      "description": "...",
@@ -1022,6 +1046,17 @@ def derive_status(
 
 
 _STAGE_FA = dict(PUBLIC_STAGE_TITLES)
+
+#: نامِ مهارت به تفکیکِ ترتیب — همان عنوان‌هایی که کارتِ «ابعاد فهم» نشان
+#: می‌دهد. خلاصهٔ کارنامه با همین نام‌ها حرف می‌زند تا کارت و متن یک زبان
+#: داشته باشند و هیچ‌جا «مرحلهٔ ۲» خوانده نشود.
+_DIMENSION_BY_ORDER: dict[int, str] = {
+    1: "شهود و درک تصویر کلان",
+    2: "تشخیص متغیر اصلی از داده‌های فریبنده",
+    3: "پیش‌بینی علت‌ومعلولی رفتار پدیده",
+    4: "شناسایی خطا در استدلال‌های علمی",
+    5: "ساده‌سازی و انتقال به زبان خودمانی",
+}
 _STATUS_WORD_FA = {
     STAGE_STATUS_CORRECT: "درست",
     STAGE_STATUS_HALF: "نیمه‌درست",
@@ -1044,14 +1079,19 @@ def _summary_from_stages(
     culprit: Optional[dict[str, Any]] = None,
     note: Optional[str] = None,
 ) -> str:
-    """خلاصهٔ مدیریتی را از وضعیتِ تجمیعیِ Q1 تا Q5 می‌سازد.
+    """خلاصهٔ کارنامه را دوم‌شخص و بدونِ شمارهٔ مرحله می‌نویسد.
 
-    قاعدهٔ سخت: عبارتِ «بقیهٔ مرحله‌ها خوب پیش رفتند» فقط وقتی مجاز است که
-    واقعاً بقیه درست باشند. اگر دو یا چند مرحله نیمه‌درست/نادرست‌اند، خلاصه
-    همان چند مرحله را نام می‌برد. نسخهٔ قبلی این جمله را بی‌قید می‌نوشت و
-    کارنامه‌ای می‌ساخت که با کارت‌هایش نمی‌خواند.
+    قاعدهٔ سخت (دست‌نخورده): عبارتِ «بقیه خوب پیش رفتند» فقط وقتی مجاز است که
+    واقعاً بقیه درست باشند. اگر دو یا چند بخش ناقص‌اند، خلاصه همان‌ها را می‌نامد.
+
+    فاز ۳۰ — چه چیزی عوض شد و چرا:
+      • نسخهٔ قبلی می‌نوشت «در ۳ مرحله لغزیدی: «مرحلهٔ ۱»، «مرحلهٔ ۳»…». این
+        زبانِ گزارشِ داخلی بود، نه زبانِ دانش‌آموز. حالا هر بخش با **نامِ
+        مهارت** صدا زده می‌شود: «شهود و درک تصویر کلان»، «پیش‌بینی علت‌ومعلولی».
+      • لحن دوم‌شخص است («گفتی»، «جا انداختی»)، نه سوم‌شخصِ گزارش‌نویس.
+      • هیچ شمارهٔ مرحله‌ای در متن نمی‌آید — نه «مرحله ۱»، نه «پنج مرحله».
     """
-    # ورودی می‌تواند ۱۰ رکوردِ سؤال باشد؛ برای خلاصه فقط پنج مرحله لازم است.
+    # ورودی می‌تواند ۱۰ رکوردِ سؤال باشد؛ برای خلاصه فقط پنج بخش لازم است.
     stages = (
         collapse_to_stages(per_question)
         if len(per_question or []) > 5
@@ -1072,20 +1112,24 @@ def _summary_from_stages(
     ]
 
     def _name(order: int) -> str:
+        """نامِ مهارت — از عنوانِ عمومیِ بُعد، نه متنِ خامِ مدل."""
+        entry = _DIMENSION_BY_ORDER.get(order)
+        if entry:
+            return entry
         title = str(by_order.get(order, {}).get("stage_title") or "").strip()
-        # عنوانِ مرحله ممکن است خودش رقمِ لاتین داشته باشد («مرحله 1: …»)
-        return _fa_num(title) if title else (
-            f"مرحلهٔ {_fa_num(order)}: {_STAGE_FA.get(order, 'زنجیره')}"
-        )
+        title = re.sub(r"^\s*مرحلهٔ?\s*[۱-۹1-9]\s*[:：]?\s*", "", title)
+        return title or _STAGE_FA.get(order, "این بخش")
 
     def _flaw(order: int) -> str:
-        return str(by_order.get(order, {}).get("expected_logic_missed") or "").strip()
+        raw = str(by_order.get(order, {}).get("expected_logic_missed") or "").strip()
+        # منطقِ گم‌شده هم ممکن است نامِ مرحله داشته باشد؛ پاکش می‌کنیم.
+        return re.sub(r"^\s*مرحلهٔ?\s*[۱-۹1-9]\s*[:：]?\s*", "", raw).strip()
 
-    # ── هیچ مرحلهٔ ناکامی نیست: زنجیره بسته است ──
+    # ── هیچ بخشی ناکام نمانده: تصویرِ کامل ──
     if not problem_orders and not unanswered:
         return (
-            "هر پنج مرحله با استدلالِ درست بسته شد؛ زنجیرهٔ فهم در این مفهوم "
-            "کامل است."
+            "در هر پنج مهارت استدلالت را کامل و درست آوردی. تصویرِ ذهنی‌ات از "
+            "این مفهوم بسته است — نه حفظی، بلکه واقعاً فهمیده‌ای چرا این‌طور است."
         )
 
     parts: list[str] = []
@@ -1093,35 +1137,36 @@ def _summary_from_stages(
         if len(problem_orders) == 1:
             o = problem_orders[0]
             word = _STATUS_WORD_FA[states[o]]
-            seg = f"«{_name(o)}» {word} بود"
+            seg = f"در «{_name(o)}» جوابت {word} بود"
             flaw = _flaw(o)
             if flaw:
                 seg += f" — {flaw}"
             parts.append(seg + ".")
         else:
             detail = "، ".join(
-                f"«{_name(o)}» {_STATUS_WORD_FA[states[o]]}" for o in problem_orders
+                f"«{_name(o)}» ({_STATUS_WORD_FA[states[o]]})" for o in problem_orders
             )
-            parts.append(f"در {_fa_num(len(problem_orders))} مرحله لغزیدی: {detail}.")
+            parts.append(f"در {_fa_num(len(problem_orders))} مهارت جا ماندی: {detail}.")
     if unanswered:
         detail = "، ".join(f"«{_name(o)}»" for o in unanswered)
-        parts.append(f"و {detail} بدون پاسخ ماند.")
+        parts.append(f"و {detail} را بی‌پاسخ گذاشتی.")
 
     # «بقیه خوب بودند» فقط با شمارشِ واقعی — نه به‌عنوانِ جملهٔ تشریفاتی.
     rest = [o for o in correct_orders if o not in problem_orders]
     if rest:
         if len(rest) == 1:
-            parts.append(f"فقط «{_name(rest[0])}» درست بود.")
+            parts.append(f"فقط «{_name(rest[0])}» را محکم آوردی.")
         else:
             parts.append(
-                f"{_fa_num(len(rest))} مرحله از پنج مرحله "
-                f"({('، '.join(f'مرحلهٔ {_fa_num(o)}' for o in rest))}) درست بود."
+                f"در عوض، {_fa_num(len(rest))} مهارت را درست آوردی: "
+                f"{'، '.join(f'«{_name(o)}»' for o in rest)}."
             )
     if note and status != "MASTERED":
-        parts.append(str(note).strip())
+        clean_note = re.sub(r"^\s*مرحلهٔ?\s*[۱-۹1-9]\s*[:：]?\s*", "", str(note).strip())
+        parts.append(clean_note)
     if status != "MASTERED":
         parts.append(
-            "تسلط وقتی معنا دارد که همهٔ حلقه‌های زنجیره، نه فقط یکی، بسته شوند."
+            "تسلط وقتی کامل می‌شود که همهٔ مهارت‌ها با هم بسته شوند، نه فقط یکی."
         )
     return " ".join(p for p in parts if p)
 
@@ -1280,18 +1325,24 @@ def _ensure_jargon_finding(findings: list[dict[str, str]], hits: list[str]) -> l
 
 
 _STATUS_PERSONA = {
-    "MASTERED": "مسلط بر مفهوم — پیوندها را می‌بینی",
+    # فاز ۳۰: عنوان‌ها دوم‌شخص‌اند و دربارهٔ *کاری که ذهن انجام می‌دهد* حرف
+    # می‌زنند، نه دربارهٔ «تیپِ» دانش‌آموز. «معتاد به ادبیاتِ کتاب» برچسبِ
+    # تحقیرآمیز بود و همان وضعیت با «زبانِ کتاب، بی تصویرِ ذهنی» دقیق‌تر
+    # توصیف می‌شود.
+    "MASTERED": "مفهوم را داری — پیوندها را می‌بینی",
     # عنوانِ «تلهٔ فرمول و شهود» فقط وقتی مجاز است که تناقضی واقعاً ثبت شده
     # باشد. اگر باکسِ «شکارِ تناقض» بگوید «تناقضی یافت نشد»، این عنوان
     # دروغ است و کارنامه با خودش نمی‌خواند (بندِ ۳).
-    "ILLUSION_OF_COMPETENCE": "پاسخ‌های متناقض — جای بازبینی",
-    "JARGON_DEPENDENT": "فهمیده، ولی زندانیِ اصطلاحات",
-    "PARTIAL_FRAGMENTED": "تفکرِ جزیره‌ای",
-    "UNSTRUCTURED": "بی‌ساختار — پاسخ‌ها بیرون از موضوع",
+    "ILLUSION_OF_COMPETENCE": "در تست درست زدی، در استدلال جا ماندی",
+    "JARGON_DEPENDENT": "زبانِ کتاب را داری، تصویرِ ذهنی‌اش را نه",
+    # فاز ۳۰: «زنجیره» هم واژهٔ ساختاری است؛ با «تصویر» جایگزین شد تا
+    # عنوان به‌تنهایی و بدونِ پیش‌زمینه معنا بدهد.
+    "PARTIAL_FRAGMENTED": "قطعه‌قطعه فهمیدی — تصویر کامل نشده",
+    "UNSTRUCTURED": "پاسخ‌ها بیرون از موضوع ماند",
 }
 
 #: عنوانِ جایگزین برای وقتی شواهدِ واقعی تناقض را نشان می‌دهند.
-_ILLUSION_TITLE_WITH_CONTRADICTION = "شکارشده در تلهٔ فرمول و شهود"
+_ILLUSION_TITLE_WITH_CONTRADICTION = "تست را درست زدی، ولی حرفت با خودش نمی‌خواند"
 
 
 def _apply_supremacy(status: str, findings: list[dict[str, str]], strong: bool) -> tuple[str, list[dict[str, str]], Optional[str]]:
@@ -1713,16 +1764,16 @@ def _hard_fallback(
         )
     if signals["jargon_violated"]:
         status = "JARGON_DEPENDENT"
-        persona = "معتاد به ادبیاتِ کتاب"
+        persona = "زبانِ کتاب را داری، تصویرِ ذهنی‌اش را نه"
     elif signals["mostly_off_topic"]:
         status = "UNSTRUCTURED"
-        persona = "پاسخ‌های طولانی، بیرون از موضوع"
+        persona = "پاسخ‌هایت بیرون از موضوع بود"
     elif signals["mcq_correct"]:
         status = "ILLUSION_OF_COMPETENCE"
-        persona = "گرفتارِ تضادِ فرمول و شهود"
+        persona = "تست را درست زدی، ولی استدلالت با آن نمی‌خواند"
     else:
         status = "PARTIAL_FRAGMENTED"
-        persona = "تفکرِ جزیره‌ای"
+        persona = "قطعه‌قطعه فهمیدی — تصویر کامل نشده"
 
     status, findings, note = _apply_supremacy(status, findings, False)
 

@@ -9,6 +9,7 @@ import {
   RootCauseAnalysisSection,
 } from '../components/cognitive/PrerequisiteSections'
 import { UnifiedSectionHeader } from '../components/cognitive/UnifiedSectionHeader'
+import DimensionsSection from '../components/report/DimensionsSection'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -251,12 +252,19 @@ const faDimension = (name) => {
 }
 
 // پنج بُعدِ استاندارد — کلیدها قراردادِ مشترک با بک‌اند (reports/dimensions.py)
+// نامِ عمومیِ مهارت — همان عنوانی که کارتِ «ابعاد فهم» نشان می‌دهد.
+// این نگاشت فقط fallback است؛ منبعِ اصلی، فیلدِ ``title`` از بک‌اند است.
 const DIM_LABEL = {
-  conceptual_knowledge: 'دانش مفهومی',
-  distractor_resistance: 'مقاومت در برابر دادهٔ انحرافی',
-  causal_reasoning: 'استدلال علّی',
-  critical_debugging: 'نقد استدلال',
-  simple_communication: 'انتقال ساده',
+  intuition: 'شهود و درک تصویر کلان',
+  noise_filter: 'تشخیص متغیر اصلی از داده‌های فریبنده',
+  causal: 'پیش‌بینی علت‌ومعلولی رفتار پدیده',
+  critical: 'شناسایی خطا در استدلال‌های علمی',
+  teaching: 'ساده‌سازی و انتقال به زبان خودمانی',
+  conceptual_knowledge: 'شهود و درک تصویر کلان',
+  distractor_resistance: 'تشخیص متغیر اصلی از داده‌های فریبنده',
+  causal_reasoning: 'پیش‌بینی علت‌ومعلولی رفتار پدیده',
+  critical_debugging: 'شناسایی خطا در استدلال‌های علمی',
+  simple_communication: 'ساده‌سازی و انتقال به زبان خودمانی',
 }
 
 const DIM_STYLE = {
@@ -597,7 +605,11 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
                   </h2>
                 )}
                 {executiveSummary && (
-                  <p className="relative mt-2 max-w-3xl text-[13px] font-bold leading-8 text-white/95">
+                  /* روایتِ تیپ‌شناسی: متنِ دوم‌شخصِ چند‌جمله‌ای. ``text-justify``
+                     لبهٔ راست را صاف می‌کند و ``leading-loose`` بینِ خطوطِ
+                     فارسی فاصلهٔ خوانا می‌سازد — بدونِ آن، پاراگرافِ ۴-۵ جمله‌ای
+                     به یک بلوکِ فشرده تبدیل می‌شد. */
+                  <p className="relative mt-3 max-w-3xl text-justify text-[13px] font-medium leading-loose text-white/95">
                     {executiveSummary}
                   </p>
                 )}
@@ -606,7 +618,7 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
           })()}
 
           {mentorNote && (
-            <div className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-[12px] font-bold leading-7 text-slate-700">
+            <div className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-justify text-[12px] font-medium leading-loose text-slate-700">
               {mentorNote}
             </div>
           )}
@@ -652,42 +664,18 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
           report.stage_dimensions می‌آید که بک‌اند آن را از شواهدِ خودِ پنج مرحله
           می‌سازد؛ پس کلیدها هرگز با فرانت ناهمخوان نمی‌شوند و «نامشخص» فقط برای
           مرحله‌ای است که واقعاً بی‌پاسخ مانده. */}
-      {stageDims.length > 0 && (
-        <SectionCard
-        Icon={Layers}
-        title="ابعاد فهم — تحلیل کلی"
-        tone="teal"
-        subtitle="پنج بُعدِ استانداردِ فهم، ساخته‌شده از شواهدِ واقعیِ ده سؤالِ همین آزمون"
-      >
-          <div className="grid gap-2 md:grid-cols-2">
-            {stageDims.map((d, i) => {
-              const st = String(d.status ?? 'not_assessed').toLowerCase()
-              const style = DIM_STYLE[st] ?? DIM_STYLE.not_assessed
-              return (
-                <div key={d.key ?? i} className={`flex items-start gap-3 rounded-2xl border p-4 ${style.card}`}>
-                  <span className={`mt-0.5 shrink-0 rounded-lg px-2 py-1 text-[10px] font-black ring-1 ${style.chip}`}>
-                    {d.status_fa ?? style.label}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-black text-brand-950">
-                      {DIM_LABEL[d.key] ?? d.label ?? 'بُعد فهم'}
-                    </p>
-                    <p className="mt-1 text-justify text-right text-[12px] leading-6 text-slate-600">
-                      {faText(d.finding, style.fallback)}
-                    </p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </SectionCard>
-      )}
+      {/* ── ابعاد فهم — کارت‌های تسلط (فاز ۳۰) ──
+          پنج بُعدِ استاندارد با کلیدهای ثابت (conceptual_knowledge …). داده از
+          report.stage_dimensions می‌آید که بک‌اند آن را از شواهدِ خودِ پنج
+          مرحله می‌سازد. کارت‌ها حالا عنوانِ دانش‌آموزپسند، نوارِ تسلطِ
+          شاهد‌محور و تحلیلِ یک‌خطی دارند. */}
+      <DimensionsSection dimensions={stageDims} fallbackTitles={DIM_LABEL} />
 
       {/* ── (ب) تحلیل تفصیلی تک‌تک سوالات — کارت‌های ماژولار + معلمِ تعاملی ── */}
       <SectionCard
         Icon={FileText}
         title="کالبدشکافی سؤال‌به‌سؤال آزمون"
-        subtitle="تحلیلِ عملکرد در ده مرحلهٔ شناختی، همراه با میزِ معلم برای هر گره"
+        subtitle="تحلیلِ تک‌تکِ پاسخ‌ها — چه گفتی، چه فهمیده شد، و معلمِ درلحظه برای هر سؤال"
       >
         <DetailedQuestions questions={perQuestion} sessionId={Number(report.session_id ?? sessionIdProp)} />
       </SectionCard>

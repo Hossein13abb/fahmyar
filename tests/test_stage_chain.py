@@ -290,7 +290,10 @@ def test_jargon_verdict_survives_debugging_supremacy(monkeypatch):
         "improvement_suggestions": [],
     })
     assert result["mastery_status"] == "JARGON_DEPENDENT"
-    assert "زندانی" in result["persona_title"]
+    # فاز ۳۰: «زندانی» برچسبِ تحقیرآمیز بود. همان وضعیت (دارد ولی نمی‌تواند
+    # ساده بگوید) با عنوانِ دوم‌شخص بیان می‌شود.
+    assert "زبانِ کتاب را داری" in result["persona_title"]
+    assert "تصویر" in result["persona_title"]
     assert any(f["type"] == "JARGON_VIOLATION" for f in result["cross_check_findings"])
 
 
