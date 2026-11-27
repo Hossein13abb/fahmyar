@@ -354,3 +354,134 @@ def extract_json_array(text: str) -> list[Any]:
         if isinstance(arr, list):
             return arr
     raise ValueError("خروجی مدل آرایهٔ JSON معتبری نیست.")
+
+
+# ---------------------------------------------------------------------------
+# ترمیمِ JSONِ بریده‌شده (فاز ۳۱)
+# ---------------------------------------------------------------------------
+def _scan_state(text: str) -> tuple[bool, list[str], int]:
+    """وضعیتِ اسکن را برمی‌گرداند: (درونِ رشته؟, پشتهٔ بازکننده‌ها, طولِ آخرین توکن).
+
+    چرا دستی و نه ``json.loads``: ورودی این‌جا **خراب** است و json.loads
+    فقط «خطا» می‌دهد، نه «کجا و چقدر». برای بستنِ درستِ ساختار باید بدانیم
+    دقیقاً وسطِ کدام رشته یا کدام لیست متوقف شده‌ایم.
+    """
+    stack: list[str] = []
+    in_str = False
+    esc = False
+    last_token_start = 0
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+                continue
+            if ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+                last_token_start = i + 1
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append(ch)
+            last_token_start = i + 1
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+            last_token_start = i + 1
+        elif ch == ",":
+            last_token_start = i + 1
+    return in_str, stack, len(text) - last_token_start
+
+
+def _drop_dangling_token(text: str) -> str:
+    """آخرین توکنِ نیمه‌کاره را حذف می‌کند («"ke», «"key":», «tru»).
+
+    قاعده: بعد از آخرین جداکنندهٔ کامل (``,``/``{``/``[``/``}``/``]``/رشتهٔ
+    بسته) هر چه مانده، نیمه‌کاره است. حذفش ساختار را قابلِ بستن می‌کند؛
+    نگه‌داشتنش JSON را برای همیشه خراب می‌گذارد.
+    """
+    in_str, stack, tail_len = _scan_state(text)
+    if tail_len <= 0:
+        return text
+    head = text[: len(text) - tail_len]
+    # اگر سرِ بریدگی داخلِ رشته بود، گیومهٔ باز هم باید بسته شود.
+    open_quotes = head.count('"') - head.count('\\"')
+    if open_quotes % 2 == 1:
+        head += '"'
+    return head
+
+
+def close_truncated_json(text: str) -> Optional[str]:
+    """یک JSONِ نیمه‌کاره را می‌بندد؛ رشتهٔ قابلِ پارس یا ``None``.
+
+    چرا لازم است: مدلِ ارزیابی گاهی به سقفِ توکن می‌خورد و خروجی وسطِ
+    آخرین فیلد قطع می‌شود. پیش از این، همهٔ آن تحلیل (چند هزار توکنِ
+    درست) دور ریخته می‌شد و کارنامه به حالتِ اضطراری می‌افتاد — چون یک
+    پرانتز بسته نشده بود. ترمیم اجازه می‌دهد بخشِ سالم نجات پیدا کند.
+
+    الگوریتم:
+      ۱. آخرین شیءِ کاملِ سطح‌اول را (اگر بود) برگردان.
+      ۲. وگرنه توکنِ نیمه‌کاره را ببر و پرانتزهای باز را به ترتیبِ معکوس ببند.
+      ۳. اگر رشتهٔ حاصل پارس شد، همان را بده.
+    """
+    if not text or not text.strip():
+        return None
+    base = text.strip()
+
+    # ۱) شاید در متن چند شیءِ کامل هست و آخری نیمه‌کاره — بهترین را بردار.
+    spans = _balanced_objects(base)
+    if spans:
+        best = max(spans, key=len)
+        candidate = base[base.index(best):]
+        if _try_dict(best) is not None:
+            return best if base.strip().startswith("{") else best
+        base = candidate
+
+    if not base.startswith(("{", "[")):
+        start = min((base.find("{") if "{" in base else len(base)),
+                    (base.find("[") if "[" in base else len(base)))
+        if start >= len(base):
+            return None
+        base = base[start:]
+
+    # ۲) توکنِ نیمه‌کاره را ببر، بعد ببند.
+    trimmed = _drop_dangling_token(base)
+    # ویرگولِ آویزان قبل از بستن، JSON را نامعتبر می‌کند.
+    trimmed = re.sub(r",\s*$", "", trimmed.rstrip())
+    _, stack, _ = _scan_state(trimmed)
+    for opener in reversed(stack):
+        trimmed += "}" if opener == "{" else "]"
+
+    if _try_dict(trimmed) is not None:
+        return trimmed
+    # آخرین تلاش: یکی‌یکی از انتهای لیست‌ها کم کن تا ساختار بسته شود.
+    working = trimmed
+    for _ in range(6):
+        cut = working.rfind(",")
+        if cut <= 0:
+            break
+        working = working[:cut]
+        _, stack2, _ = _scan_state(working)
+        trial = working + "".join("}" if o == "{" else "]" for o in reversed(stack2))
+        if _try_dict(trial) is not None:
+            return trial
+    return None
+
+
+def extract_json_object_resilient(text: str) -> tuple[Optional[dict[str, Any]], bool]:
+    """مثل ``extract_json_object``، ولی اگر JSON بریده شده باشد ترمیمش می‌کند.
+
+    خروجی دوم می‌گوید «آیا ترمیم لازم شد؟» تا لایهٔ بالادست بتواند در لاگ
+    ثبت کند و بداند که ممکن است فیلدهای انتهایی ناقص باشند.
+    """
+    obj = extract_json_object(text)
+    if isinstance(obj, dict):
+        return obj, False
+    repaired = close_truncated_json(text)
+    if repaired:
+        obj = _try_dict(repaired)
+        if isinstance(obj, dict):
+            return obj, True
+    return None, False

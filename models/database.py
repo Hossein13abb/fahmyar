@@ -4,9 +4,42 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from config import settings
 
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
+# ── قفلِ نوشتن در SQLite (فاز ۳۱) ──
+#
+# سابقه: در آزمونِ زندهٔ واقعی، هنگامِ ذخیرهٔ لاگِ مصرفِ مدل در پس‌زمینه،
+# پیامِ «database is locked» در لاگ ظاهر شد. SQLite در حالتِ پیش‌فرض
+# (rollback journal) هر نوشتن را قفلِ انحصاریِ کلِ فایل می‌کند؛ اگر همان
+# لحظه درخواستِ دیگری (مثلاً ثبتِ پاسخ یا ساختِ کارنامه) بنویسد، منتظر
+# نمی‌ماند و فوراً خطا می‌دهد.
+#
+# سه تنظیم این را حل می‌کند:
+#   • timeout=30     — به‌جای خطای فوری، تا ۳۰ ثانیه برای قفل صبر کن.
+#   • WAL            — خواندن و نوشتن هم‌زمان ممکن می‌شود (نوشتن‌ها سریالی
+#                      ولی خواندن‌ها بلوکه نمی‌شوند).
+#   • busy_timeout   — همان صبر، در سطحِ درایور، برای قفل‌های لحظه‌ای.
+connect_args = {"check_same_thread": False, "timeout": 30} if _is_sqlite else {}
 
 engine = create_engine(settings.DATABASE_URL, connect_args=connect_args)
+
+if _is_sqlite:
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_connection, _record):  # noqa: ANN001
+        """WAL و busy_timeout روی هر اتصالِ تازه اعمال می‌شود.
+
+        ``journal_mode=WAL`` یک‌بار برای همیشه روی فایل ذخیره می‌شود، ولی
+        ``busy_timeout`` مخصوصِ همان اتصال است — پس هر دو این‌جا لازم‌اند.
+        """
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+        finally:
+            cursor.close()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

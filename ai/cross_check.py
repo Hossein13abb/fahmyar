@@ -23,7 +23,7 @@ import json
 import re
 from typing import Any, Optional
 
-from ai.json_sanitize import extract_json_object
+from ai.json_sanitize import extract_json_object, extract_json_object_resilient
 from ai.model_abstraction import get_router
 from ai.brand_terms import scrub_deep
 from ai.stage_chain import (
@@ -338,6 +338,22 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
 
 ⛔ ``root_cause_hypotheses`` را تولید نکن. آن ساختارِ قدیمی حذف شده؛
 جایش را ``root_cause_chains`` گرفته که برای نمایشِ زنجیره‌ای طراحی شده است.
+
+══════ ایجازِ اجباری (سقفِ توکن) ══════
+خروجیِ کامل حدود ۱۲٬۰۰۰ توکن است و هر توکنِ اضافه، ریسکِ بریده‌شدنِ JSON را
+بالا می‌برد. پس:
+  • ``executive_summary`` حداکثر ۴ جمله.
+  • هر فیلدِ متنیِ ``per_question`` حداکثر ۲۵ کلمه — به‌جز
+    ``evidence_quote`` که باید عینِ متنِ دانش‌آموز باشد.
+  • ``improvement_suggestions`` حداکثر ۳ مورد، هر کدام یک جمله.
+  • ``root_cause_chains`` حداکثر ۲ زنجیره، هر زنجیره حداکثر ۳ گره.
+  • فیلدی را که داده ندارد با ``null`` بگذار، نه با توضیحِ خالیِ طولانی.
+تکرارِ یک نکته در چند فیلد ممنوع است: هر حرف را یک بار، در مناسب‌ترین فیلد.
+
+══════ قالبِ خروجی — الزامِ سخت ══════
+فقط شیء JSON معتبر برگردان. هیچ توضیحِ متنی قبل یا بعد از JSON اضافه نکن.
+هیچ بلوکِ ```json``` نگذار. مطمئن شو همهٔ آکولادها و براکت‌ها بسته شده‌اند
+و هیچ ویرگولِ آویزانی بعد از آخرین عضوِ هر لیست نمانده است.
 
 <<<CONCEPT>>>{concept_name}<<<END>>>
 <<<EXPECTED_LOGIC>>>{expected_json}<<<END>>>
@@ -1841,14 +1857,46 @@ async def analyze_stage_chain(
     try:
         router = get_router()
         resp = await router.generate(prompt, "analyze_exam", temperature=0.3)
-        data = extract_json_object(resp.text)
+        # ── فاز ۳۱: سه لایهٔ محافظ، به‌ترتیبِ ارزانی ──
+        #
+        # سابقهٔ باگ (آزمونِ واقعی): خروجی مدل به سقفِ max_tokens خورد و
+        # وسطِ JSON بریده شد. ``extract_json_object`` برای ساختارِ ناقص
+        # ``None`` می‌داد، پس **همهٔ** تحلیلِ درست (که تا ۹۰٪ تولید شده بود)
+        # دور ریخته می‌شد و کارنامه با پیامِ «تحلیل‌گر خروجیِ قابل‌اتکایی
+        # نداد» به حالتِ اضطراری می‌افتاد — فقط به‌خاطرِ یک آکولادِ باز.
+        #
+        # لایه ۱: پارسِ معمولی. لایه ۲: ترمیمِ JSONِ بریده‌شده. لایه ۳:
+        # اگر هیچ‌کدام، حداقل دلیلش دقیق لاگ می‌شود تا دیگر «سکوت» نکنیم.
+        data, was_repaired = extract_json_object_resilient(resp.text)
+        if was_repaired:
+            print(
+                f"[CrossCheck] خروجیِ مدل ناقص بود و ترمیم شد "
+                f"(طول={len(resp.text)} کاراکتر). فیلدهای انتهایی ممکن است غایب باشند."
+            )
+        if not isinstance(data, dict):
+            # لاگِ دقیق برای عیب‌یابی — پیش از این فقط می‌گفتیم «ساختاردهی نشد».
+            tail = (resp.text or "")[-300:].replace("\n", " ")
+            print(
+                f"[CrossCheck] PARSE_FAILED | len={len(resp.text or '')} | "
+                f"head={ (resp.text or '')[:120]!r } | tail={tail!r}"
+            )
     except Exception as exc:  # noqa: BLE001
-        print(f"[CrossCheck] model call failed: {exc}")
+        # پیامِ خطا نوع و متنش را نگه می‌داریم؛ «model call failed» تنها کافی نبود.
+        print(f"[CrossCheck] MODEL_CALL_FAILED | {type(exc).__name__}: {exc}")
 
     if not isinstance(data, dict):
         return _hard_fallback(
             rows, signals, "خروجیِ مدل قابلِ ساختاردهی نبود؛ از قواعدِ قطعی استفاده شد."
         )
+
+    # فاز ۳۱: یک خطِ خلاصه برای هر فراخوانی — «چرا موفق شد» هم مهم است،
+    # نه فقط «چرا شکست». بدونِ این، تشخیصِ اینکه خروجی نزدیک به سقف بوده
+    # یا نه، فقط با خواندنِ جدولِ ai_usage_logs ممکن بود.
+    print(
+        f"[CrossCheck] model_ok | keys={len(data)} | "
+        f"per_question={len(data.get('per_question') or [])} | "
+        f"repaired={'yes' if was_repaired else 'no'}"
+    )
 
     status = str(data.get("mastery_status") or "").upper().strip()
     if status not in _VALID_STATUS:

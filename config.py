@@ -35,9 +35,18 @@ class Settings:
     # مهلت پاسخ OpenRouter (ثانیه)
     OPENROUTER_TIMEOUT_SECONDS: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "180"))
     # سقفِ توکنِ پاسخ. مدل‌های استدلالی (مثلِ deepseek-v4.1-flash) بخشی از این
-    # سقف را صرفِ زنجیرهٔ فکر می‌کنند؛ ۸۰۰۰ در اجرای واقعی برای تحلیلِ کاملِ
-    # پنج‌مرحله‌ای کم آمد (finish_reason=length) و نیاز به تلاشِ دوباره شد.
-    OPENROUTER_MAX_TOKENS: int = int(os.getenv("OPENROUTER_MAX_TOKENS", "16000"))
+    # سقف را صرفِ زنجیرهٔ فکر می‌کنند.
+    #
+    # سابقهٔ این عدد (چرا ۱۶۰۰۰ کافی نبود):
+    #   ۸۰۰۰  → برای تحلیلِ کاملِ پنج‌مرحله‌ای کم آمد (finish_reason=length).
+    #   ۱۶۰۰۰ → در آزمونِ واقعیِ فاز ۳۱ **باز هم** به سقف خورد: دقیقاً
+    #            completion_tokens=16000 و JSONِ نیمه‌کاره. چون خروجیِ سالم در
+    #            همان آزمون ۱۳٬۴۲۰ توکن بود، فاصله تا سقف فقط ۱۶٪ است — و
+    #            deepseek با temperature=0.3 هر بار طولِ متفاوتی تولید می‌کند.
+    #            یک بارِ دیگر پرید و کارنامه به fallback افتاد.
+    #   ۳۲۰۰۰ → فضای کافی برای کامل شدن، بدونِ هزینهٔ اضافی: max_tokens سقف
+    #            است، نه رزرو. اگر مدل ۱۴٬۰۰۰ تولید کند، همان پرداخت می‌شود.
+    OPENROUTER_MAX_TOKENS: int = int(os.getenv("OPENROUTER_MAX_TOKENS", "32000"))
     # فاصله‌گذاری ملایم بین فراخوانی‌ها (ثانیه) — برای پلن‌های رایگان مفید است
     OPENROUTER_MIN_INTERVAL_SECONDS: float = float(os.getenv("OPENROUTER_MIN_INTERVAL_SECONDS", "1.0"))
     # اختیاری: شناساندن برنامه به OpenRouter (HTTP-Referer و X-Title)
