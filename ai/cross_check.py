@@ -1875,10 +1875,23 @@ async def analyze_stage_chain(
             )
         if not isinstance(data, dict):
             # لاگِ دقیق برای عیب‌یابی — پیش از این فقط می‌گفتیم «ساختاردهی نشد».
-            tail = (resp.text or "")[-300:].replace("\n", " ")
+            # ⚠️ سازگاری با پایتون ۳.۱۱ — این‌جا باگِ واقعی بود.
+            #
+            # ۳.۱۲ (PEP 701) اجازه می‌دهد داخلِ f-string کوتیشنِ هم‌نوع
+            # دوباره استفاده شود. ۳.۱۱ نه. کدِ قبلی این بود:
+            #     f"head={ (resp.text or '')[:120]!r }"
+            # کوتیشنِ بیرونی ``"`` بود و داخلِ ``{}`` هم ``''`` می‌آمد.
+            # ۳.۱۱ با «f-string: expecting '}'» رد می‌کرد و **کلِ اپ بالا
+            # نمی‌آمد** — یک لاگِ عیب‌یابی، سرور را از کار انداخت.
+            # راه‌حلِ درست: هیچ رشتۀ تازه‌ای داخلِ f-string نساز؛ همه را
+            # بیرون آماده کن. این هم سازگار است هم خواناتر.
+            _raw = resp.text or ""
+            _head = _raw[:120]
+            _len = len(_raw)
+            tail = _raw[-300:].replace("\n", " ")
             print(
-                f"[CrossCheck] PARSE_FAILED | len={len(resp.text or '')} | "
-                f"head={ (resp.text or '')[:120]!r } | tail={tail!r}"
+                f"[CrossCheck] PARSE_FAILED | len={_len} | "
+                f"head={_head!r} | tail={tail!r}"
             )
     except Exception as exc:  # noqa: BLE001
         # پیامِ خطا نوع و متنش را نگه می‌داریم؛ «model call failed» تنها کافی نبود.
