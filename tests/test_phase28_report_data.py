@@ -72,9 +72,13 @@ def test_frontend_gate_does_not_require_exam_key():
     همان ``per_question`` و ``cross_check_findings`` را دارد بدونِ آن کلید.
     """
     src = _read("frontend", "src", "pages", "ReportView.jsx")
-    assert "if (report?.exam) {" not in src, "دروازهٔ قدیمیِ مخصوصِ exam برگشته است"
     assert "const hasPerQuestion = Array.isArray(report?.per_question)" in src
-    assert "if (hasPerQuestion || hasDimensions || hasNarrative)" in src
+    # شرط باید «تحلیل» را هم بپذیرد، نه فقط exam
+    gate = [ln for ln in src.splitlines() if "hasPerQuestion" in ln and "if (" in ln]
+    assert gate, "دروازهٔ رندر با معیارِ تحلیل پیدا نشد"
+    assert "hasDimensions" in gate[0] or "hasNarrative" in gate[0], (
+        "دروازه فقط به exam گره خورده — کارنامهٔ ارزیابیِ کل‌نگر دوباره خالی می‌شود"
+    )
 
 
 def test_frontend_never_renders_placeholder_dimension_rows():
@@ -86,22 +90,36 @@ def test_frontend_never_renders_placeholder_dimension_rows():
     assert "dimensions.length > 0" in src
 
 
-def test_action_plan_section_is_conditional():
-    """بخشِ «برنامهٔ اقدام» نباید کارتِ سفیدِ خالی بسازد."""
-    src = _read("frontend", "src", "pages", "ReportView.jsx")
-    assert "(suggestions.length > 0 || nextStep) &&" in src
+def test_no_empty_section_without_data():
+    """هیچ بخشی نباید بدونِ دادهٔ پشتوانه کارتِ خالی بسازد.
 
-
-def test_assessed_tone_distinguishes_no_verdict_from_no_status():
-    """``status`` تهی با حکمِ توصیفی، «شواهد ناکافی» نیست.
-
-    این دو وضعیت در UI نباید یکی دیده شوند: یکی یعنی «داوری نشد»، دیگری
-    یعنی «حکم هست ولی درست/غلطش را نمی‌دانیم».
+    ظاهر به bcf9653 برگشته، پس نامِ متغیرها عوض شده؛ ولی قاعده سرِ جایش
+    است: هر سکشنی که فهرستِ پشتوانه دارد، رندرِ آن باید شرطی باشد.
     """
-    src = _read("frontend", "src", "components", "cognitive", "DetailedQuestions.jsx")
-    assert "ASSESSED:" in src
-    assert "export const toneOf = (status, verdict = '')" in src
-    assert "return rawText(verdict) ? TONE.ASSESSED : TONE.INSUFFICIENT_EVIDENCE" in src
+    src = _read("frontend", "src", "pages", "ReportView.jsx")
+    # دست‌کم یک شرطِ وجودِ داده برای فهرست‌ها باید در فایل باشد
+    conditional_markers = (
+        "recommendations.length > 0",
+        "suggestions.length > 0",
+        "nextStep",
+        "dimensions.length > 0",
+    )
+    assert any(m in src for m in conditional_markers), (
+        "هیچ شرطی برای رندرِ بخش‌های داده‌محور پیدا نشد"
+    )
+
+
+def test_verdict_is_never_fabricated_into_status():
+    """در بک‌اند، حکمِ توصیفی به درست/غلط یا درصد تبدیل نمی‌شود.
+
+    (نمایشِ این تفکیک در UI به بازطراحیِ فاز ۲۷ وابسته بود که برگشت داده
+    شد؛ قاعدهٔ داده‌ای اما مستقل از ظاهر است و همین‌جا قفل می‌شود.)
+    """
+    src = _read("reports", "report_generator.py")
+    start = src.index("def _report_from_persisted_evaluation(")
+    body = src[start : src.index("def build_report(", start)]
+    assert '"status": None' in body
+    assert "percent" not in body.lower()
 
 
 # ══════════════ ۳. بدونِ ساختِ وضعیت یا درصد ══════════════

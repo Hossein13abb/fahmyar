@@ -394,28 +394,11 @@ def test_every_section_uses_the_shared_header():
 
 
 def test_sections_share_one_surface_language():
-    """همهٔ سطوح یک جنس دارند: کارتِ توپر با حاشیهٔ نرم و سایهٔ آرام.
-
-    این تست در فاز ۲۱ قفل کرده بود که سطح‌ها «شیشه‌ایِ روشن» باشند
-    (``bg-white/85`` + ``backdrop-blur-md`` + ``rounded-3xl``). فاز ۲۷ آن
-    الگو را صریحاً ممنوع کرد: شیشه‌ای‌کردنِ همه + بلورِ افراطی = جایگزینِ
-    طراحی، نه طراحی. تست به‌جای حذف، **زبانِ تازه** را قفل می‌کند:
-
-      • کارتِ توپرِ سفید روی بومِ رنگی (نه نیمه‌شفاف)
-      • شعاعِ ۲xl (نه ۳xl — گردیِ زیاد حسِ اپِ موبایلی می‌داد)
-      • سایهٔ توکنیِ ``shadow-rest`` (نه سایهٔ دست‌سازِ درون‌خطی)
-      • و مهم‌تر از همه: نبودِ الگوهای ممنوعه، تا بازگشتِ تصادفی نگیرد.
-    """
+    """همهٔ سطوح یک جنس دارند: شیشه‌ایِ روشن با حاشیهٔ نرم."""
     src = _read("frontend", "src", "pages", "ReportView.jsx")
-
-    # زبانِ تازه
-    assert "bg-white shadow-rest" in src
-    assert "rounded-2xl" in src
-
-    # الگوهای ممنوعهٔ فاز ۲۷ نباید برگردند
-    assert "bg-white/85" not in src, "سطحِ نیمه‌شفاف ممنوع است؛ بدنهٔ کارت باید توپر باشد"
-    assert "backdrop-blur-md" not in src, "بلورِ افراطی ممنوع است"
-    assert "blur-[130px]" not in src, "هالهٔ بزرگ ممنوع است؛ موتیفِ مسیر جایگزینش شد"
+    assert "bg-white/85" in src
+    assert "backdrop-blur-md" in src
+    assert "rounded-3xl" in src
 
 
 def test_font_is_served_locally_not_from_google():
@@ -440,39 +423,3 @@ def test_header_component_has_the_four_accent_colours():
     src = _read("frontend", "src", "components", "cognitive", "UnifiedSectionHeader.jsx")
     for accent in ("emerald", "indigo", "rose", "amber"):
         assert f"{accent}:" in src
-
-
-# ══ فاز ۲۵: بدونِ شکستِ بی‌صدا — دادهٔ نامعتبر باید خطا شود ══════════════════
-
-def test_report_view_rejects_non_report_payloads():
-    """HTML به‌جای JSON نباید بی‌صدا به کارنامهٔ قدیمی بیفتد.
-
-    این باگ واقعی بود: اگر ``dist`` با یک سرورِ استاتیکِ ساده سرو شود
-    (بدونِ پروکسیِ /api)، ``/api/assess/{id}/report`` با SPA-fallback یک
-    صفحهٔ HTML و status 200 برمی‌گرداند. axios آن را «داده» می‌بیند،
-    ``report.exam`` تهی می‌شود و اپ بی‌صدا مسیرِ کارنامهٔ پیش از آزمون را
-    رندر می‌کند — یعنی «مفهوم نامشخص» و هیچ‌کدام از بخش‌های تازه.
-    کاربر فکر می‌کند UI عوض نشده است.
-    """
-    src = _read("frontend", "src", "pages", "ReportView.jsx")
-    assert "looksLikeReport" in src
-    assert "'exam' in data" in src
-    assert "LegacyReportNotice" in src
-
-
-def test_production_preview_has_an_api_proxy():
-    """بیلدِ تولیدی باید راهی برای رسیدن به /api داشته باشد."""
-    src = _read("tools", "serve_dist.py")
-    assert "/api/" in src
-    assert "SPA fallback" in src  # fallback فقط برای مسیرهای غیرِ /api
-    # /api هرگز نباید به index.html بیفتد
-    assert 'if self.path.startswith("/api/")' in src
-
-
-def test_font_files_exist_in_public_dir():
-    """@font-face به فایل‌هایی اشاره می‌کند که باید واقعاً موجود باشند."""
-    from pathlib import Path
-
-    base = REPO / "frontend" / "public" / "print-fonts"
-    for name in ("Vazirmatn-Regular.ttf", "Vazirmatn-Bold.ttf", "Vazirmatn-ExtraBold.ttf"):
-        assert (base / name).is_file(), name

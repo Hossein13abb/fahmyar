@@ -671,29 +671,27 @@ export default function ExamBuilder({ embedded = false }) {
 
   return (
     <div className="animate-fade-up space-y-6">
-      {/* ── سربرگ صفحه ──
-          قبلاً یک بلوکِ سرمه‌ایِ گرادیانتی با دو هالهٔ blur-3xl و دو تکهٔ
-          شیشه‌ای (bg-white/10 + backdrop-blur) بود — همان الگویی که فاز ۲۷
-          برچید. حالا یک نوارِ کوتاهِ کاغذی: عنوان، توضیحِ یک‌خطی، و شمارنده
-          در سمتِ چپ. */}
+      {/* ── سربرگ صفحه ── */}
       {!embedded && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-rest">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-analytic-soft text-analytic">
-              <ClipboardEdit className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <h1 className="text-[16px] font-black text-ink">آزمون‌ساز</h1>
-              <p className="mt-0.5 text-[11px] leading-5 text-ink-faint">
-                سؤالِ چهارگزینه‌ای بساز، پیش‌نمایش بگیر، PDF نهایی را چاپ کن.
-              </p>
+        <section className="relative overflow-hidden rounded-2xl border border-brand-800/50 bg-gradient-to-bl from-brand-800 via-brand-900 to-brand-950 p-6 text-brand-50 shadow-lift sm:p-7">
+          <div aria-hidden className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-brand-400/20 blur-3xl" />
+          <div aria-hidden className="pointer-events-none absolute -bottom-14 left-1/3 h-48 w-48 rounded-full bg-amber-400/10 blur-3xl" />
+          <div className="relative flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <span className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/15 backdrop-blur">
+                <ClipboardEdit className="h-7 w-7 text-amber-200" />
+              </span>
+              <div>
+                <h1 className="text-xl font-black text-white sm:text-2xl">آزمون‌ساز کنکوری</h1>
+                <p className="mt-1 text-[12px] font-medium text-brand-100/85">
+                  سؤال‌های چهارگزینه‌ایِ سطح کنکور بساز، پیش‌نمایش بگیر، ویرایش کن و PDF نهایی را چاپ کن.
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="shrink-0 text-left">
-            <p className="text-[22px] font-black leading-none tabular-nums text-ink">
-              {fmtFa(step === 'preview' ? questions.length : totalCount)}
-            </p>
-            <p className="mt-0.5 text-[10px] font-bold text-ink-faint">سؤال</p>
+            <div className="rounded-2xl bg-white/10 px-4 py-2.5 text-center ring-1 ring-white/15 backdrop-blur">
+              <p className="text-2xl font-black leading-none text-amber-200">{fmtFa(step === 'preview' ? questions.length : totalCount)}</p>
+              <p className="mt-1 text-[10px] font-bold text-brand-100/80">سؤال چهارگزینه‌ای</p>
+            </div>
           </div>
         </section>
       )}

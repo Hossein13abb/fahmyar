@@ -61,9 +61,9 @@ const HISTORY_CHIP = {
 }
 
 const HOW_STEPS = [
-  { Icon: SearchCheck, title: 'گفت‌وگوی چندسؤالی', text: 'از مفهوم تا کاربرد: پرسشِ مفهومی، محاسبه، پیش‌بینی، نقدِ استدلال و توضیحِ ساده.' },
-  { Icon: Waypoints, title: 'بدونِ بازخوردِ لحظه‌ای', text: 'حین آزمون چیزی فاش نمی‌شود؛ پاسخ‌ها جمع می‌شوند تا تحلیل یکپارچه انجام شود.' },
-  { Icon: Map, title: 'کارنامه و نقشهٔ راه', text: 'شکارِ تناقض میان پاسخ‌ها، گره‌های کلیدیِ یادگیری و راهکارِ کیفی.' },
+  { Icon: SearchCheck, title: '۱. زنجیرهٔ ۵ مرحله‌ای', text: 'از مفهوم تا کاربرد: پرسشِ مفهومی، محاسبه، پیش‌بینی، نقدِ استدلال و توضیحِ ساده.' },
+  { Icon: Waypoints, title: '۲. بدون بازخورد لحظه‌ای', text: 'حین آزمون چیزی فاش نمی‌شود؛ پاسخ‌ها جمع می‌شوند تا تحلیل یکپارچه انجام شود.' },
+  { Icon: Map, title: '۳. کارنامهٔ اشعهٔ ایکس', text: 'شکارِ تناقض میان پاسخ‌ها، گره‌های کلیدیِ یادگیری و راهکارِ کیفی.' },
 ]
 
 export default function StudentDashboard() {
@@ -71,7 +71,6 @@ export default function StudentDashboard() {
   const navigate = useNavigate()
 
   const [tab, setTab] = useState('topic') // topic | wrong_answer
-  const [showAllHistory, setShowAllHistory] = useState(false)
 
   // مسیر A
   const [subject, setSubject] = useState('physics')
@@ -252,60 +251,56 @@ export default function StudentDashboard() {
 
   return (
     <div className="animate-fade-up space-y-6">
-      {/* ── سربرگِ «پنل دانش‌آموز» حذف شد (فاز ۲۷) ──
-          شلِ برنامه قبلاً نام و نقشِ کاربر را نشان می‌دهد؛ این کارت فقط یک
-          سربرگِ دومِ تکراری بود که ~۷۰px بالای صفحه می‌گرفت و چیزی اضافه
-          نمی‌کرد. اسپک صریحاً «بدونِ سربرگ‌های روی‌هم» گفته است. */}
+      {/* ── هدر داشبورد دانش‌آموز ── */}
+      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white px-5 py-3 shadow-soft">
+        <div className="flex items-center gap-3">
+          <span className="rounded-2xl bg-emerald-50 p-2.5 ring-1 ring-emerald-100">
+            <GraduationCap className="h-5 w-5 text-emerald-700" />
+          </span>
+          <div>
+            <p className="text-[13px] font-black text-slate-800">پنل دانش‌آموز</p>
+            <p className="text-[10px] font-medium text-slate-400">{user?.full_name || user?.username}</p>
+          </div>
+        </div>
+      </header>
 
-      {/* ── نقطهٔ ورود ──
-          قبلاً: یک گرادیانتِ زمردیِ تمام‌عرض با سه کارتِ شیشه‌ای و یک دکمهٔ
-          بزرگ. همان الگویی که فاز ۲۷ برچید. حالا: یک کارتِ کاغذیِ روشن با
-          یک جملهٔ کوتاه و یک اقدامِ اصلی. سه توضیح، زیرِ هم و کم‌حجم‌تر. */}
       {!started ? (
-        <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-rest">
-          <div className="grid lg:grid-cols-12">
-            <div className="p-6 sm:p-8 lg:col-span-7">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-2.5 py-1 text-[10px] font-black text-primary-deep">
-                <Compass className="h-3 w-3" />
-                قدمِ اول
-              </span>
-              <h1 className="mt-3 text-[26px] font-black leading-tight tracking-tight text-ink sm:text-[30px]">
-                بیایید بفهمیم چه چیزهایی را <span className="text-primary">واقعاً</span> فهمیده‌ای
-              </h1>
-              <p className="mt-2.5 max-w-md text-justify text-right text-[13px] leading-8 text-ink-soft">
-                نه نمره، نه رتبه. یک گفت‌وگوی چند سؤالی که نشان می‌دهد کجا محکمی و کدام پیش‌نیاز
-                لنگ می‌زند — بعدش خودت را بهتر می‌شناسی.
-              </p>
-              <button
-                type="button"
-                onClick={() => setStarted(true)}
-                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-[13px] font-black text-white shadow-rest transition hover:bg-primary-deep focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-              >
-                انتخاب مبحث و شروع
-                <ArrowLeft className="h-4 w-4" strokeWidth={2.4} />
-              </button>
+        <section className="relative overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-bl from-emerald-600 via-emerald-700 to-emerald-900 px-6 py-10 text-center text-white shadow-lift sm:px-10 sm:py-14">
+          <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-emerald-400/20 blur-3xl" />
+          <div aria-hidden className="pointer-events-none absolute -left-16 bottom-0 h-64 w-64 rounded-full bg-teal-300/15 blur-3xl" />
+          <div className="relative">
+            <span className="inline-flex rounded-3xl bg-white/10 p-4 ring-1 ring-white/20 backdrop-blur">
+              <BookOpenCheck className="h-11 w-11 text-emerald-100" strokeWidth={1.6} />
+            </span>
+            <h1 className="mt-6 text-3xl font-black leading-snug sm:text-4xl">به فهم‌یار خوش آمدید</h1>
+            <p className="mx-auto mt-4 max-w-xl text-[15px] leading-8 text-emerald-50/95">
+              در اینجا هیچ نمره‌ای وجود ندارد و هدف فقط کشف نقاط قوت و ضعف مفهومی شماست؛
+              نه مقایسه با کسی، نه استرس.
+            </p>
+            <div className="mx-auto mt-7 grid max-w-3xl gap-3 text-right sm:grid-cols-3">
+              {[
+                { Icon: ShieldCheck, title: 'بدون نمره، بدون رتبه', text: 'فقط شواهد کیفی از فهمیدنت ثبت می‌شود.' },
+                { Icon: Compass, title: 'دقیقاً می‌دانی کجایی', text: 'گزارش نشان می‌دهد کدام پیش‌نیاز را مرور کنی.' },
+                { Icon: HeartHandshake, title: 'فقط برای تو و معلمت', text: 'گزارش‌ها خصوصی‌اند و مقایسه‌ای در کار نیست.' },
+              ].map(({ Icon, title, text }) => (
+                <div key={title} className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/15 backdrop-blur">
+                  <Icon className="h-6 w-6 text-emerald-100" strokeWidth={1.8} />
+                  <p className="mt-2 text-[12px] font-black text-white">{title}</p>
+                  <p className="mt-1 text-[10px] leading-5 text-emerald-100/90">{text}</p>
+                </div>
+              ))}
             </div>
-
-            {/* ستونِ کناری: سه اصلِ کار، به‌صورتِ فهرستِ عمودی نه سه کارت */}
-            <aside className="border-t border-slate-100 bg-surface-muted p-6 sm:p-8 lg:col-span-5 lg:border-r lg:border-t-0">
-              <ul className="space-y-3.5">
-                {[
-                  { Icon: ShieldCheck, title: 'بدونِ نمره و رتبه', text: 'فقط شواهدِ کیفی از فهمیدنت ثبت می‌شود.' },
-                  { Icon: Compass, title: 'دقیقاً می‌دانی کجایی', text: 'کارنامه نشان می‌دهد کدام پیش‌نیاز را مرور کنی.' },
-                  { Icon: HeartHandshake, title: 'فقط برای تو و معلمت', text: 'کارنامه‌ها خصوصی‌اند و مقایسه‌ای در کار نیست.' },
-                ].map(({ Icon, title, text }) => (
-                  <li key={title} className="flex gap-3">
-                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-primary ring-1 ring-slate-200">
-                      <Icon className="h-4 w-4" strokeWidth={2} />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-black text-ink">{title}</p>
-                      <p className="mt-0.5 text-[11px] leading-6 text-ink-soft">{text}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </aside>
+            <button
+              type="button"
+              onClick={() => setStarted(true)}
+              className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-white px-8 py-4 text-[16px] font-black text-emerald-800 shadow-lift transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-50 sm:px-10"
+            >
+              شروع ارزیابی / فهم‌سنجی
+              <ArrowLeft className="h-6 w-6" strokeWidth={2.2} />
+            </button>
+            <p className="mt-4 text-[11px] font-medium text-emerald-100/80">
+              حدود ۹ سؤال تشریحی · حداکثر ۳۰ دقیقه · هر وقت خواستی می‌توانی مکث کنی
+            </p>
           </div>
         </section>
       ) : (
@@ -319,118 +314,98 @@ export default function StudentDashboard() {
           ← بازگشت به خوش‌آمد
         </button>
       </div>
-      {/* ── نوارِ خوش‌آمد ──
-          جای گرادیانتِ brand-800 و کارتِ شیشه‌ایِ کنارش: یک ردیفِ کم‌ارتفاع
-          که سلام می‌کند و کارِ امروز را می‌گوید. نه بیشتر. */}
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-5 py-3.5 shadow-rest">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-deep">
-            <GraduationCap className="h-5 w-5" />
-          </span>
-          <div className="min-w-0">
-            <h1 className="truncate text-[16px] font-black text-ink">
-              سلام {user?.full_name || user?.username}، ادامه بده
+      {/* ── سربرگ خوش‌آمد ── */}
+      <section className="relative overflow-hidden rounded-4xl border border-brand-100 bg-gradient-to-l from-brand-800 to-brand-700 px-6 py-6 text-brand-50 shadow-lift sm:px-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{ background: 'radial-gradient(700px 260px at 88% -20%, rgba(253,233,200,0.35), transparent 60%)' }}
+        />
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="flex items-center gap-2 text-[12px] font-bold text-brand-200">
+              <Sparkles className="h-4 w-4 text-amber-200" /> {today}
+            </p>
+            <h1 className="mt-2 text-2xl font-black leading-snug sm:text-[28px]">
+              سلام {user?.full_name || user?.username} 👋<br className="hidden sm:block" />
+              آماده‌ای برای آزمون جامع تشخیصی؟
             </h1>
-            <p className="text-[11px] text-ink-faint">{today} · هر جلسه حدود ۳۰ دقیقه</p>
+            <p className="mt-2 max-w-lg text-[13px] leading-7 text-brand-100/90">
+              یک زنجیرهٔ فهم‌سنجی ۵ مرحله‌ای از همین مفهوم آماده است.
+              در پایان، کارنامهٔ اشعهٔ ایکس با شکارِ تناقض‌های ذهنت می‌سازیم.
+            </p>
+          </div>
+          <div className="hidden shrink-0 flex-col items-center gap-2 rounded-3xl bg-white/10 px-6 py-4 text-center ring-1 ring-white/15 backdrop-blur md:flex">
+            <HeartHandshake className="h-9 w-9 text-amber-200" />
+            <p className="text-[11px] font-bold leading-5 text-brand-100">
+              زنجیرهٔ ۵ مرحله‌ای
+              <br /> تحلیلِ مقایسه‌ای
+            </p>
           </div>
         </div>
-      </header>
+      </section>
 
-      {/* ══════════ ادامهٔ مسیر ══════════
-          این بخش قلبِ داشبورد است و قبلاً یک کارتِ indigo با قابِ ضخیم و
-          پس‌زمینهٔ گرادیانتی بود که با سه کارتِ زیرش هیچ فرقی در وزن نداشت.
-
-          حالا چیدمانِ افقی و نامتقارن دارد: در راست، «کاری که امروز باید
-          بکنی» با یک ورودیِ مبحث و یک دکمهٔ اصلی؛ در چپ، مسیرِ سه‌گامی به‌صورتِ
-          یک خطِ عمودی با گره — همان موتیفِ مسیر که در کارنامه هم تکرار می‌شود. */}
-      <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-rest">
-        <div className="grid lg:grid-cols-12">
-          {/* ── راست: ورودیِ مبحث ── */}
-          <div className="p-5 sm:p-6 lg:col-span-7">
-            <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary-deep">
-                <BrainCircuit className="h-4 w-4" strokeWidth={2.2} />
-              </span>
-              <div>
-                <h2 className="text-[15px] font-black leading-tight text-ink">ادامهٔ مسیر</h2>
-                <p className="text-[10.5px] text-ink-faint">مبحث را بگو، سؤال‌ها را می‌سازیم</p>
+      {/* ── آزمونِ فهم‌سنجی شناختی (پنج مرحله‌ای) ── */}
+      <section className="overflow-hidden rounded-4xl border-2 border-indigo-200 bg-gradient-to-l from-indigo-50 via-white to-white p-5 shadow-soft sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="rounded-2xl bg-indigo-600 p-3 text-white shadow-soft">
+              <BrainCircuit className="h-6 w-6" strokeWidth={2} />
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-[15px] font-black text-indigo-950">آزمونِ فهم‌سنجی شناختی</h2>
+                <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-black text-white">
+                  تازه
+                </span>
+              </div>
+              <p className="mt-1 max-w-xl text-[12px] leading-6 text-slate-600">
+                پنج سؤالِ زنجیره‌ای که ذهنت را می‌خواند: پرسشِ مفهومی، محاسبه و دادهٔ انحرافی، پیش‌بینیِ پدیده،
+                عیب‌یابیِ یک استدلالِ غلط، و توضیح برای یک بچهٔ ۱۰ ساله با دستِ بسته.
+                نتیجه نمره نیست — کارنامهٔ اشعهٔ ایکس است.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {['پرسشِ مفهومی', 'محاسبه', 'پیش‌بینی', 'نقدِ استدلال', 'توضیحِ ساده'].map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-lg bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-800 ring-1 ring-indigo-100"
+                  >
+                    {label}
+                  </span>
+                ))}
               </div>
             </div>
-
-            <p className="mt-3 max-w-lg text-justify text-right text-[12px] leading-7 text-ink-soft">
-              پنج تا ده سؤال که ذهنت را می‌خوانند: از پرسشِ مفهومی تا نقدِ یک استدلالِ غلط.
-              هیچ نمره‌ای در کار نیست — خروجی، نقشهٔ فهمِ خودت است.
-            </p>
-
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              <input
-                value={xrayTopic}
-                onChange={(event) => setXrayTopic(event.target.value)}
-                onKeyDown={(event) => event.key === 'Enter' && startCognitiveAssessment()}
-                placeholder={selectedConcept ? `مبحث: ${selectedConcept.name}` : 'مبحث را بنویس، مثلاً «فشار در مایعات»'}
-                className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-surface-muted px-3.5 py-2.5 text-[12.5px] font-bold text-ink outline-none transition placeholder:font-normal placeholder:text-ink-faint focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
-              />
-              <button
-                type="button"
-                onClick={startCognitiveAssessment}
-                disabled={xrayStarting}
-                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-[12.5px] font-black text-white shadow-rest transition hover:bg-primary-deep disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-              >
-                {xrayStarting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Fingerprint className="h-4 w-4" />
-                )}
-                {xrayStarting ? 'در حال ساختِ آزمون…' : 'سؤال‌های این مبحث را بساز'}
-              </button>
-            </div>
-
-            {xrayError && (
-              <p
-                className="mt-2.5 rounded-lg border-r-2 border-danger bg-danger-soft px-3 py-2 text-[11px] font-bold text-danger"
-                role="alert"
-              >
-                {xrayError}
-              </p>
-            )}
-            {selectedConcept && (
-              <p className="mt-2 text-[10.5px] text-ink-faint">
-                مبحثِ انتخاب‌شده: «{selectedConcept.name}» — می‌توانی همین را بفرستی یا مبحثِ دیگری بنویسی.
-              </p>
-            )}
           </div>
-
-          {/* ── چپ: مسیرِ سه‌گامی ── */}
-          <aside className="border-t border-slate-100 bg-surface-muted p-5 sm:p-6 lg:col-span-5 lg:border-r lg:border-t-0">
-            <p className="text-[10.5px] font-black text-ink-faint">مسیر تا کارنامه</p>
-            <ol className="relative mt-3 space-y-3.5 border-r border-dashed border-slate-300 pr-4">
-              {[
-                { title: 'انتخاب مبحث', done: true },
-                { title: 'پاسخ به سؤال‌ها', done: false },
-                { title: 'کارنامه و نقشهٔ راه', done: false },
-              ].map(({ title, done }) => (
-                <li key={title} className="relative">
-                  <span
-                    className={`absolute -right-[21px] top-1 h-2.5 w-2.5 rounded-full ring-2 ring-surface-muted ${
-                      done ? 'bg-primary' : 'bg-slate-300'
-                    }`}
-                    aria-hidden="true"
-                  />
-                  <p
-                    className={`text-[11.5px] font-bold ${
-                      done ? 'text-ink' : 'text-ink-faint'
-                    }`}
-                  >
-                    {title}
-                  </p>
-                </li>
-              ))}
-            </ol>
-            <p className="mt-4 text-[10px] leading-5 text-ink-faint">
-              هر جلسه حدود ۳۰ دقیقه؛ هر وقت خواستی می‌توانی مکث کنی.
-            </p>
-          </aside>
         </div>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={xrayTopic}
+            onChange={(event) => setXrayTopic(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && startCognitiveAssessment()}
+            placeholder={selectedConcept ? `مبحث: ${selectedConcept.name}` : 'مبحث را بنویس، مثلاً «فشار در مایعات»'}
+            className="flex-1 rounded-2xl border-2 border-indigo-100 bg-white px-4 py-3 text-[13px] font-bold text-slate-800 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+          />
+          <button
+            type="button"
+            onClick={startCognitiveAssessment}
+            disabled={xrayStarting}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-700 px-6 py-3 text-[14px] font-black text-white shadow-lift transition hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {xrayStarting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Fingerprint className="h-5 w-5" />}
+            {xrayStarting ? 'در حال طراحیِ آزمون…' : 'شروعِ تحلیلِ ذهن'}
+          </button>
+        </div>
+        {xrayError && (
+          <p className="mt-2 rounded-xl bg-rose-50 p-3 text-[11px] font-bold text-rose-800 ring-1 ring-rose-200">
+            ⚠️ {xrayError}
+          </p>
+        )}
+        {selectedConcept && (
+          <p className="mt-2 text-[10px] font-medium text-slate-400">
+            مبحثِ انتخاب‌شده در کارتِ پایین: «{selectedConcept.name}» — می‌توانی همین را بفرستی یا مبحثِ دیگری بنویسی.
+          </p>
+        )}
       </section>
 
       {/* ── تب‌های مسیر شروع ── */}
@@ -584,105 +559,75 @@ export default function StudentDashboard() {
       </section>
 
       {/* ── چطور کار می‌کند ── */}
-      {/* ── سه اصلِ کار ──
-          قبلاً سه کارتِ هم‌اندازهٔ وسط‌چین. حالا یک نوارِ افقیِ شماره‌دار:
-          سه گامِ یک مسیر، نه سه کارتِ مستقل. */}
-      <section
-        className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white px-5 py-4 sm:flex-row sm:items-center"
-        aria-label="مسیرِ کار"
-      >
-        {HOW_STEPS.map(({ Icon, title, text }, i) => (
-          <div key={title} className="flex flex-1 items-start gap-2.5">
-            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[10px] font-black text-primary-deep">
-              {toFarsiNumber(i + 1)}
-            </span>
-            <div className="min-w-0">
-              <p className="flex items-center gap-1 text-[11.5px] font-black text-ink">
-                <Icon className="h-3.5 w-3.5 text-primary" strokeWidth={2} />
-                {title}
-              </p>
-              <p className="mt-0.5 text-[10.5px] leading-5 text-ink-faint">{text}</p>
-            </div>
+      <section className="grid gap-3 sm:grid-cols-3">
+        {HOW_STEPS.map(({ Icon, title, text }) => (
+          <div key={title} className="rounded-3xl border border-brand-100/70 bg-white/70 p-5 text-center">
+            <Icon className="mx-auto h-7 w-7 text-brand-600" strokeWidth={1.8} />
+            <p className="mt-2 text-[13px] font-black text-brand-900">{title}</p>
+            <p className="mt-1 text-[11px] leading-6 text-slate-500">{text}</p>
           </div>
         ))}
       </section>
+
+      <p className="flex items-center justify-center gap-2 text-center text-[11px] text-slate-400">
+        <BookOpen className="h-4 w-4" /> هر جلسه حداکثر ۳۰ دقیقه طول می‌کشد و می‌توانی هر وقت خواستی مکث کنی.
+      </p>
         </>
       )}
 
       {/* ── تاریخچهٔ آزمون‌های من — دادهٔ واقعی دیتابیس (GET /api/student/history) ── */}
-      <section className="rounded-2xl border border-slate-200/80 bg-white shadow-rest" aria-label="تاریخچهٔ آزمون‌های من">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3.5">
-          <h2 className="flex items-center gap-2 text-[13px] font-black text-ink">
-            <History className="h-4 w-4 text-primary" /> تاریخچهٔ آزمون‌های من
+      <section className="card p-6 sm:p-7" aria-label="تاریخچهٔ آزمون‌های من">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 text-[15px] font-black text-brand-950">
+            <History className="h-5 w-5 text-brand-700" /> تاریخچهٔ آزمون‌های من
           </h2>
-          <span className="text-[10px] font-bold text-ink-faint">
-            {history?.length ? `${toFarsiNumber(history.length)} جلسه` : 'اتصال زنده به دیتابیس'}
-          </span>
+          <span className="chip bg-brand-50 text-brand-800 ring-1 ring-brand-200">اتصال زنده به دیتابیس</span>
         </div>
         {historyError ? (
-          <p className="m-4 rounded-lg border-r-2 border-caution bg-caution-soft px-3 py-2 text-[11.5px] font-bold text-caution" role="alert">
-            {historyError}
-          </p>
+          <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-bold text-amber-900" role="alert">{historyError}</p>
         ) : history === null ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-[11.5px] font-bold text-ink-faint">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" /> در حال دریافت تاریخچه…
+          <div className="flex items-center justify-center gap-2 py-8 text-[12px] font-bold text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin text-brand-600" /> در حال دریافت تاریخچه…
           </div>
         ) : history.length === 0 ? (
-          <p className="m-4 rounded-xl border border-dashed border-slate-200 bg-surface-muted px-4 py-8 text-center text-[11.5px] font-bold leading-6 text-ink-faint">
+          <p className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-10 text-center text-[12px] font-bold leading-6 text-slate-400">
             هنوز آزمونی ثبت نکرده‌ای؛<br />اولین فهم‌سنجی را همین‌جا شروع کن.
           </p>
         ) : (
-          /* ── فهرستِ تاریخچه ──
-             جای گریدِ کارت‌های هم‌شکل: یک جدولِ سبکِ ردیفی. هر ردیف یک جلسه،
-             با وضعیت در راست و اقدام در چپ — قابلِ اسکن با یک نگاه.
-
-             نوزده ردیفِ پشتِ‌سرِهم خودش یک دیوار است؛ پنج جلسهٔ آخر نشان داده
-             می‌شود و بقیه با یک دکمه باز می‌شوند. هیچ درخواستِ تازه‌ای به API
-             نمی‌رود — همان آرایهٔ دریافت‌شده برش می‌خورد. */
-          <ul className="divide-y divide-slate-100">
-            {(showAllHistory ? history : history.slice(0, 5)).map((h) => (
-              <li key={h.session_id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 transition-colors hover:bg-surface-muted">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] font-black text-ink">
-                    {h.concept_name}
-                    {h.subject && <span className="font-normal text-ink-faint"> · {subjectFa(h.subject)}</span>}
-                  </p>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2.5 text-[10px] text-ink-faint">
-                    <span className="inline-flex items-center gap-1">
-                      <CalendarDays className="h-3 w-3" />
-                      {h.exam_date
-                        ? new Date(h.exam_date).toLocaleDateString('fa-IR', { dateStyle: 'long' })
-                        : '—'}
-                    </span>
-                    <span>{toFarsiNumber(h.questions_answered)} پاسخ</span>
-                  </p>
+          <ul className="mt-4 grid gap-3 md:grid-cols-2">
+            {history.map((h) => (
+              <li
+                key={h.session_id}
+                className="flex flex-col rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:shadow-lift"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 text-[12px] font-black leading-6 text-brand-950">
+                    <span className="text-brand-600">{h.subject ? subjectFa(h.subject) : '—'}</span> · {h.concept_name}
+                  </span>
+                  <span className={`chip ring-1 ${HISTORY_CHIP[h.comprehension] ?? HISTORY_CHIP.insufficient}`}>
+                    {h.comprehension_label}
+                  </span>
                 </div>
-                <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-black ${HISTORY_CHIP[h.comprehension] ?? HISTORY_CHIP.insufficient}`}>
-                  {h.comprehension_label}
-                </span>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-medium text-slate-500">
+                  <span className="inline-flex items-center gap-1">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {h.exam_date
+                      ? new Date(h.exam_date).toLocaleDateString('fa-IR', { dateStyle: 'long' })
+                      : '—'}
+                  </span>
+                  <span>{toFarsiNumber(h.questions_answered)} پاسخ ثبت‌شده</span>
+                  <span>{h.is_exam ? 'آزمون جامع' : h.trigger_type === 'wrong_answer' ? 'مسیر پاسخ غلط' : 'انتخاب موضوع'}</span>
+                </div>
                 <button
                   type="button"
                   onClick={() => navigate(`/report/${h.session_id}`)}
-                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10.5px] font-black text-ink-soft transition hover:border-primary/40 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-[11px] font-black text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100"
                 >
-                  کارنامه
+                  <ScrollText className="h-4 w-4" /> مشاهدهٔ کارنامه
                 </button>
               </li>
             ))}
           </ul>
-        )}
-        {!historyError && Array.isArray(history) && history.length > 5 && (
-          <div className="border-t border-slate-100 px-5 py-2.5 text-center">
-            <button
-              type="button"
-              onClick={() => setShowAllHistory((v) => !v)}
-              className="text-[10.5px] font-black text-primary transition hover:text-primary-deep focus:outline-none focus-visible:underline"
-            >
-              {showAllHistory
-                ? 'نمایشِ کمتر'
-                : `نمایشِ همهٔ ${toFarsiNumber(history.length)} جلسه`}
-            </button>
-          </div>
         )}
       </section>
     </div>

@@ -90,7 +90,7 @@ export default function App() {
         </Routes>
       </main>
 
-      <footer className="no-print border-t border-slate-200/70 bg-surface-muted py-4">
+      <footer className="no-print border-t border-slate-200/70 bg-white/70 py-4 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 text-[11px] font-medium text-slate-500 sm:px-6">
           <span className="font-bold text-brand-800">فهم‌یار</span>
           {user ? <span className="text-slate-400">{user.full_name || user.username}</span> : <span>سامانهٔ فهم‌سنجی تشخیصی</span>}

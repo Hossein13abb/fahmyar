@@ -9,7 +9,7 @@ import { STAGE_ICONS } from './icons'
  */
 export default function StageStepper({ stages = [], current = 0, answered = {}, onJump }) {
   return (
-    <div className="rounded-3xl border border-brand-100 bg-white/80 p-3 shadow-soft sm:p-4">
+    <div className="rounded-3xl border border-brand-100 bg-white/80 p-3 shadow-soft backdrop-blur sm:p-4">
       <ol className="flex items-stretch justify-between gap-1 sm:gap-2">
         {stages.map((stage, index) => {
           const isCurrent = index === current

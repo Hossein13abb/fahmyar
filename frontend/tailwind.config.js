@@ -7,38 +7,7 @@ export default {
         vazir: ['Vazirmatn', 'Tahoma', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       colors: {
-        // ── توکن‌های فاز ۲۷ ──
-        //
-        // ⚠️ این‌ها اول داخلِ بلوکِ ``@theme`` در index.css نوشته شده بودند.
-        // پروژه Tailwind **v3.4** است و ``@theme`` سینتکسِ v4 است؛ نتیجه این
-        // بود که هیچ‌کدام از این کلاس‌ها در CSS نهایی تولید نمی‌شد و کلِ
-        // بازطراحی بی‌اثر می‌ماند. تنها راهِ درست در v3، همین‌جاست.
-        canvas: '#f2f5f2',        // بومِ خاکستریِ گرم با تهِ سبز
-        'canvas-deep': '#e8ede9',
-        ink: '#0f2a22',           // متنِ سبزِ زغالی
-        'ink-soft': '#3f544c',
-        'ink-faint': '#6b7f77',
-        surface: {
-          DEFAULT: '#ffffff',
-          muted: '#f7f9f7',       // پنل‌های فرعی — نه سفیدِ خالص
-        },
-        primary: {
-          DEFAULT: '#1f6a55',
-          deep: '#164c3e',
-          soft: '#e3f0ea',
-        },
-        analytic: {
-          DEFAULT: '#4f5fa8',
-          soft: '#eaeafa',
-        },
-        caution: {
-          DEFAULT: '#b4761a',
-          soft: '#fbf1dd',
-        },
-        danger: {
-          DEFAULT: '#b34a5c',
-          soft: '#fbeaed',
-        },
+        // پالت آرام و استرس‌زدای فهم‌یار — سبز زمردی + ایندیگو ملایم + کهربایی گرم
         brand: {
           50: '#effaf4',
           100: '#d7f3e5',
@@ -71,10 +40,6 @@ export default {
         // سایهٔ دو‌لایه: نزدیک و تیز برای تعریفِ لبه + دور و نرم برای عمق.
         // کارت‌های تک‌سایه‌ای «تخت» دیده می‌شدند.
         panel: '0 1px 2px rgba(16,24,40,0.04), 0 12px 32px -12px rgba(13,39,31,0.14)',
-        // فاز ۲۷: دو سایهٔ ثبت‌شده — آرام و کمی بلندتر. جایگزینِ ``--shadow-rest``
-        // و ``--shadow-lift`` که در :root تعریف شده بودند ولی قابلِ استفاده نبودند.
-        rest: '0 1px 2px rgba(15,42,34,0.04), 0 6px 18px -8px rgba(15,42,34,0.10)',
-        'rest-lift': '0 2px 4px rgba(15,42,34,0.05), 0 16px 34px -14px rgba(15,42,34,0.18)',
         'panel-hover':
           '0 2px 4px rgba(16,24,40,0.05), 0 24px 48px -16px rgba(13,39,31,0.22)',
         glow: '0 0 0 1px rgba(46,163,127,0.12), 0 14px 40px -12px rgba(46,163,127,0.35)',

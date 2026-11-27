@@ -28,7 +28,7 @@ export default function Navbar() {
   const role = ROLE_META[user?.role] ?? ROLE_META.student
 
   return (
-    <header className="no-print sticky top-0 z-40 border-b border-slate-200/70 bg-surface">
+    <header className="no-print sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         {/* راست (RTL اول): لوگو + نام */}
         <Link to={user ? (isTeacher ? '/staff' : '/dashboard') : '/'} className="flex items-center gap-3">
