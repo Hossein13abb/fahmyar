@@ -26,7 +26,7 @@ from models.user import User
 from reports.exam_report import build_exam_report
 from reports.fa_map import scrub_english_leaks
 from reports.report_generator import build_report
-from curriculum_bridge import resolve_concept
+from curriculum_bridge import resolve_concept, resolve_subject_display
 from reports.report_pdf import build_report_pdf
 from reports.session_status import COMPREHENSION_LABELS, comprehension_status, is_exam_session
 
@@ -799,7 +799,7 @@ def get_student_history(
                 "session_id": s.id,
                 "concept_id": s.concept_id,
                 "concept_name": concept.name if concept else "نامشخص",
-                "subject": concept.subject if concept else None,
+                "subject": resolve_subject_display(concept),
                 "grade": concept.grade if concept else None,
                 "exam_date": s.started_at.isoformat() if s.started_at else None,
                 "status": s.status,

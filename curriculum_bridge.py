@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from models.concept import Concept
 
-# رشته‌های درخت → فیلدِ ``subject`` در دیتابیس
+# رشته‌های درخت → فیلدِ ``subject`` در دیتابیس (فقط وقتی درسِ دقیق معلوم نباشد)
 _MAJOR_TO_SUBJECT = {
     "experimental": "experimental",
     "mathematics": "mathematics",
@@ -35,6 +35,93 @@ _MAJOR_TO_SUBJECT = {
     "chemistry": "chemistry",
     "math": "math",
 }
+
+_SUBJECT_ID_PREFIX_TO_SLUG = (
+    ("physics", "physics"),
+    ("phy", "physics"),
+    ("chemistry", "chemistry"),
+    ("chem", "chemistry"),
+    ("biology", "biology"),
+    ("bio", "biology"),
+    ("calculus", "calculus"),
+    ("calc", "calculus"),
+    ("geometry", "geometry"),
+    ("geom", "geometry"),
+    ("discrete", "discrete"),
+    ("disc", "discrete"),
+    ("statistics", "statistics"),
+    ("stat", "statistics"),
+    ("math", "math"),
+)
+
+_BOOK_TITLE_TO_FA = (
+    ("فیزیک", "فیزیک"),
+    ("شیمی", "شیمی"),
+    ("زیست", "زیست‌شناسی"),
+    ("حسابان", "حسابان"),
+    ("هندسه", "هندسه"),
+    ("گسسته", "ریاضیات گسسته"),
+    ("آمار", "آمار و احتمال"),
+    ("ریاضی", "ریاضی"),
+)
+
+
+def _subject_slug_from_curriculum(curriculum: dict[str, Any], fallback: str) -> str:
+    """درسِ واقعی را از ``subjectId`` یا ``subjectTitle`` استخراج می‌کند."""
+    subject_id = str(curriculum.get("subjectId") or "").strip().lower()
+    for prefix, slug in _SUBJECT_ID_PREFIX_TO_SLUG:
+        if subject_id.startswith(prefix):
+            return slug
+
+    subject_title = str(curriculum.get("subjectTitle") or "").strip()
+    for keyword, _fa in _BOOK_TITLE_TO_FA:
+        if keyword in subject_title:
+            if keyword == "فیزیک":
+                return "physics"
+            if keyword == "شیمی":
+                return "chemistry"
+            if keyword == "زیست":
+                return "biology"
+            if keyword == "حسابان":
+                return "calculus"
+            if keyword == "هندسه":
+                return "geometry"
+            if keyword == "گسسته":
+                return "discrete"
+            if keyword == "آمار":
+                return "statistics"
+            if keyword == "ریاضی":
+                return "math"
+    return fallback
+
+
+def resolve_subject_display(concept: Optional[Concept]) -> Optional[str]:
+    """نامِ واقعیِ درس را برای نمایش برمی‌گرداند.
+
+    اگر ``concept.subject`` نامِ رشته باشد (``mathematics`` یا ``experimental``)،
+    از روی ``core_propositions`` (عنوانِ کتاب) یا ``topic`` درسِ واقعی را
+    تشخیص می‌دهد تا مثلاً «شیمی» یا «فیزیک» به جای «ریاضی» نمایش داده نشود.
+    """
+    if concept is None:
+        return None
+    raw = str(concept.subject or "").strip()
+    if raw not in ("mathematics", "experimental"):
+        return raw or None
+
+    # ۱. جست‌وجو در گزارهٔ «جایگاهِ این مفهوم در کتابِ ...»
+    props = concept.core_propositions or []
+    joined = " ".join(str(p) for p in props)
+    for keyword, fa_label in _BOOK_TITLE_TO_FA:
+        if keyword in joined:
+            return fa_label
+
+    # ۲. جست‌وجو در پیشوندِ topic (مثل phy10-..., chem10-..., bio11-...)
+    topic = str(concept.topic or "").strip().lower()
+    for prefix, slug in _SUBJECT_ID_PREFIX_TO_SLUG:
+        if topic.startswith(prefix):
+            return slug
+
+    return raw
 
 
 def _slug(text: str) -> str:
@@ -93,7 +180,8 @@ def resolve_concept(
         raise ValueError("عنوانِ مفهوم در درخواست خالی است.")
 
     major = str(curriculum.get("major") or "").strip()
-    subject_field = _MAJOR_TO_SUBJECT.get(major, "experimental")
+    major_fallback = _MAJOR_TO_SUBJECT.get(major, "experimental")
+    subject_field = _subject_slug_from_curriculum(curriculum, major_fallback)
     try:
         grade = int(str(curriculum.get("grade") or "10"))
     except ValueError:
