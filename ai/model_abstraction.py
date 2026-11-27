@@ -609,6 +609,10 @@ def _extract_marker(prompt: str, tag: str) -> str:
 
 _SUBJECT_LABELS = {
     "math": "ریاضی",
+    # نامِ رشته‌ها (از curriculum_bridge) — بدونِ این‌ها _subject_label
+    # مقدارِ خامِ انگلیسی را برمی‌گرداند و در خروجیِ AI می‌ماند.
+    "mathematics": "ریاضی",
+    "experimental": "علوم تجربی",
     "calculus": "حسابان",
     "geometry": "هندسه",
     "discrete": "گسسته",
