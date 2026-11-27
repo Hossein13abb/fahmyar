@@ -105,4 +105,35 @@ def health():
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request, exc):  # اطمینان از پاسخ JSON به‌جای HTML
-    return JSONResponse(status_code=500, content={"detail": f"خطای داخلی سرور: {exc}"})
+    """خطای پیش‌بینی‌نشده را به JSON تبدیل می‌کند — **بدونِ لو دادنِ متنِ خام**.
+
+    سابقهٔ باگ (خطای واقعیِ کاربر): وقتی دیتابیس «malformed» شد، دانش‌آموز
+    در کارتِ تاریخچه این را دید:
+
+        خطای داخلی سرور: (sqlite3.DatabaseError) database disk image is
+        malformed [SQL: SELECT assessment_sessions.id AS ... WHERE
+        assessment_sessions.student_id = ? AND assessment_sessions.status
+        IN (?, ?) ...] [parameters: (1, 'completed', ...)]
+
+    سه مشکل در یک پیام:
+      ۱. متنِ SQL و نامِ جدول‌ها به کاربر لو می‌رفت.
+      ۲. هیچ راهنمایی برای اقدام نداشت.
+      ۳. برای دانش‌آموز ترسناک و بی‌معنی بود.
+
+    حالا: لاگِ کامل (با traceback) در سمتِ سرور می‌ماند، ولی کاربر یک جملهٔ
+    روشن و قابلِ اقدام می‌گیرد. تشخیصِ فنی از راهِ لاگ ممکن است، نه از UI.
+    """
+    import logging
+
+    logger = logging.getLogger("fahmyar")
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+
+    detail = "مشکلی پیش آمد و درخواستت کامل نشد. یک بار دیگر تلاش کن."
+    # خطاهای دیتابیس پیامِ اختصاصی می‌گیرند — چون اقدامِ مشخصی دارند.
+    if "malformed" in str(exc).lower() or "database disk image" in str(exc).lower():
+        detail = (
+            "اطلاعاتِ ذخیره‌شده الان قابلِ خواندن نیست. این مشکل با اجرای "
+            "«python tools/repair_db.py --repair» روی سرور برطرف می‌شود. "
+            "اگر دسترسی نداری، به پشتیبانی اطلاع بده."
+        )
+    return JSONResponse(status_code=500, content={"detail": detail})
