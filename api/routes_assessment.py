@@ -26,6 +26,7 @@ from models.user import User
 from reports.exam_report import build_exam_report
 from reports.fa_map import scrub_english_leaks
 from reports.report_generator import build_report
+from curriculum_bridge import resolve_concept
 from reports.report_pdf import build_report_pdf
 from reports.session_status import COMPREHENSION_LABELS, comprehension_status, is_exam_session
 
@@ -39,10 +40,34 @@ class WrongAnswerIn(BaseModel):
     concept_id: Optional[int] = Field(default=None, description="اگر بدانید خطا متعلق به کدام مفهوم است")
 
 
+class CurriculumSelectionIn(BaseModel):
+    """انتخابِ سلسله‌مراتبی از درختِ برنامهٔ درسی.
+
+    فرانت این را همراهِ درخواست می‌فرستد تا اگر مفهوم در بانکِ ۱۶تایی نبود،
+    بک‌اند بتواند آن را از عنوان‌های رسمیِ کتاب بسازد — نه اینکه آزمون
+    اصلاً شروع نشود.
+    """
+
+    major: str = Field(default="", description="experimental | mathematics")
+    grade: str = Field(default="10", description="10 | 11 | 12")
+    subjectId: str = ""
+    subjectTitle: str = ""
+    chapterNumber: Optional[int] = None
+    chapterTitle: str = ""
+    conceptId: str = ""
+    conceptTitle: str = Field(default="", description="عنوانِ دقیقِ مفهوم")
+
+
 class StartSessionRequest(BaseModel):
     trigger_type: Literal["topic_selection", "wrong_answer"]
     concept_id: Optional[int] = Field(default=None, description="برای مسیر انتخاب موضوع الزامی است")
     wrong_answer: Optional[WrongAnswerIn] = Field(default=None, description="برای مسیر پاسخ غلط الزامی است")
+    # فاز ۲۹ — انتخابِ سلسله‌مراتبی. اختیاری است تا همهٔ کلاینت‌های فعلی
+    # بدونِ تغییر کار کنند.
+    curriculum: Optional[CurriculumSelectionIn] = Field(
+        default=None,
+        description="انتخابِ رشته/پایه/درس/فصل/مفهوم از درختِ برنامهٔ درسی",
+    )
 
 
 class SubmitAnswerRequest(BaseModel):
@@ -197,11 +222,25 @@ async def start_assessment(
     if user.role != "student":
         raise HTTPException(status_code=403, detail="فقط دانش‌آموزان می‌توانند جلسهٔ ارزیابی شروع کنند.")
     manager = SessionManager(db)
+
+    # ── فاز ۲۹: پلِ درختِ برنامهٔ درسی ──
+    # اگر دانش‌آموز مفهومی از درخت انتخاب کرده که در بانک نیست، همین‌جا
+    # ساخته/منطبق می‌شود. بدونِ این، درختِ ۲۶۳ مفهومی فقط تزئینی بود.
+    concept_id = body.concept_id
+    if body.curriculum is not None:
+        try:
+            concept = resolve_concept(
+                db, body.concept_id, body.curriculum.model_dump()
+            )
+            concept_id = concept.id
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
     try:
         session, first_question = await manager.start_session(
             student=user,
             trigger_type=body.trigger_type,
-            concept_id=body.concept_id,
+            concept_id=concept_id,
             wrong_answer=body.wrong_answer.model_dump() if body.wrong_answer else None,
         )
     except SessionError as exc:

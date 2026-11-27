@@ -30,6 +30,8 @@ import client, { friendlyError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
 import CustomDropdown from '../components/CustomDropdown'
+import CurriculumCascader from '../components/CurriculumCascader'
+import { TOTAL_CONCEPTS } from '../lib/curriculum/iranHighSchoolCurriculum'
 import { toFarsiNumber, subjectFa } from '../utils/faNumbers'
 
 const SUBJECTS = [
@@ -135,6 +137,10 @@ export default function StudentDashboard() {
   )
 
   // ── آزمونِ فهم‌سنجی شناختی (X-Ray) ──────────────────────────────────────
+  // ── انتخابِ سلسله‌مراتبی (فاز ۲۹) ──
+  // آبجکتِ کاملِ {major, grade, subjectId, subjectTitle, chapterTitle,
+  //   conceptId, conceptTitle} که هم برای UI لازم است هم برای payloadِ API.
+  const [curriculumSelection, setCurriculumSelection] = useState(null)
   const [xrayTopic, setXrayTopic] = useState('')
   const [xrayStarting, setXrayStarting] = useState(false)
   const [xrayError, setXrayError] = useState('')
@@ -183,24 +189,41 @@ export default function StudentDashboard() {
   }
 
   const startTopicSession = async () => {
-    if (!conceptId) return setError('اول یک مفهوم را انتخاب کن.')
+    if (!curriculumSelection) {
+      return setError('اول رشته، پایه، درس، فصل و مفهوم را انتخاب کن.')
+    }
     setSubmitting(true)
     setError('')
     try {
-      // بدنه دقیقاً مطابق اسکیما: concept_id عدد صحیح + trigger_type ثابت
+      // ── فاز ۲۹: payloadِ کاملِ انتخابِ سلسله‌مراتبی ──
+      //
+      // ``concept_id`` دیگر اجباری نیست: اگر مفهوم در بانکِ ۱۶تایی باشد،
+      // بک‌اند خودش با (subject, grade, name) منطبقش می‌کند؛ اگر نباشد،
+      // از عنوان‌های رسمیِ همین درخت می‌سازدش. نتیجه: هر ۲۶۳ مفهومِ درخت
+      // قابلِ انتخاب‌اند، نه فقط آن ۱۶ تا.
       const { data } = await client.post(
         '/api/assess/start',
         {
           trigger_type: 'topic_selection',
-          concept_id: Number.parseInt(conceptId, 10),
+          concept_id: null,
           wrong_answer: null,
+          curriculum: {
+            major: curriculumSelection.major,
+            grade: String(curriculumSelection.grade),
+            subjectId: curriculumSelection.subjectId,
+            subjectTitle: curriculumSelection.subjectTitle,
+            chapterNumber: curriculumSelection.chapterNumber,
+            chapterTitle: curriculumSelection.chapterTitle,
+            conceptId: curriculumSelection.conceptId,
+            conceptTitle: curriculumSelection.conceptTitle,
+          },
         },
-        { timeout: 180000 },
+        { timeout: 240000 },
       )
       const sessionId = data?.session_id ?? data?.session?.id
       if (!sessionId) throw new Error('شناسهٔ جلسه از سرور دریافت نشد.')
       navigate('/exam/' + sessionId, {
-        state: { startData: data, conceptName: selectedConcept?.name ?? data?.concept_name },
+        state: { startData: data, conceptName: data?.concept_name ?? curriculumSelection.conceptTitle },
       })
     } catch (err) {
       setError(friendlyError(err))
@@ -345,68 +368,13 @@ export default function StudentDashboard() {
         </div>
       </section>
 
-      {/* ── آزمونِ فهم‌سنجی شناختی (پنج مرحله‌ای) ── */}
-      <section className="overflow-hidden rounded-4xl border-2 border-indigo-200 bg-gradient-to-l from-indigo-50 via-white to-white p-5 shadow-soft sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <span className="rounded-2xl bg-indigo-600 p-3 text-white shadow-soft">
-              <BrainCircuit className="h-6 w-6" strokeWidth={2} />
-            </span>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-[15px] font-black text-indigo-950">آزمونِ فهم‌سنجی شناختی</h2>
-                <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-black text-white">
-                  تازه
-                </span>
-              </div>
-              <p className="mt-1 max-w-xl text-[12px] leading-6 text-slate-600">
-                پنج سؤالِ زنجیره‌ای که ذهنت را می‌خواند: پرسشِ مفهومی، محاسبه و دادهٔ انحرافی، پیش‌بینیِ پدیده،
-                عیب‌یابیِ یک استدلالِ غلط، و توضیح برای یک بچهٔ ۱۰ ساله با دستِ بسته.
-                نتیجه نمره نیست — کارنامهٔ اشعهٔ ایکس است.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {['پرسشِ مفهومی', 'محاسبه', 'پیش‌بینی', 'نقدِ استدلال', 'توضیحِ ساده'].map((label) => (
-                  <span
-                    key={label}
-                    className="rounded-lg bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-800 ring-1 ring-indigo-100"
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* ── کارتِ آبیِ بالا حذف شد (فاز ۲۹) ──
+          اسپک صریحاً خواست: «کارتِ آبیِ جست‌وجو/ورودیِ متن کاملاً برداشته شود؛
+          مسیر الف نقطهٔ ورودِ اصلی است».
 
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <input
-            value={xrayTopic}
-            onChange={(event) => setXrayTopic(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && startCognitiveAssessment()}
-            placeholder={selectedConcept ? `مبحث: ${selectedConcept.name}` : 'مبحث را بنویس، مثلاً «فشار در مایعات»'}
-            className="flex-1 rounded-2xl border-2 border-indigo-100 bg-white px-4 py-3 text-[13px] font-bold text-slate-800 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
-          />
-          <button
-            type="button"
-            onClick={startCognitiveAssessment}
-            disabled={xrayStarting}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-700 px-6 py-3 text-[14px] font-black text-white shadow-lift transition hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {xrayStarting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Fingerprint className="h-5 w-5" />}
-            {xrayStarting ? 'در حال طراحیِ آزمون…' : 'شروعِ تحلیلِ ذهن'}
-          </button>
-        </div>
-        {xrayError && (
-          <p className="mt-2 rounded-xl bg-rose-50 p-3 text-[11px] font-bold text-rose-800 ring-1 ring-rose-200">
-            ⚠️ {xrayError}
-          </p>
-        )}
-        {selectedConcept && (
-          <p className="mt-2 text-[10px] font-medium text-slate-400">
-            مبحثِ انتخاب‌شده در کارتِ پایین: «{selectedConcept.name}» — می‌توانی همین را بفرستی یا مبحثِ دیگری بنویسی.
-          </p>
-        )}
-      </section>
+          قابلیتِ «نوشتنِ مبحثِ دلخواه» از دست نرفت: همان ورودی به **داخلِ
+          مسیر الف** منتقل شد، پایین‌تر، زیرِ انتخاب‌گرِ سلسله‌مراتبی — به‌عنوان
+          گزینهٔ دوم برای وقتی که مفهوم در درخت پیدا نمی‌شود. */}
 
       {/* ── تب‌های مسیر شروع ── */}
       <div className="grid gap-3 sm:grid-cols-2" role="tablist" aria-label="دو مسیر شروع آزمون جامع">
@@ -443,73 +411,72 @@ export default function StudentDashboard() {
       <section className="card p-6 sm:p-7">
         {tab === 'topic' ? (
           <div className="space-y-5">
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="min-w-[10rem] flex-1">
-                <label className="label" htmlFor="subject">درس</label>
-                <CustomDropdown
-                  id="subject"
-                  value={subject}
-                  onChange={(v) => setSubject(v)}
-                  ariaLabel="درس"
-                  options={SUBJECTS.map(({ value, label }) => ({ value, label }))}
-                />
-              </div>
-              <div className="min-w-[8rem] flex-1">
-                <label className="label" htmlFor="grade">پایه</label>
-                <CustomDropdown
-                  id="grade"
-                  value={grade}
-                  onChange={(v) => setGrade(Number(v))}
-                  ariaLabel="پایه"
-                  options={GRADES.map((g) => ({ value: g, label: `پایهٔ ${toFarsiNumber(g)}` }))}
-                />
-              </div>
-            </div>
-
+            {/* ══════════ انتخابِ سلسله‌مراتبی (فاز ۲۹) ══════════
+                جای سه دراپ‌داونِ مستقلِ «درس/پایه/مفهوم» که هم‌زمان نمایش داده
+                می‌شدند و تا انتخابِ قبلی خالی بودند. حالا پله‌به‌پله:
+                رشته → پایه → درس → فصل → مفهوم. */}
             <div>
-              <label className="label" htmlFor="concept">مفهوم مورد نظر</label>
-              {loadingConcepts ? (
-                <LoadingSpinner label="در حال دریافت مفهوم‌ها…" className="py-6" />
-              ) : (
-                <CustomDropdown
-                  id="concept"
-                  value={conceptId}
-                  onChange={(v) => setConceptId(v)}
-                  ariaLabel="مفهوم مورد نظر"
-                  placeholder="— یک مفهوم انتخاب کن —"
-                  options={[
-                    { value: '', label: '— یک مفهوم انتخاب کن —' },
-                    ...concepts.map((c) => ({
-                      value: c.id,
-                      label: `${c.name}${c.chapter ? ` (${c.chapter})` : ''}`,
-                    })),
-                  ]}
-                />
-              )}
-              {!loadingConcepts && concepts.length === 0 && (
-                <p className="mt-2 flex items-center gap-2 text-[12px] text-amber-800">
-                  <Info className="h-4 w-4" /> برای این درس و پایه هنوز مفهومی در بانک نیست.
-                </p>
-              )}
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-1">
+                <h3 className="flex items-center gap-1.5 text-[13px] font-black text-brand-950">
+                  <GraduationCap className="h-4 w-4 text-brand-600" />
+                  مفهوم را انتخاب کن
+                </h3>
+                <span className="text-[10.5px] font-medium text-slate-400">
+                  {toFarsiNumber(TOTAL_CONCEPTS)} مفهوم از کتاب‌های رسمی
+                </span>
+              </div>
+              <CurriculumCascader value={curriculumSelection} onChange={setCurriculumSelection} disabled={submitting} />
             </div>
 
-            {selectedConcept && (
-              <div className="rounded-2xl border border-brand-100 bg-brand-50/60 p-4 text-[12px] leading-7 text-brand-900">
-                <p className="font-black">{selectedConcept.name}</p>
-                <p className="mt-1 text-brand-800/80">{selectedConcept.chapter}</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {(selectedConcept.target_behaviors ?? []).map((tag) => (
-                    <span key={tag} className="chip bg-white text-brand-800 ring-1 ring-brand-200">{tagMap[tag] || tag}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <button onClick={startTopicSession} disabled={submitting || !conceptId} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-4 text-[15px] font-black text-white shadow-lift transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-60">
+            {/* ── شروع با مفهومِ انتخابی از درخت ── */}
+            <button
+              onClick={startTopicSession}
+              disabled={submitting || !curriculumSelection}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-4 text-[15px] font-black text-white shadow-lift transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
               {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Microscope className="h-5 w-5" />}
-              شروع آزمون جامع تشخیصی
+              {curriculumSelection
+                ? `شروع آزمون جامع تشخیصی (۱۰ سؤال) — ${curriculumSelection.conceptTitle}`
+                : 'شروع آزمون جامع تشخیصی (۱۰ سؤال)'}
               <ArrowLeft className="h-5 w-5" />
             </button>
+            {error && (
+              <p className="rounded-xl bg-rose-50 p-3 text-[11px] font-bold text-rose-800 ring-1 ring-rose-200" role="alert">
+                {error}
+              </p>
+            )}
+
+            {/* ── مسیرِ جایگزین: نوشتنِ مبحثِ دلخواه ──
+                این همان قابلیتی است که در کارتِ آبیِ حذف‌شده بود. حالا
+                اختیاری و کم‌حجم، زیرِ مسیرِ اصلی — نه بالای صفحه. */}
+            <details className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+              <summary className="cursor-pointer text-[12px] font-black text-slate-700">
+                مبحثم در فهرست نیست — با نوشتن شروع کنم
+              </summary>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={xrayTopic}
+                  onChange={(event) => setXrayTopic(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && startCognitiveAssessment()}
+                  placeholder="مبحث را بنویس، مثلاً «فشار در مایعات»"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[12.5px] font-bold text-slate-800 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                />
+                <button
+                  type="button"
+                  onClick={startCognitiveAssessment}
+                  disabled={xrayStarting}
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-brand-200 bg-white px-4 py-2.5 text-[12px] font-black text-brand-800 transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {xrayStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Fingerprint className="h-4 w-4" />}
+                  {xrayStarting ? 'در حال ساخت…' : 'شروعِ تحلیل'}
+                </button>
+              </div>
+              {xrayError && (
+                <p className="mt-2 rounded-lg bg-amber-50 p-2.5 text-[10.5px] font-bold text-amber-900 ring-1 ring-amber-200">
+                  {xrayError}
+                </p>
+              )}
+            </details>
           </div>
         ) : (
           <div className="space-y-5">
