@@ -173,14 +173,36 @@ _EXAM_PROMPT = r"""شما «کارآگاهِ علوم شناختیِ فهم‌ی
 لحن باید طوری باشد که دانش‌آموز حس کند کسی ذهنش را خوانده و به او احترام
 گذاشته — نه اینکه کارنامه‌ای فنی دربارهٔ او نوشته شده است.
 
+قوانین خلق «تیپ شناختی» و تعیین سطح کارنامه:
+۱. فیلد ``tier`` را بر اساس عملکرد کلی تعیین کن:
+   - ``emerald`` (سبز): تسلط همه‌جانبه، حداقل ۷ تا ۸ پاسخ کاملاً درست.
+   - ``yellow`` (زرد): درک مفهومی بالا، تست‌ها درست، اما لغزش‌های کوچک در واژگان تخصصی یا حلقه‌های میانی (غلط: ۰ یا ۱).
+     * توجه: اگر دانش‌آموز هیچ پاسخ غلطی ندارد (غلط = ۰)، حتماً سطح او ``yellow`` یا ``emerald`` است و هرگز نباید ``orange`` یا ``red`` شود.
+   - ``orange`` (نارنجی): تست‌ها درست اما استدلال‌های مفهومی دچار گسست و تضاد است (۳ تا ۴ غلط).
+   - ``red`` (قرمز): ضعف اساسی در پیش‌نیازها و ریشه‌ها (۵ غلط یا بیشتر).
+۲. فیلد ``archetype_title`` (تیپ شناختی پویا و خلاقانه، همچنین در ``persona_title``):
+   - برای هر دانش‌آموز متناسب با نحوه پاسخ‌گویی‌اش یک عنوان استعاری ۲ تا ۴ کلمه‌ای جذاب و ماندگار خلق کن.
+   - از گذاشتن عنوان‌های خسته‌کننده اداری (مثل «تسلط مفهومی و استدلال استوار»، «تسلط نسبی» یا «عملکرد متوسط») اکیداً خودداری کن!
+   - مثال‌های الهام‌بخش:
+     * سبز: «مهندسِ سازوکارها»، «معمارِ تصویرِ کلان»، «کاشفِ روابط بنیادین»
+     * زرد: «شهودگرِ تیزبین با لغزش کلامی»، «استدلال‌گرِ پیشرو»، «طراحِ ایده‌پرداز»
+     * نارنجی: «تفکرِ جزیره‌ای»، «محاسبه‌گرِ بدون قطب‌نما»، «فرمول‌دانِ دورافتاده از پدیده»
+     * قرمز: «معمار در جستجوی خشت‌های اول»، «کاوشگر در آغازِ بازسازی»
+   - مطلقاً از الفاظ توهین‌آمیز مثل «توهم دانایی» استفاده نکن.
+۳. فیلد ``archetype_subtitle``:
+   یک جمله کوتاه و جذاب که رفتار فکری این تیپ را خلاصه می‌کند (مثلاً برای تفکر جزیره‌ای: «فرمول‌ها را خوب بلدی، اما آن‌ها را به صورت جزایری جدا از هم می‌بینی.»).
+
 ══════ خروجی ══════
 فقط JSON معتبر؛ هیچ متنِ توضیحی قبل یا بعد. ساختار:
 
 {
   "needs_clarification": false,
   "clarification_data": {"contradicting_questions": [1, 2], "mirror_prompt": "..."},
+  "tier": "emerald | yellow | orange | red",
+  "archetype_title": "عنوانِ استعاریِ ۲ تا ۴ کلمه‌ایِ پویا",
+  "archetype_subtitle": "یک جملهٔ کوتاه و جذاب دربارهٔ رفتارِ فکریِ این تیپ",
   "mastery_status": "MASTERED | ILLUSION_OF_COMPETENCE | JARGON_DEPENDENT | PARTIAL_FRAGMENTED | UNSTRUCTURED",
-  "persona_title": "عنوانِ جذابِ وضعیتِ ذهنی (دوم‌شخص، بدونِ شمارهٔ مرحله)",
+  "persona_title": "همان عنوانِ استعاریِ پویا (بدونِ شمارهٔ مرحله)",
   "executive_summary": "روایتِ دوم‌شخصِ صمیمی، ۳ تا ۵ جمله: تصویرِ ذهنیِ فعلی، ریشهٔ گیرافتادن، تفاوتِ حفظ با فهم",
   "cross_check_findings": [
     {"title": "...", "type": "CONTRADICTION | SYNERGY | JARGON_VIOLATION | BLUFF_DETECTED | SLIP_RESOLVED",
@@ -2064,12 +2086,42 @@ async def analyze_stage_chain(
             "همان پدیده را برای یک بچهٔ ۱۰ ساله، بدونِ هیچ اصطلاحِ تخصصی، بازگو کن."
         ]
 
+    # ── تیپ شناختی پویا و ۴ سطحِ تشخیصی ──
+    _VALID_TIERS = {"emerald", "yellow", "orange", "red"}
+    _STATUS_TO_TIER = {
+        "MASTERED": "emerald",
+        "JARGON_DEPENDENT": "yellow",
+        "PARTIAL_FRAGMENTED": "orange",
+        "ILLUSION_OF_COMPETENCE": "orange",
+        "UNSTRUCTURED": "red",
+    }
+    raw_tier = str(data.get("tier") or "").strip().lower()
+    tier = raw_tier if raw_tier in _VALID_TIERS else _STATUS_TO_TIER.get(status, "yellow")
+
+    # قانونِ Zero-Incorrect: اگر دانش‌آموز هیچ پاسخِ غلطی ندارد، هرگز نباید
+    # نارنجی یا قرمز بگیرد.
+    wrong_count = sum(
+        1 for pq in per_question
+        if str(pq.get("verdict") or "").strip().upper() == "WRONG"
+    )
+    if wrong_count == 0 and tier in ("orange", "red"):
+        tier = "yellow"
+
+    raw_archetype = str(data.get("archetype_title") or "").strip().strip("«»\"' ")
+    archetype_title = raw_archetype or persona_title
+    if raw_archetype and raw_archetype != persona_title and not raw_persona:
+        persona_title = raw_archetype
+    archetype_subtitle = str(data.get("archetype_subtitle") or "").strip()
+
     report = {
         "needs_interrogation": needs,
         "interrogation": interrogation,
         # سازگاریِ عقب‌رو با مصرف‌کننده‌های قدیمی
         "needs_clarification": needs,
         "clarification_data": interrogation,
+        "tier": tier,
+        "archetype_title": archetype_title,
+        "archetype_subtitle": archetype_subtitle,
         "mastery_status": status,
         "persona_title": persona_title,
         "executive_summary": executive_summary,

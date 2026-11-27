@@ -498,6 +498,9 @@ def _persist_analysis(
         # خامی به فرانت/PDF نمی‌رسد.
         "suggestions": normalize_suggestions(result.get("improvement_suggestions")),
         "mastery_status": result.get("mastery_status"),
+        "tier": result.get("tier"),
+        "archetype_title": result.get("archetype_title"),
+        "archetype_subtitle": result.get("archetype_subtitle"),
         "persona_title": result.get("persona_title"),
         "executive_summary": result.get("executive_summary"),
         "cross_check_findings": [
@@ -604,6 +607,9 @@ async def submit_test(
                 "mirror_prompt": clar.get("mirror_prompt") or "",
             },
             "mastery_status": result.get("mastery_status"),
+            "tier": result.get("tier"),
+            "archetype_title": result.get("archetype_title"),
+            "archetype_subtitle": result.get("archetype_subtitle"),
             "persona_title": result.get("persona_title"),
             "executive_summary": result.get("executive_summary"),
             "cross_check_findings": [

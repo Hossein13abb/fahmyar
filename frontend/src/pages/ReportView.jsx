@@ -485,7 +485,10 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
   ).trim()
   const stageDims = Array.isArray(report.stage_dimensions) ? report.stage_dimensions : []
   const mastery = report.mastery_status ?? null
-  const personaTitle = report.persona_title ?? null
+  const tier = report.tier ?? null
+  const archetypeTitle = report.archetype_title ?? report.persona_title ?? null
+  const archetypeSubtitle = report.archetype_subtitle ?? null
+  const personaTitle = archetypeTitle
   const executiveSummary = report.executive_summary ?? null
   const mentorNote = report.mastery_note ?? null
   const generatedAt = report.generated_at
@@ -581,7 +584,13 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
       {(mastery || personaTitle || crossCheck.length > 0 || executiveSummary) && (
         <section className="card overflow-hidden p-0">
           {(() => {
-            const st = MASTERY_STYLE[mastery] ?? MASTERY_STYLE.UNSTRUCTURED
+            const TIER_STYLE = {
+              emerald: MASTERY_STYLE.MASTERED,
+              yellow: MASTERY_STYLE.JARGON_DEPENDENT,
+              orange: MASTERY_STYLE.PARTIAL_FRAGMENTED,
+              red: MASTERY_STYLE.UNSTRUCTURED,
+            }
+            const st = (tier && TIER_STYLE[tier]) || MASTERY_STYLE[mastery] || MASTERY_STYLE.UNSTRUCTURED
             return (
               <div className={`relative overflow-hidden px-6 py-5 ${st.head}`}>
                 {/* هالهٔ گوشه — همان نوارِ رنگی، ولی با عمق */}
@@ -600,9 +609,14 @@ function ExamReport({ report, mode, onBackToDashboard, sessionIdProp }) {
                   </span>
                 </div>
                 {personaTitle && (
-                  <h2 className="relative mt-2 text-xl font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.15)] sm:text-2xl">
+                  <h2 className="relative mt-2.5 text-2xl font-black tracking-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.18)] sm:text-3xl">
                     «{personaTitle}»
                   </h2>
+                )}
+                {archetypeSubtitle && (
+                  <p className="relative mt-1.5 text-justify text-[13px] font-medium leading-relaxed text-white/95">
+                    {archetypeSubtitle}
+                  </p>
                 )}
                 {executiveSummary && (
                   /* روایتِ تیپ‌شناسی: متنِ دوم‌شخصِ چند‌جمله‌ای. ``text-justify``
