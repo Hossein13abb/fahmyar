@@ -285,13 +285,12 @@ _FALLBACK_STAGES: tuple[dict[str, Any], ...] = (
         "order": 1,
         "exam_type": "philosophy",
         "text": (
-            "بدونِ هیچ فرمول و عددی: پیش از آن‌که «{concept}» ساخته شود، انسان "
-            "در توصیفِ این پدیده به چه بن‌بستی می‌خورد؟ این مفهوم دقیقاً چه "
-            "مشکلی را حل کرد که پیش از آن حل‌شدنی نبود؟"
+            "در طبیعت یا آزمایشگاه، پدیدهٔ «{concept}» چگونه خود را نشان می‌دهد "
+            "و چه سازوکارِ بنیادینی باعثِ رخ‌دادنِ آن می‌شود؟"
         ),
         "difficulty": "medium",
         "cognitive_type": "conceptual",
-        "expected_logic": "بیانِ بن‌بستِ پیشین و کارکردِ واقعیِ مفهوم",
+        "expected_logic": "بیانِ شهودِ پدیده‌شناسی و چراییِ علمیِ پدیده",
     },
     {
         "order": 2,
@@ -1198,6 +1197,9 @@ async def generate_stage_chain(
             if "429" in message or "rate-limited" in message:
                 print("[StageChain] upstream rate limit — deterministic chain instead of retrying")
                 break
+
+    if not best_items:
+        raise RuntimeError("خطا در ارتباط با هوش مصنوعی — لطفاً دوباره تلاش کنید.")
 
     # ── پر کردنِ اسلات‌های خالی با قالبِ قطعیِ همان ترتیب ──
     by_order = {int(i.get("order") or 0): i for i in best_items}
