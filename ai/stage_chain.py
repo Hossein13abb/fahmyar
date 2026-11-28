@@ -1157,7 +1157,7 @@ async def generate_stage_chain(
             )
             resp = await asyncio.wait_for(
                 router.generate(prompt, "generate_test_booklet", temperature=0.7),
-                timeout=45.0,
+                timeout=120.0,
             )
             model_name, cost = resp.model_name, resp.total_cost_usd
             data = extract_json_object(resp.text)
