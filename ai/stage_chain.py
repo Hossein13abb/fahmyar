@@ -436,6 +436,51 @@ def _stringify(value: Any) -> str:
     return str(value).strip()
 
 
+MATH_SUBJECT_IDS = frozenset({
+    "math-10",       # ریاضی ۱
+    "geometry-10",   # هندسه ۱
+    "math-11-exp",   # ریاضی ۲ تجربی
+    "calculus-11",   # حسابان ۱
+    "geometry-11",   # هندسه ۲
+    "statistics-11", # آمار و احتمال
+    "math-12-exp",   # ریاضی ۳ تجربی
+    "calculus-12",   # حسابان ۲
+    "geometry-12",   # هندسه ۳
+    "discrete-12",   # ریاضیات گسسته
+})
+
+_MATH_KEYWORDS = ("ریاضی", "هندسه", "حسابان", "گسسته", "آمار")
+_MATH_SUBJECT_SLUGS = frozenset({"math", "calculus", "geometry", "discrete", "statistics"})
+
+
+def is_math_subject(subject_id: str = "", subject_name: str = "") -> bool:
+    """تشخیصِ اینکه آیا درس از خانوادهٔ ریاضیات و هندسهٔ صوری است یا علوم تجربی."""
+    sid = str(subject_id or "").strip().lower()
+    if sid in MATH_SUBJECT_IDS or sid in _MATH_SUBJECT_SLUGS:
+        return True
+    sname = str(subject_name or "").strip()
+    return any(kw in sname for kw in _MATH_KEYWORDS)
+
+
+_MATH_BLUEPRINT_NOTE = """
+══ طرحِ اختصاصیِ ۵-ایستگاهیِ ریاضیات و هندسهٔ صوری (۱۰ سؤال) ══
+این مبحث متعلق به ریاضیات صوری است — مطلقاً از مثال‌های فیزیکی، شیمیایی،
+زیستی، یا تمثیلِ «توضیح برای کودک ۱۰ ساله / فاینمن / عهد باستان» استفاده نکن!
+ساختارِ ۱۰ سؤال در ۵ ایستگاه:
+• سؤالات ۱ و ۲ (کالبدشکافی قیود و تمایز مفاهیم دوقلو): تفکیک دو مفهوم مرتبط
+  اما متمایز، و بررسیِ ضرورتِ قیود و فرضیاتِ قضیه بدونِ محاسباتِ سنگین.
+• سؤالات ۳ و ۴ (حل مسئله استاندارد با متغیر انحرافی یا دام محاسباتی): سؤالِ
+  تستی استاندارد در حد کنکور با تله‌های رایجِ جبری، دامنهٔ تعریف یا متغیرِ بی‌اثر.
+• سؤالات ۵ و ۶ (رفتار پویا، شرایط مرزی و حالت‌های حدی): بررسیِ تغییراتِ شکل
+  یا فرمول وقتی یک پارامتر به سمت صفر، بی‌نهایت، انطباق یا مرز میل می‌کند.
+• سؤالات ۷ و ۸ (شکار مغالطه ریاضی و ارائه مثال نقض): اثباتِ صوریِ ظاهراً درست
+  با یک خطای منطقیِ ظریف (مثل تقسیم بر صفرِ پنهان یا جابه‌جاییِ جهتِ نامساوی)
+  یا انتخابِ مثالِ نقضِ گزارهٔ عمومیِ نادرست.
+• سؤالات ۹ و ۱۰ (مدل‌سازی فضایی، کاربرد واقعی و مهندسی معکوس): مدل‌سازیِ
+  هندسی/جبری در موقعیتِ واقعی و ملموس (مثل زاویهٔ دید، بازتابِ نور، بهینه‌سازی).
+""".strip()
+
+
 def build_booklet_prompt(
     concept,
     propositions: list[str],
@@ -449,7 +494,7 @@ def build_booklet_prompt(
             f"مسئله: {wrong_answer.get('problem_text', '')} | "
             f"پاسخِ غلطِ دانش‌آموز: {wrong_answer.get('student_answer', '')}"
         )
-    return fill(
+    prompt = fill(
         _BOOKLET_PROMPT,
         concept=concept.name,
         subject=concept.subject,
@@ -458,6 +503,16 @@ def build_booklet_prompt(
         misconception=misconceptions[0] if misconceptions else "بدفهمیِ رایجِ این مفهوم",
         wrong_answer=wrong_text or "—",
     )
+    # تفکیکِ دامنه: اگر درس ریاضی/هندسه/حسابان/گسسته/آمار است، طرحِ ۵-ایستگاهیِ
+    # ریاضیات را به ابتدای پرامپت تزریق می‌کنیم تا سؤالات رنگ‌وبوی تجربی نگیرند.
+    subject_hint = " ".join([
+        str(getattr(concept, "subject", "") or ""),
+        str(getattr(concept, "topic", "") or ""),
+        " ".join(str(p) for p in (propositions or [])),
+    ])
+    if is_math_subject(getattr(concept, "subject", ""), subject_hint):
+        prompt = f"{_MATH_BLUEPRINT_NOTE}\n\n{prompt}"
+    return prompt
 
 
 # ---------------------------------------------------------------------------
