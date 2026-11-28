@@ -42,6 +42,15 @@ def test_build_booklet_prompt_uses_math_blueprint_for_math_and_not_for_physics()
     math_prompt = build_booklet_prompt(math_concept, math_concept.core_propositions, [])
     phy_prompt = build_booklet_prompt(phy_concept, phy_concept.core_propositions, [])
 
-    assert "طرحِ اختصاصیِ ۵-ایستگاهیِ ریاضیات و هندسهٔ صوری" in math_prompt
+    assert "ساختار دقیق ۱۰ سوال (۵ ایستگاه ۲ سوالی)" in math_prompt
     assert "شکار مغالطه ریاضی و ارائه مثال نقض" in math_prompt
-    assert "طرحِ اختصاصیِ ۵-ایستگاهیِ ریاضیات و هندسهٔ صوری" not in phy_prompt
+    assert "ساختار دقیق ۱۰ سوال (۵ ایستگاه ۲ سوالی)" not in phy_prompt
+
+
+def test_statistics_11_exists_in_curriculum():
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "frontend" / "src" / "lib" / "curriculum" / "iranHighSchoolCurriculum.js").read_text(encoding="utf-8")
+    assert "id: 'statistics-11'" in src
+    assert "فصل ۱: آشنایی با مبانی ریاضیات" in src
+    assert "فصل ۴: آمار استنباطی" in src
