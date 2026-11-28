@@ -451,11 +451,16 @@ MATH_SUBJECT_IDS = frozenset({
 
 _MATH_KEYWORDS = (
     "ریاضی", "هندسه", "حسابان", "گسسته", "آمار", "احتمال",
-    "سینوس", "کسینوس", "تانژانت", "زاویه", "مثلث", "دایره",
+    "مثلثات", "سینوس", "کسینوس", "تانژانت", "زاویه", "مثلث", "دایره",
     "تابع", "مشتق", "حد", "پیوستگی", "انتگرال", "ماتریس",
     "بردار", "مقاطع مخروطی", "ترکیبیات", "گراف",
 )
 _MATH_SUBJECT_SLUGS = frozenset({"math", "calculus", "geometry", "discrete", "statistics"})
+
+
+def is_math_domain(subject: str = "", topic: str = "", chapter: str = "") -> bool:
+    """تشخیصِ دامنهٔ ریاضیات صوری/هندسه از روی درس، مبحث یا فصل."""
+    return is_math_subject(subject, f"{topic} {chapter}".strip())
 
 
 def is_math_subject(subject_id: str = "", subject_name: str = "") -> bool:
@@ -994,16 +999,33 @@ def fallback_stages(concept) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for template in _FALLBACK_STAGES:
         item = dict(template)
+        order_num = int(item.get("order") or 0)
         raw_text = item["text"]
-        if is_math and int(item.get("order") or 0) == 1:
-            raw_text = (
-                "در صورت «{concept}»، چه فرضیات و قیودی الزامی هستند؟ "
-                "اگر یکی از این قیود نقض شود، قضیه در چه حالتی از کار می‌افتد؟"
-            )
-        elif is_math and int(item.get("order") or 0) == 2:
-            raw_text = (
-                "تفاوت بنیادین «{concept}» با تعمیم‌ها یا حالت‌های خاص آن در چیست؟"
-            )
+        if is_math:
+            if order_num == 1:
+                raw_text = (
+                    "در قضیه یا مفهوم «{concept}»، چه فرضیات، شروط یا قیودی الزامی هستند؟ "
+                    "اگر یکی از این قیود حذف شود، چه نقض یا تناقضی به وجود می‌آید؟"
+                )
+            elif order_num == 2:
+                raw_text = (
+                    "تفاوت بنیادین «{concept}» با مفاهیم دوقلو یا حالت‌های خاص آن را با دلیل منطقی شرح بده."
+                )
+            elif order_num in (5, 6):
+                raw_text = (
+                    "در «{concept}»، اگر یکی از پارامترها (طول، زاویه یا متغیر) به سمت مقادیر حدی "
+                    "(صفر، بی‌نهایت یا انطباق) میل کند، وضعیت شکل یا رابطه چه رفتاری نشان می‌دهد؟"
+                )
+            elif order_num in (7, 8):
+                raw_text = (
+                    "رایج‌ترین مغالطه یا استدلالِ ظاهراً درست اما غلط در مبحث «{concept}» چیست؟ "
+                    "یک مثال نقض یا توضیحِ دقیق برای ردِ آن بنویس."
+                )
+            elif order_num in (9, 10):
+                raw_text = (
+                    "یک موقعیتِ واقعی یا شهودی را مثال بزن که مدل‌سازیِ هندسی یا جبریِ «{concept}» "
+                    "در آن به کار می‌رود و نحوهٔ استفاده از آن را توضیح بده."
+                )
         item["text"] = fill(raw_text, concept=concept.name)
         item["stage_title"] = STAGE_TITLES[item["exam_type"]]
         item["stage"] = stage_of_order(int(item.get("order") or 0))

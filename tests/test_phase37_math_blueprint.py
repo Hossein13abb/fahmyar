@@ -71,4 +71,4 @@ def test_math_fallback_never_uses_historical_deadend():
     items = fallback_stages(sine_law)
     all_text = " ".join(it["text"] for it in items)
     assert "بن‌بستی" not in all_text
-    assert "فرضیات و قیودی الزامی هستند" in items[0]["text"]
+    assert "قیودی الزامی هستند" in items[0]["text"]
