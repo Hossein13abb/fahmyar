@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+
 import re
 from typing import Any, Optional
 
@@ -1149,7 +1151,14 @@ async def generate_stage_chain(
 
     for attempt in range(3):
         try:
-            resp = await router.generate(prompt, "generate_test_booklet", temperature=0.7)
+            print(
+                f"[Diagnostic] Calling OpenRouter (attempt {attempt + 1}/3) for: {concept.name}",
+                flush=True,
+            )
+            resp = await asyncio.wait_for(
+                router.generate(prompt, "generate_test_booklet", temperature=0.7),
+                timeout=45.0,
+            )
             model_name, cost = resp.model_name, resp.total_cost_usd
             data = extract_json_object(resp.text)
             items = normalize_stage_items(
