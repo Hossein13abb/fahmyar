@@ -55,3 +55,20 @@ def test_statistics_11_exists_in_curriculum():
     assert "id: 'statistics-11'" in src
     assert "فصل ۱: آشنایی با مبانی ریاضیات" in src
     assert "فصل ۴: آمار استنباطی" in src
+
+
+def test_math_fallback_never_uses_historical_deadend():
+    from ai.stage_chain import fallback_stages
+
+    sine_law = Concept(
+        subject="experimental",
+        grade=10,
+        chapter="",
+        topic="custom-sine",
+        name="قضیهٔ سینوس‌ها در مثلث",
+        core_propositions=[],
+    )
+    items = fallback_stages(sine_law)
+    all_text = " ".join(it["text"] for it in items)
+    assert "بن‌بستی" not in all_text
+    assert "فرضیات و قیودی الزامی هستند" in items[0]["text"]

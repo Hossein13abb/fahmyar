@@ -449,7 +449,12 @@ MATH_SUBJECT_IDS = frozenset({
     "discrete-12",   # ریاضیات گسسته
 })
 
-_MATH_KEYWORDS = ("ریاضی", "هندسه", "حسابان", "گسسته", "آمار")
+_MATH_KEYWORDS = (
+    "ریاضی", "هندسه", "حسابان", "گسسته", "آمار", "احتمال",
+    "سینوس", "کسینوس", "تانژانت", "زاویه", "مثلث", "دایره",
+    "تابع", "مشتق", "حد", "پیوستگی", "انتگرال", "ماتریس",
+    "بردار", "مقاطع مخروطی", "ترکیبیات", "گراف",
+)
 _MATH_SUBJECT_SLUGS = frozenset({"math", "calculus", "geometry", "discrete", "statistics"})
 
 
@@ -523,6 +528,8 @@ def build_booklet_prompt(
     subject_hint = " ".join([
         str(getattr(concept, "subject", "") or ""),
         str(getattr(concept, "topic", "") or ""),
+        str(getattr(concept, "chapter", "") or ""),
+        str(getattr(concept, "name", "") or ""),
         " ".join(str(p) for p in (propositions or [])),
     ])
     template = (
@@ -977,10 +984,27 @@ def normalize_stage_items(items: Any) -> list[dict[str, Any]]:
 
 def fallback_stages(concept) -> list[dict[str, Any]]:
     """ده سؤالِ اضطراریِ کامل — هرگز آزمونِ ناقص به دانش‌آموز نمی‌رسد."""
+    math_hint = " ".join([
+        str(getattr(concept, "subject", "") or ""),
+        str(getattr(concept, "topic", "") or ""),
+        str(getattr(concept, "chapter", "") or ""),
+        str(getattr(concept, "name", "") or ""),
+    ])
+    is_math = is_math_subject(getattr(concept, "subject", ""), math_hint)
     out: list[dict[str, Any]] = []
     for template in _FALLBACK_STAGES:
         item = dict(template)
-        item["text"] = fill(item["text"], concept=concept.name)
+        raw_text = item["text"]
+        if is_math and int(item.get("order") or 0) == 1:
+            raw_text = (
+                "در صورت «{concept}»، چه فرضیات و قیودی الزامی هستند؟ "
+                "اگر یکی از این قیود نقض شود، قضیه در چه حالتی از کار می‌افتد؟"
+            )
+        elif is_math and int(item.get("order") or 0) == 2:
+            raw_text = (
+                "تفاوت بنیادین «{concept}» با تعمیم‌ها یا حالت‌های خاص آن در چیست؟"
+            )
+        item["text"] = fill(raw_text, concept=concept.name)
         item["stage_title"] = STAGE_TITLES[item["exam_type"]]
         item["stage"] = stage_of_order(int(item.get("order") or 0))
         item["stage_slot"] = (int(item.get("order") or 1) - 1) % QUESTIONS_PER_STAGE + 1
